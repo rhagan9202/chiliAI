@@ -12,7 +12,7 @@ import type {
   GnnClusterResponse,
   KnowledgeBaseListResponse,
   MetricTimeseriesResponse,
-  RiskScoreListResponse,
+  RiskProjectionListResponse,
   WorkflowRunListResponse,
 } from '../../api/contracts'
 import { clusterColorFor } from '../../utils/graphStyles'
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   useGnnClusters: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useMetricTimeseries: vi.fn(),
-  useRiskScores: vi.fn(),
+  useRiskProjections: vi.fn(),
   useWorkflows: vi.fn(),
 }))
 
@@ -41,7 +41,7 @@ vi.mock('../../api/analytics', () => ({
   useAnalyticsOverview: mocks.useAnalyticsOverview,
   useGnnClusters: mocks.useGnnClusters,
   useMetricTimeseries: mocks.useMetricTimeseries,
-  useRiskScores: mocks.useRiskScores,
+  useRiskProjections: mocks.useRiskProjections,
 }))
 
 vi.mock('../../api/knowledgebases', () => ({ useKnowledgeBases: mocks.useKnowledgeBases }))
@@ -168,15 +168,28 @@ const knowledgeBases: KnowledgeBaseListResponse = {
   total: 2,
 }
 
-const riskScores: RiskScoreListResponse = {
+const riskProjections: RiskProjectionListResponse = {
   knowledge_base_id: 'kb-ready',
   total: 1,
+  limit: 5,
+  offset: 0,
   items: [
     {
+      knowledge_base_id: 'kb-ready',
       entity_id: 'provider-204',
       entity_type: 'provider',
       overall_score: 0.91,
       risk_level: 'critical',
+      top_typology_ids: ['upcoding'],
+      alert_ids: ['alert-1'],
+      case_ids: ['case-1'],
+      evidence_pack_ids: ['evidence-001'],
+      score_run_id: 'score-run-1',
+      model_version: 'risk-linear-v1',
+      catalog_version: 'cms-fraud-features-v1',
+      scored_at: now,
+      updated_at: now,
+      status: 'case_open',
     },
   ],
 }
@@ -256,7 +269,7 @@ function setupDefaultMocks() {
   mocks.useKnowledgeBases.mockReturnValue(querySuccess(knowledgeBases))
   mocks.useDomainConfig.mockReturnValue(querySuccess(domainConfig))
   mocks.useDomainFeatures.mockReturnValue(querySuccess(domainFeatures))
-  mocks.useRiskScores.mockReturnValue(querySuccess(riskScores))
+  mocks.useRiskProjections.mockReturnValue(querySuccess(riskProjections))
   mocks.useGnnClusters.mockReturnValue(querySuccess(clusters))
   mocks.useMetricTimeseries.mockReturnValue(querySuccess(metricTimeseries))
 }
@@ -378,7 +391,10 @@ describe('DashboardPage', () => {
     expect(within(panel).getByText(/top risk entities/i)).toBeInTheDocument()
     expect(within(panel).getByText('Ready KB')).toBeInTheDocument()
     expect(within(panel).getByText('provider-204')).toBeInTheDocument()
-    expect(within(panel).getByText('Provider provider-204')).toBeInTheDocument()
+    expect(within(panel).getByText(/Provider provider-204/)).toBeInTheDocument()
+    expect(within(panel).getByText(/Case Open/)).toBeInTheDocument()
+    expect(within(panel).getByText(/upcoding/)).toBeInTheDocument()
+    expect(within(panel).getByText(/Scored Jun 15/)).toBeInTheDocument()
     expect(within(panel).getByText('91')).toBeInTheDocument()
     expect(within(panel).getByText(/graph clusters/i)).toBeInTheDocument()
     expect(within(panel).getByText('Anomalous billing cluster')).toBeInTheDocument()
@@ -387,7 +403,7 @@ describe('DashboardPage', () => {
     expect(within(panel).getByText(/metric trend/i)).toBeInTheDocument()
     expect(within(panel).getByText(/claim volume/i)).toBeInTheDocument()
 
-    expect(mocks.useRiskScores).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-ready', limit: 5 })
+    expect(mocks.useRiskProjections).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-ready', limit: 5, offset: 0 })
     expect(mocks.useGnnClusters).toHaveBeenCalledWith('kb-ready')
     expect(mocks.useMetricTimeseries).toHaveBeenCalledWith({
       knowledgeBaseId: 'kb-ready',
@@ -436,7 +452,7 @@ describe('DashboardPage', () => {
     const panel = screen.getByRole('tabpanel', { name: /policy signals/i })
     expect(within(panel).getByText('TN Demo KB')).toBeInTheDocument()
     expect(screen.queryByText('Air Force Housing Demo')).not.toBeInTheDocument()
-    expect(mocks.useRiskScores).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-medicare', limit: 5 })
+    expect(mocks.useRiskProjections).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-medicare', limit: 5, offset: 0 })
     expect(mocks.useGnnClusters).toHaveBeenCalledWith('kb-medicare')
     expect(mocks.useMetricTimeseries).toHaveBeenCalledWith({
       knowledgeBaseId: 'kb-medicare',
@@ -470,7 +486,7 @@ describe('DashboardPage', () => {
 
     const panel = screen.getByRole('tabpanel', { name: /policy signals/i })
     expect(within(panel).getByText('Legacy KB')).toBeInTheDocument()
-    expect(mocks.useRiskScores).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-legacy', limit: 5 })
+    expect(mocks.useRiskProjections).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-legacy', limit: 5, offset: 0 })
   })
 
   it('keeps the metric time range stable across tab updates', async () => {
@@ -517,7 +533,7 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('tabpanel', { name: /policy signals/i })).toBeInTheDocument()
     expect(screen.getByText(/no ready knowledge base selected/i)).toBeInTheDocument()
-    expect(mocks.useRiskScores).toHaveBeenCalledWith(null)
+    expect(mocks.useRiskProjections).toHaveBeenCalledWith(null)
     expect(mocks.useGnnClusters).toHaveBeenCalledWith(null)
     expect(mocks.useMetricTimeseries).toHaveBeenCalledWith(null)
   })
@@ -534,13 +550,31 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('tabpanel', { name: /policy signals/i })).toBeInTheDocument()
     expect(screen.getByText(/no ready knowledge base selected/i)).toBeInTheDocument()
-    expect(mocks.useRiskScores).toHaveBeenCalledWith(null)
+    expect(mocks.useRiskProjections).toHaveBeenCalledWith(null)
     expect(mocks.useGnnClusters).toHaveBeenCalledWith(null)
     expect(mocks.useMetricTimeseries).toHaveBeenCalledWith(null)
   })
 
+  it('shows a ready-KB empty state when no risk projections are available', async () => {
+    mocks.useRiskProjections.mockReturnValue(querySuccess({
+      knowledge_base_id: 'kb-ready',
+      items: [],
+      total: 0,
+      limit: 5,
+      offset: 0,
+    } satisfies RiskProjectionListResponse))
+
+    renderDashboard()
+
+    clickTab(/policy signals/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /policy signals/i })
+    expect(within(panel).getByText(/no risk projections/i)).toBeInTheDocument()
+    expect(within(panel).getByText(/no ranked risk entities are available/i)).toBeInTheDocument()
+  })
+
   it('shows policy signals error state when secondary analytics queries fail', async () => {
-    mocks.useRiskScores.mockReturnValue(queryError())
+    mocks.useRiskProjections.mockReturnValue(queryError())
 
     renderDashboard()
 
@@ -548,7 +582,7 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('tabpanel', { name: /policy signals/i })).toBeInTheDocument()
     expect(screen.getByText(/policy signal analytics could not be loaded/i)).toBeInTheDocument()
-    expect(screen.queryByText(/no risk scores/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no risk projections/i)).not.toBeInTheDocument()
   })
 
   it('shows policy signals loading state while secondary analytics queries load', async () => {

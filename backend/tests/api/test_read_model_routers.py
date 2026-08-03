@@ -25,6 +25,10 @@ from api.dependencies import (
     get_knowledge_base_repository,
     get_risk_service,
 )
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
@@ -40,6 +44,11 @@ from monitoring.models import AlertHistoryRecord
 from shared.types import Entity, KnowledgeBase, Relationship
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
 
 
 def _seed_alert_store() -> AlertFeedStoreProtocol:
@@ -64,6 +73,17 @@ def _seed_alert_store() -> AlertFeedStoreProtocol:
                 entity_label="Redwood DME Group",
                 confidence=0.96,
                 tags=["billing", "peer-deviation"],
+                generation_metadata={
+                    "suppression": {
+                        "decision": "retained",
+                        "reason": "No active suppression rule matched provider and claims_per_week.",
+                    },
+                    "deduplication": {
+                        "decision": "retained",
+                        "reason": "No existing alert inside the dedup window.",
+                        "window_seconds": 900,
+                    },
+                },
             ),
             AlertHistoryRecord(
                 knowledge_base_id="kb-2",
@@ -92,6 +112,21 @@ def _client_with_alerts() -> TestClient:
     app = create_app()
     store = _seed_alert_store()
     app.dependency_overrides[get_alert_feed_store] = lambda: store
+    return TestClient(app)
+
+
+def _client_with_alerts_and_audit(
+    audit_service: AuditLogService,
+) -> TestClient:
+    app = create_app()
+    store = _seed_alert_store()
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    app.dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    app.state.audit_log_service = audit_service
     return TestClient(app)
 
 
@@ -142,6 +177,11 @@ def test_get_alerts_returns_paginated_feed() -> None:
     payload = response.json()
     assert payload["page"]["total_items"] >= 1
     assert payload["items"][0]["entity_type"] == "provider"
+    assert payload["items"][0]["generation_metadata"]["suppression"]["decision"] == "retained"
+    assert (
+        payload["items"][0]["generation_metadata"]["deduplication"]["window_seconds"]
+        == 900
+    )
 
 
 def test_list_alerts_route_passes_status_and_pagination() -> None:
@@ -178,6 +218,34 @@ def test_list_alerts_route_passes_knowledge_base_filter() -> None:
     assert [item["id"] for item in payload["items"]] == ["alert-002"]
 
 
+def test_list_alerts_route_passes_queue_filters_to_store() -> None:
+    app = create_app()
+    store = _seed_alert_store()
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    client = TestClient(app)
+
+    today = utc_now().date().isoformat()
+    response = client.get(
+        "/alerts",
+        params={
+            "status": ["open", "acknowledged"],
+            "severity": "critical",
+            "typology": "billing",
+            "from": today,
+            "to": today,
+            "evidence": "with_evidence",
+            "freshness": "fresh",
+            "limit": 10,
+            "offset": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"]["total_items"] == 1
+    assert [item["id"] for item in payload["items"]] == ["alert-001"]
+
+
 def test_get_alert_detail_returns_related_context() -> None:
     client = _client_with_alerts()
 
@@ -200,7 +268,292 @@ def test_acknowledge_alert_returns_scaffold_status() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["alert"]["id"] == "alert-001"
+    assert payload["alert"]["status"] == "acknowledged"
+    assert payload["audit_event"]["event_type"] == "status_changed"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["from_status"] == "open"
+    assert payload["audit_event"]["to_status"] == "acknowledged"
+
+
+def test_acknowledge_alert_records_audit_ledger_event() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    response = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 200
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == ["alert.acknowledge"]
+    event = page.items[0]
+    assert event.actor_user_id == "analyst-42"
+    assert event.resource_type == "alert"
+    assert event.resource_id == "alert-001"
+    assert event.before == {"status": "open"}
+    assert event.after == {"status": "acknowledged"}
+    assert event.metadata == {
+        "source": "api.alerts",
+        "entity_id": "provider-204",
+        "severity": "critical",
+    }
+
+
+def test_assign_alert_route_returns_updated_alert_and_audit_event() -> None:
+    client = _client_with_alerts()
+
+    response = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["alert"]["id"] == "alert-001"
+    assert payload["alert"]["assignee"] == "maya.patel@example.com"
+    assert payload["audit_event"]["event_type"] == "assigned"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["assignee"] == "maya.patel@example.com"
+
+
+def test_assign_and_status_update_record_audit_ledger_events() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    assigned = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+    assert assigned.status_code == 200
+    acknowledged = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert acknowledged.status_code == 200
+    transitioned = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "investigating",
+            "reason": "Confirmed peer deviation.",
+        },
+    )
+    assert transitioned.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "alert.status.update",
+        "alert.acknowledge",
+        "alert.assignment.update",
+    ]
+    assert page.items[0].before == {"status": "acknowledged"}
+    assert page.items[0].after == {"status": "investigating"}
+    assert page.items[0].metadata["reason_present"] is True
+    assert page.items[2].before == {"assignee": None}
+    assert page.items[2].after == {"assignee": "maya.patel@example.com"}
+
+
+def test_update_alert_status_route_enforces_valid_transitions() -> None:
+    client = _client_with_alerts()
+
+    response = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "resolved",
+            "reason": "Skipping investigation is invalid.",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_alert_status_route_returns_updated_alert_and_audit_event() -> None:
+    client = _client_with_alerts()
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "investigating",
+            "reason": "Confirmed peer deviation.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alert"]["status"] == "investigating"
+    assert payload["audit_event"]["event_type"] == "status_changed"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["from_status"] == "acknowledged"
+    assert payload["audit_event"]["to_status"] == "investigating"
+    assert payload["audit_event"]["reason"] == "Confirmed peer deviation."
+
+
+def test_alert_triage_mutations_require_knowledge_base_scope() -> None:
+    client = _client_with_alerts()
+
+    assign = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"assignee": "maya.patel@example.com"},
+    )
+    transition = client.patch(
+        "/alerts/alert-001/status",
+        json={"status": "dismissed"},
+    )
+
+    assert assign.status_code == 422
+    assert transition.status_code == 422
+
+
+def test_alert_triage_mutations_refuse_an_alert_from_another_knowledge_base() -> None:
+    client = _client_with_alerts()
+
+    assign = client.patch(
+        "/alerts/alert-002/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+    transition = client.patch(
+        "/alerts/alert-002/status",
+        json={"knowledge_base_id": "kb-1", "status": "dismissed"},
+    )
+
+    assert assign.status_code == 404
+    assert transition.status_code == 404
+
+
+def test_bulk_alert_status_route_updates_only_valid_scoped_transitions() -> None:
+    client = _client_with_alerts()
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-002"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["updated_alerts"]] == ["alert-001"]
+    assert payload["rejected_alerts"] == [
+        {"alert_id": "alert-002", "reason": "not_found"}
+    ]
+
+
+def test_bulk_alert_status_records_audit_only_for_updated_alerts() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-002"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "alert.status.update",
+        "alert.acknowledge",
+    ]
+    assert page.items[0].resource_id == "alert-001"
+    assert page.items[0].before == {"status": "acknowledged"}
+    assert page.items[0].after == {"status": "investigating"}
+    assert page.items[0].metadata["bulk"] is True
+    assert page.items[0].metadata["reason_present"] is True
+
+
+def test_alert_mutation_still_succeeds_when_audit_sink_fails() -> None:
+    audit_service = AuditLogService(_FailingAuditRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    response = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["alert"]["status"] == "acknowledged"
+    assert audit_service.failed_write_count == 1
+
+
+def test_bulk_alert_status_route_reports_invalid_transition_without_audit_event() -> None:
+    app = create_app()
+    store = _seed_alert_store()
+    created_at = utc_now()
+    store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-003",
+                entity_id="provider-777",
+                entity_type="provider",
+                severity="high",
+                status="open",
+                title="Open invalid transition candidate",
+                reasoning="Open alerts cannot move directly to investigating.",
+                metric_name="claims_per_week",
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        ]
+    )
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    client = TestClient(app)
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-003"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["updated_alerts"]] == ["alert-001"]
+    assert payload["rejected_alerts"] == [
+        {"alert_id": "alert-003", "reason": "invalid_transition"}
+    ]
+    valid = store.get_alert("alert-001")
+    rejected = store.get_alert("alert-003")
+    assert valid is not None
+    assert valid.triage_history[-1].to_status == "investigating"
+    assert rejected is not None
+    assert rejected.triage_history == []
 
 
 def test_get_alert_detail_refuses_an_alert_from_another_knowledge_base() -> None:
@@ -336,7 +689,12 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     from analytics.explainability.adapters.evidence_in_memory import (
         InMemoryEvidencePackRepository,
     )
-    from shared.types import EvidenceNarrativeSection, EvidencePack, FeatureAttribution
+    from shared.types import (
+        EvidenceNarrativeSection,
+        EvidencePack,
+        EvidenceProvenanceReference,
+        FeatureAttribution,
+    )
 
     app = create_app()
     repository = InMemoryEvidencePackRepository()
@@ -358,6 +716,19 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
             narrative_sections=[
                 EvidenceNarrativeSection(
                     heading="Risk Factor", body="Claim volume trails peers.", evidence_refs=["claim-1"]
+                )
+            ],
+            provenance=[
+                EvidenceProvenanceReference(
+                    reference_type="feature_value",
+                    reference_id="feature:claim_volume_z:provider-1",
+                    label="Claim volume z-score",
+                    source_system="cms-claims",
+                    source_version="2026-08-demo",
+                    transformation_version="peerstats-zscore-v1",
+                    confidence=0.8,
+                    route_target="/knowledgebases/kb-1/entities/provider-1",
+                    metadata={"score_run_id": "score-run-1"},
                 )
             ],
         ),
@@ -389,6 +760,19 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     assert payload["narrative_sections"] == [
         {"heading": "Risk Factor", "body": "Claim volume trails peers.", "evidence_refs": ["claim-1"]}
     ]
+    assert payload["provenance"] == [
+        {
+            "reference_type": "feature_value",
+            "reference_id": "feature:claim_volume_z:provider-1",
+            "label": "Claim volume z-score",
+            "source_system": "cms-claims",
+            "source_version": "2026-08-demo",
+            "transformation_version": "peerstats-zscore-v1",
+            "confidence": 0.8,
+            "route_target": "/knowledgebases/kb-1/entities/provider-1",
+            "metadata": {"score_run_id": "score-run-1"},
+        }
+    ]
 
     legacy_response = client.get(
         "/evidence-packs/ev-legacy", params={"knowledge_base_id": "kb-1"}
@@ -398,6 +782,7 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     legacy_payload = legacy_response.json()
     assert legacy_payload["attribution"] == []
     assert legacy_payload["narrative_sections"] == []
+    assert legacy_payload["provenance"] == []
 
 
 def test_export_evidence_pack_renders_markdown_and_json() -> None:

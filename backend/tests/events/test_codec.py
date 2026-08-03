@@ -29,12 +29,15 @@ from events.types import (
     GnnAnalyzedReference,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
+    IdentityLinkDecisionRecordedEvent,
+    IdentityLinkDecisionReference,
     LlmCompletedEvent,
     LlmCompletionReference,
     RagCompletedEvent,
     RagCompletionReference,
     RiskScoredEvent,
     RiskScoredReference,
+    ScoreRunStatusChangedEvent,
     TimeseriesAnalyzedEvent,
     TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
@@ -125,6 +128,32 @@ def test_event_codec_round_trips_alerts_created_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "alerts.created"
+
+
+def test_event_codec_round_trips_identity_link_decision_event() -> None:
+    event = IdentityLinkDecisionRecordedEvent(
+        correlation_id="corr-identity-1",
+        source="identity_resolution",
+        decisions=[
+            IdentityLinkDecisionReference(
+                knowledge_base_id="kb-1",
+                link_id="identity_link:kb-1:canonical-1:source-1",
+                canonical_entity_id="canonical:1",
+                source_entity_id="source:1",
+                decision="approve_merge",
+                review_state="merged",
+                actor_user_id="steward-1",
+                score=0.86,
+                confidence="high",
+            )
+        ],
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "identity.link_decision.recorded"
 
 
 def test_event_codec_round_trips_documents_chunked_event() -> None:
@@ -423,6 +452,26 @@ def test_event_codec_round_trips_explainability_generated_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "explainability.generated"
+
+
+def test_event_codec_round_trips_score_run_status_changed_event() -> None:
+    event = ScoreRunStatusChangedEvent(
+        knowledge_base_id="kb-1",
+        run_id="score-run-1",
+        status="queued",
+        total_entities=3,
+        scored_entities=0,
+        failed_entities=0,
+        model_version="risk-linear-v1",
+        catalog_version="cms-fraud-features-v1",
+        replay_of_run_id=None,
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "score_run.status_changed"
 
 
 # ---------------------------------------------------------------------------

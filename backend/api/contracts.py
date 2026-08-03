@@ -3,18 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
-
-
-class ApiEnvelope(BaseModel):
-    """Common status envelope for simple mutation responses."""
-
-    status: Literal["accepted", "ok"]
-    message: str
+from shared.types import Entity
 
 
 class PageInfo(BaseModel):
@@ -23,6 +17,58 @@ class PageInfo(BaseModel):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
     total_items: int = Field(ge=0)
+
+
+class AuditEventResponse(BaseModel):
+    """One immutable audit ledger event."""
+
+    event_id: str
+    occurred_at: datetime
+    tenant_id: str
+    knowledge_base_id: str | None = None
+    actor_user_id: str
+    actor_email: str | None = None
+    actor_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    action: str
+    resource_type: str
+    resource_id: str
+    before: dict[str, object | None] | None = None
+    after: dict[str, object | None] | None = None
+    correlation_id: str
+    client_ip: str | None = None
+    user_agent: str | None = None
+    outcome: Literal["success", "failure"]
+    failure_reason: str | None = None
+    metadata: dict[str, object | None] = Field(default_factory=dict)
+
+
+class AuditEventListResponse(BaseModel):
+    """Paginated audit ledger query response."""
+
+    items: list[AuditEventResponse] = Field(
+        default_factory=lambda: cast(list[AuditEventResponse], [])
+    )
+    page: PageInfo
+
+
+class AuditWriteFailureResponse(BaseModel):
+    """One captured audit sink write failure."""
+
+    occurred_at: datetime
+    action: str
+    resource_type: str
+    resource_id: str
+    error_class: str
+    error_message: str
+
+
+class AuditStatusResponse(BaseModel):
+    """Operational audit ledger write-failure status."""
+
+    failed_write_count: int = Field(ge=0)
+    recent_write_failures: list[AuditWriteFailureResponse] = Field(
+        default_factory=lambda: cast(list[AuditWriteFailureResponse], [])
+    )
 
 
 class DomainFeaturesResponse(BaseModel):
@@ -61,6 +107,8 @@ class AlertListItem(BaseModel):
     # Queue Health tab measure time-to-acknowledge (UXA-402).
     updated_at: datetime
     tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    assignee: str | None = None
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertListResponse(BaseModel):
@@ -68,6 +116,71 @@ class AlertListResponse(BaseModel):
 
     items: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
     page: PageInfo
+
+
+class AlertAssignmentRequest(BaseModel):
+    """Assign or clear assignment for one KB-scoped alert."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    assignee: str | None = None
+
+
+class AlertStatusUpdateRequest(BaseModel):
+    """Transition one KB-scoped alert to a new lifecycle status."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    status: Literal["open", "acknowledged", "investigating", "resolved", "dismissed"]
+    reason: str | None = None
+
+
+class AlertBulkStatusUpdateRequest(BaseModel):
+    """Transition a selected group of KB-scoped alerts where transitions are valid."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    alert_ids: list[str] = Field(min_length=1)
+    status: Literal["open", "acknowledged", "investigating", "resolved", "dismissed"]
+    reason: str | None = None
+
+
+class AlertTriageEventResponse(BaseModel):
+    """Audit receipt for an alert assignment or lifecycle transition."""
+
+    event_type: Literal["assigned", "status_changed"]
+    actor: str
+    occurred_at: datetime
+    assignee: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    reason: str | None = None
+
+
+class AlertOperationResponse(BaseModel):
+    """Response for one alert queue mutation."""
+
+    status: Literal["accepted"]
+    message: str
+    alert: AlertListItem
+    audit_event: AlertTriageEventResponse
+
+
+class AlertBulkRejection(BaseModel):
+    """One alert skipped by a bulk lifecycle mutation."""
+
+    alert_id: str
+    reason: Literal["not_found", "invalid_transition"]
+
+
+class AlertBulkStatusUpdateResponse(BaseModel):
+    """Response for a bulk alert lifecycle mutation."""
+
+    status: Literal["accepted"]
+    message: str
+    updated_alerts: list[AlertListItem] = Field(
+        default_factory=lambda: cast(list[AlertListItem], [])
+    )
+    rejected_alerts: list[AlertBulkRejection] = Field(
+        default_factory=lambda: cast(list[AlertBulkRejection], [])
+    )
 
 
 class PolicyCitation(BaseModel):
@@ -234,12 +347,305 @@ class FeatureAttributionResponse(BaseModel):
     rationale: str = ""
 
 
+class FeatureSourceMappingResponse(BaseModel):
+    """A source path used to derive a normalized feature value."""
+
+    source_type: str
+    source_ref: str
+    raw_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FeatureDefinitionResponse(BaseModel):
+    """A reusable, domain-neutral feature definition."""
+
+    id: str
+    label: str
+    description: str
+    value_type: Literal["boolean", "integer", "decimal", "string", "categorical"]
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    source_mappings: list[FeatureSourceMappingResponse] = Field(
+        default_factory=lambda: cast(list[FeatureSourceMappingResponse], [])
+    )
+    peer_dimensions: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    threshold_hints: dict[str, float] = Field(default_factory=dict)
+    transformation_version: str
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FraudTypologyResponse(BaseModel):
+    """A versioned fraud-pattern label described by a domain pack."""
+
+    id: str
+    label: str
+    description: str
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    severity_hint: Literal["low", "medium", "high", "critical"] | None = None
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    playbook_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FeatureCatalogResponse(BaseModel):
+    """Feature catalog metadata scoped to a knowledge base."""
+
+    knowledge_base_id: str
+    catalog_version: str
+    typologies: list[FraudTypologyResponse] = Field(
+        default_factory=lambda: cast(list[FraudTypologyResponse], [])
+    )
+    features: list[FeatureDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[FeatureDefinitionResponse], [])
+    )
+
+
+class EntityFeatureValueResponse(BaseModel):
+    """One normalized feature value for an entity."""
+
+    feature_id: str
+    entity_type: str
+    entity_id: str
+    value: str | int | float | bool | None = None
+    normalized_value: float | None = Field(default=None, ge=0.0, le=1.0)
+    catalog_version: str
+    transformation_version: str
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    observed_at: datetime | None = None
+    score_run_id: str | None = None
+
+
+class EntityFeatureValueListResponse(BaseModel):
+    """Feature values for one entity in a knowledge base."""
+
+    knowledge_base_id: str
+    entity_type: str
+    entity_id: str
+    items: list[EntityFeatureValueResponse] = Field(
+        default_factory=lambda: cast(list[EntityFeatureValueResponse], [])
+    )
+
+
+IdentityMatchConfidenceValue = Literal["high", "medium", "low"]
+IdentityReviewStateValue = Literal["auto_linkable", "steward_review", "needs_review"]
+IdentityLinkReviewStateValue = Literal[
+    "auto_linkable",
+    "steward_review",
+    "needs_review",
+    "merged",
+    "rejected",
+    "split",
+]
+IdentityLinkDecisionValue = Literal["approve_merge", "reject_merge", "split_identity"]
+
+
+class IdentityMatchReasonResponse(BaseModel):
+    """One reason contributing to an identity candidate score."""
+
+    field: str
+    reason: str
+    source_value: str
+    candidate_value: str
+    score_contribution: float = Field(ge=0.0, le=1.0)
+
+
+class IdentityCandidateEntityRequest(BaseModel):
+    """Candidate canonical entity scoped to one knowledge base."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    entity: Entity
+
+
+class IdentityResolutionRequestPayload(BaseModel):
+    """Payload for scoring a source identity against canonical candidates."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    source_entity: Entity
+    candidates: list[IdentityCandidateEntityRequest] = Field(
+        default_factory=lambda: cast(list[IdentityCandidateEntityRequest], [])
+    )
+    natural_key_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    identifier_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    address_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class IdentityCandidateScoreResponse(BaseModel):
+    """Scored canonical identity candidate."""
+
+    knowledge_base_id: str
+    entity_id: str
+    entity_type: str
+    score: float = Field(ge=0.0, le=1.0)
+    confidence: IdentityMatchConfidenceValue
+    review_state: IdentityReviewStateValue
+    match_reasons: list[IdentityMatchReasonResponse] = Field(
+        default_factory=lambda: cast(list[IdentityMatchReasonResponse], [])
+    )
+
+
+class IdentityResolutionResponse(BaseModel):
+    """Ranked identity candidates for a source entity."""
+
+    knowledge_base_id: str
+    source_entity_id: str
+    candidates: list[IdentityCandidateScoreResponse] = Field(
+        default_factory=lambda: cast(list[IdentityCandidateScoreResponse], [])
+    )
+    excluded_candidate_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class IdentityLinkDecisionRecordResponse(BaseModel):
+    """One steward decision recorded against an identity link."""
+
+    decision: IdentityLinkDecisionValue
+    actor_user_id: str
+    comment: str | None = None
+    created_at: datetime
+
+
+class IdentityLinkResponse(BaseModel):
+    """Stored identity link returned by the API."""
+
+    id: str
+    knowledge_base_id: str
+    canonical_entity_id: str
+    source_entity_id: str
+    relationship_type: str
+    confidence: IdentityMatchConfidenceValue
+    score: float = Field(ge=0.0, le=1.0)
+    review_state: IdentityLinkReviewStateValue
+    decision_source: str
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    match_reasons: list[dict[str, Any]] = Field(
+        default_factory=lambda: cast(list[dict[str, Any]], [])
+    )
+    decision_history: list[IdentityLinkDecisionRecordResponse] = Field(
+        default_factory=lambda: cast(list[IdentityLinkDecisionRecordResponse], [])
+    )
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanonicalIdentityDetailResponse(BaseModel):
+    """Source identities linked to one canonical entity."""
+
+    knowledge_base_id: str
+    canonical_entity_id: str
+    links: list[IdentityLinkResponse] = Field(
+        default_factory=lambda: cast(list[IdentityLinkResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class IdentityLinkDecisionRequestPayload(BaseModel):
+    """Payload for recording a steward identity-link decision."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    decision: IdentityLinkDecisionValue
+    tenant_id: str = Field(default="platform", min_length=1)
+    correlation_id: str | None = Field(default=None, min_length=1)
+    comment: str | None = None
+
+
+ScoreRunStatusValue = Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+ScoreBatchStatusValue = Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+
+
+class ScoreRunStartRequest(BaseModel):
+    """Payload for starting a KB-scoped score-all run."""
+
+    entity_ids: list[str] | None = Field(default=None, min_length=1)
+    requested_by: str | None = None
+    model_version: str
+    catalog_version: str
+    idempotency_key: str | None = None
+    batch_size: int = Field(default=100, gt=0, le=1000)
+
+
+class ScoreRunReplayRequest(BaseModel):
+    """Payload for replaying failed score batches."""
+
+    requested_by: str | None = None
+    idempotency_key: str | None = None
+
+
+class ScoreBatchResponse(BaseModel):
+    """Score-all batch state."""
+
+    id: str
+    run_id: str
+    knowledge_base_id: str
+    batch_number: int = Field(ge=0)
+    status: ScoreBatchStatusValue
+    entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    attempts: int = Field(ge=0)
+    error_summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class ScoreRunResponse(BaseModel):
+    """Score-all run state."""
+
+    id: str
+    knowledge_base_id: str
+    status: ScoreRunStatusValue
+    requested_by: str | None = None
+    idempotency_key: str | None = None
+    model_version: str
+    catalog_version: str
+    replay_of_run_id: str | None = None
+    total_entities: int = Field(ge=0)
+    scored_entities: int = Field(ge=0)
+    failed_entities: int = Field(ge=0)
+    error_summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class ScoreRunDetailResponse(BaseModel):
+    """Score run plus current batches."""
+
+    run: ScoreRunResponse
+    batches: list[ScoreBatchResponse] = Field(
+        default_factory=lambda: cast(list[ScoreBatchResponse], [])
+    )
+    created: bool = False
+
+
+class ScoreRunListResponse(BaseModel):
+    """Page of score-all runs for one knowledge base."""
+
+    items: list[ScoreRunResponse] = Field(default_factory=lambda: cast(list[ScoreRunResponse], []))
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
     heading: str
     body: str
     evidence_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class EvidenceProvenanceReferenceResponse(BaseModel):
+    """A normalized source reference supporting an evidence pack assertion."""
+
+    reference_type: str = Field(min_length=1)
+    reference_id: str = Field(min_length=1)
+    label: str = ""
+    source_system: str | None = None
+    source_version: str | None = None
+    transformation_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    route_target: str | None = None
+    metadata: dict[str, object | None] = Field(default_factory=dict)
 
 
 class EvidencePackResponse(BaseModel):
@@ -260,11 +666,123 @@ class EvidencePackResponse(BaseModel):
     narrative_sections: list[NarrativeSectionResponse] = Field(
         default_factory=lambda: cast(list[NarrativeSectionResponse], [])
     )
+    provenance: list[EvidenceProvenanceReferenceResponse] = Field(
+        default_factory=lambda: cast(list[EvidenceProvenanceReferenceResponse], [])
+    )
     # When the explanation was generated and what it was drawn from. Both are
     # already on the persisted pack; without them the narrative is an
     # unattributed, undated assertion (UXA-405).
     created_at: datetime
     source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class EvidenceProvenanceListResponse(BaseModel):
+    """Structured provenance references for one evidence pack."""
+
+    knowledge_base_id: str
+    evidence_pack_id: str
+    items: list[EvidenceProvenanceReferenceResponse] = Field(
+        default_factory=lambda: cast(list[EvidenceProvenanceReferenceResponse], [])
+    )
+
+
+ExplanationReviewTargetType = Literal[
+    "narrative",
+    "narrative_section",
+    "feature_attribution",
+    "evidence_item",
+    "provenance_reference",
+]
+ExplanationReviewState = Literal[
+    "useful",
+    "incomplete",
+    "misleading",
+    "unsupported",
+    "approved",
+    "rejected",
+    "regeneration_requested",
+]
+ExplanationReviewReason = Literal[
+    "missing_source",
+    "wrong_peer_group",
+    "stale_data",
+    "unsupported_claim",
+    "contradicts_evidence",
+    "unclear_rationale",
+    "other",
+]
+_EXPLANATION_REVIEW_REASON_REQUIRED_STATES: set[ExplanationReviewState] = {
+    "incomplete",
+    "misleading",
+    "unsupported",
+    "rejected",
+    "regeneration_requested",
+}
+
+
+class ExplanationReviewTargetResponse(BaseModel):
+    """One reviewable subtarget inside an evidence pack."""
+
+    target_type: ExplanationReviewTargetType
+    target_id: str = Field(min_length=1)
+
+
+class ExplanationReviewCreateRequest(BaseModel):
+    """Create or update one analyst review of an explanation target."""
+
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reasons: list[ExplanationReviewReason] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewReason], [])
+    )
+    comment: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _validate_reason_codes(self) -> ExplanationReviewCreateRequest:
+        if self.state in _EXPLANATION_REVIEW_REASON_REQUIRED_STATES and not self.reasons:
+            raise ValueError(f"Review state '{self.state}' requires at least one reason.")
+        return self
+
+
+class ExplanationReviewResponse(BaseModel):
+    """Stored analyst review state for one explanation target."""
+
+    id: str
+    knowledge_base_id: str
+    evidence_pack_id: str
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reasons: list[ExplanationReviewReason] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewReason], [])
+    )
+    comment: str | None = None
+    actor_user_id: str
+    actor_email: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    update_count: int = Field(ge=0)
+
+
+class ExplanationReviewListResponse(BaseModel):
+    """Page of review state for one evidence pack."""
+
+    knowledge_base_id: str
+    evidence_pack_id: str
+    items: list[ExplanationReviewResponse] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewResponse], [])
+    )
+    page: PageInfo
+
+
+class CaseExplanationReviewSummaryResponse(BaseModel):
+    """Sanitized case-dossier summary for one explanation review."""
+
+    evidence_pack_id: str
+    review_id: str
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reason_count: int = Field(ge=0)
+    updated_at: datetime
 
 
 class EntityLocationResponse(BaseModel):
@@ -333,6 +851,46 @@ class CaseDetailResponse(BaseModel):
         default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
     )
     feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
+
+
+class CaseDossierExportMetadataResponse(BaseModel):
+    """Export affordances advertised with a case dossier."""
+
+    formats: list[EvidenceExportFormat] = Field(
+        default_factory=lambda: cast(list[EvidenceExportFormat], ["markdown", "json"])
+    )
+    default_filename: str
+
+
+class CaseDossierResponse(BaseModel):
+    """Case-level dossier preserving alerts, evidence, chronology, and decisions."""
+
+    case: CaseSummaryResponse
+    alerts: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
+    evidence_packs: list[EvidencePackResponse] = Field(
+        default_factory=lambda: cast(list[EvidencePackResponse], [])
+    )
+    explanation_review_summaries: list[CaseExplanationReviewSummaryResponse] = Field(
+        default_factory=lambda: cast(list[CaseExplanationReviewSummaryResponse], [])
+    )
+    entity_timeline: list[CaseTimelineEventResponse] = Field(
+        default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
+    )
+    feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
+    audit_events: list[AuditEventResponse] = Field(
+        default_factory=lambda: cast(list[AuditEventResponse], [])
+    )
+    export: CaseDossierExportMetadataResponse
+
+
+class CaseDossierExportResponse(BaseModel):
+    """Portable case dossier rendering for reviewer handoff."""
+
+    case_id: str
+    knowledge_base_id: str
+    format: EvidenceExportFormat
+    filename: str
+    content: str
 
 
 class ChatCitationResponse(BaseModel):
@@ -461,6 +1019,129 @@ class RiskScoreResponse(BaseModel):
     factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
     availability_status: Literal["available", "unavailable"] = "available"
     unavailable_reason: str | None = None
+
+
+RiskProjectionLevelValue = Literal["low", "medium", "high", "critical"]
+RiskProjectionStatusValue = Literal["active", "case_open", "resolved", "suppressed", "stale"]
+RiskProjectionRebuildStatusValue = Literal["completed"]
+
+
+class RiskProjectionItemResponse(BaseModel):
+    """Projection-backed risk row for queue/dashboard/entity consumers."""
+
+    knowledge_base_id: str
+    entity_id: str
+    entity_type: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: RiskProjectionLevelValue
+    top_typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    case_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    evidence_pack_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    score_run_id: str | None = None
+    model_version: str
+    catalog_version: str
+    scored_at: datetime
+    updated_at: datetime
+    status: RiskProjectionStatusValue
+
+
+class RiskProjectionListResponse(BaseModel):
+    """Paginated risk projections for one knowledge base."""
+
+    knowledge_base_id: str
+    items: list[RiskProjectionItemResponse] = Field(
+        default_factory=lambda: cast(list[RiskProjectionItemResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+
+
+class RiskProjectionRebuildRequest(BaseModel):
+    """Operator request to rebuild risk projections for one knowledge base."""
+
+    knowledge_base_id: str = Field(min_length=1)
+
+
+class RiskProjectionRebuildResponse(BaseModel):
+    """Outcome of an in-process projection rebuild request."""
+
+    knowledge_base_id: str
+    changed: bool
+    deleted: int = Field(ge=0)
+    upserted: int = Field(ge=0)
+    status: RiskProjectionRebuildStatusValue = "completed"
+
+
+PeerAnalysisConfidenceValue = Literal["normal", "low"]
+
+
+class PeerDistributionSummaryResponse(BaseModel):
+    """Metric distribution summary for one peer group."""
+
+    count: int = Field(ge=0)
+    minimum: float
+    p50: float
+    p90: float
+    maximum: float
+
+
+class PeerCohortExclusionResponse(BaseModel):
+    """Configured cohort exclusion rule."""
+
+    field: str
+    operator: str
+    values: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    reason: str
+
+
+class PeerCohortContextResponse(BaseModel):
+    """Cohort definition and membership context for one comparison."""
+
+    id: str
+    label: str
+    version: str
+    entity_type: str
+    peer_metric: str
+    group_by: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    group_values: dict[str, str] = Field(default_factory=dict[str, str])
+    exclusions: list[PeerCohortExclusionResponse] = Field(
+        default_factory=lambda: cast(list[PeerCohortExclusionResponse], [])
+    )
+    member_entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    member_count: int = Field(ge=0)
+
+
+class PeerMetricComparisonResponse(BaseModel):
+    """One peer-metric comparison for an entity."""
+
+    metric_name: str
+    entity_type: str
+    interval_start: datetime
+    peer_group_key: str
+    entity_value: float
+    peer_mean: float
+    peer_std: float = Field(ge=0.0)
+    z_score: float
+    signal_value: float = Field(ge=0.0, le=1.0)
+    cohort_size: int = Field(ge=0)
+    percentile: float = Field(ge=0.0, le=100.0)
+    rationale: str
+    confidence: PeerAnalysisConfidenceValue = "normal"
+    confidence_reason: str | None = None
+    distribution: PeerDistributionSummaryResponse | None = None
+    cohort: PeerCohortContextResponse | None = None
+
+
+class PeerAnalysisResponse(BaseModel):
+    """Peer-analysis context for one entity."""
+
+    knowledge_base_id: str
+    entity_id: str
+    metrics: list[PeerMetricComparisonResponse] = Field(
+        default_factory=lambda: cast(list[PeerMetricComparisonResponse], [])
+    )
 
 
 class EntityTimeseriesPointResponse(BaseModel):
@@ -884,13 +1565,27 @@ class ChatMessageCreateRequest(BaseModel):
 
 
 __all__ = [
+    "AuditEventListResponse",
+    "AuditEventResponse",
+    "AuditStatusResponse",
+    "AuditWriteFailureResponse",
+    "AlertAssignmentRequest",
+    "AlertBulkRejection",
+    "AlertBulkStatusUpdateRequest",
+    "AlertBulkStatusUpdateResponse",
     "AlertDetailResponse",
     "AlertListItem",
     "AlertListResponse",
+    "AlertOperationResponse",
+    "AlertStatusUpdateRequest",
+    "AlertTriageEventResponse",
     "AnalystFeedbackResponse",
     "AnalyticsOverviewResponse",
-    "ApiEnvelope",
     "CaseCreateRequest",
+    "CaseDossierExportMetadataResponse",
+    "CaseDossierExportResponse",
+    "CaseDossierResponse",
+    "CaseExplanationReviewSummaryResponse",
     "CaseDetailResponse",
     "CaseFeedbackCreateRequest",
     "CaseListResponse",
@@ -906,8 +1601,23 @@ __all__ = [
     "DomainFeaturesResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
+    "EvidenceProvenanceListResponse",
+    "EvidenceProvenanceReferenceResponse",
+    "ExplanationReviewCreateRequest",
+    "ExplanationReviewListResponse",
+    "ExplanationReviewReason",
+    "ExplanationReviewResponse",
+    "ExplanationReviewState",
+    "ExplanationReviewTargetResponse",
+    "ExplanationReviewTargetType",
+    "EntityFeatureValueListResponse",
+    "EntityFeatureValueResponse",
     "EntityTimeseriesPointResponse",
     "EntityTimeseriesResponse",
+    "FeatureCatalogResponse",
+    "FeatureDefinitionResponse",
+    "FeatureSourceMappingResponse",
+    "FraudTypologyResponse",
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
@@ -921,13 +1631,27 @@ __all__ = [
     "PolicyCitation",
     "PolicyCitationResponse",
     "PolicyDispositionResponse",
+    "PeerAnalysisConfidenceValue",
+    "PeerAnalysisResponse",
+    "PeerCohortContextResponse",
+    "PeerCohortExclusionResponse",
+    "PeerDistributionSummaryResponse",
+    "PeerMetricComparisonResponse",
     "PolicyItemDetailResponse",
     "PolicyItemListResponse",
     "PolicyItemSummaryResponse",
     "PolicyTriageRequest",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
+    "RiskProjectionItemResponse",
+    "RiskProjectionLevelValue",
+    "RiskProjectionListResponse",
+    "RiskProjectionRebuildRequest",
+    "RiskProjectionRebuildResponse",
+    "RiskProjectionRebuildStatusValue",
+    "RiskProjectionStatusValue",
     "RiskScoreResponse",
+    "ScoreBatchResponse",
     "ScorecardCitationResponse",
     "ScorecardExportFormatValue",
     "ScorecardExportResponse",
@@ -938,6 +1662,11 @@ __all__ = [
     "ScorecardSectionResponse",
     "ScorecardTemplateListResponse",
     "ScorecardTemplateResponse",
+    "ScoreRunDetailResponse",
+    "ScoreRunListResponse",
+    "ScoreRunReplayRequest",
+    "ScoreRunResponse",
+    "ScoreRunStartRequest",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
 ]

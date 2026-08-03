@@ -15,6 +15,7 @@ from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
 from analytics.metrics.adapters.protocols import EntityMetricRepository
 from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from analytics.risk.adapters.protocols import RiskHistoryWriter
+from analytics.risk.projections import RiskProjectionRepositoryProtocol
 from api.dependencies import (
     get_alert_history_writer,
     get_case_repository,
@@ -29,6 +30,7 @@ from api.dependencies import (
     get_policy_repository,
     get_raw_record_store,
     get_risk_history_writer,
+    get_risk_projection_repository,
     get_scorecard_run_repository,
     get_timeseries_anomaly_store,
     get_vector_service,
@@ -58,6 +60,9 @@ def get_kb_deletion_stores(
         get_derived_signal_store
     ),
     risk_history_writer: RiskHistoryWriter = Depends(get_risk_history_writer),
+    risk_projection_repository: RiskProjectionRepositoryProtocol = Depends(
+        get_risk_projection_repository
+    ),
     observation_writer: ObservationWriter = Depends(get_observation_writer),
     alert_history_writer: AlertHistoryWriter = Depends(get_alert_history_writer),
     entity_metric_repository: EntityMetricRepository = Depends(
@@ -90,6 +95,7 @@ def get_kb_deletion_stores(
         raw_record_store=raw_record_store,
         derived_signal_store=derived_signal_store,
         risk_history_writer=risk_history_writer,
+        risk_projection_repository=risk_projection_repository,
         observation_writer=observation_writer,
         alert_history_writer=alert_history_writer,
         entity_metric_repository=entity_metric_repository,

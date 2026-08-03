@@ -28,6 +28,7 @@ from events.types import (
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EventBase,
+    IdentityLinkDecisionRecordedEvent,
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
@@ -36,6 +37,7 @@ from events.types import (
     RagCompletedEvent,
     RecordsIngestedEvent,
     RiskScoredEvent,
+    ScoreRunStatusChangedEvent,
     TimeseriesAnalyzedEvent,
     VectorsDeletedEvent,
     VectorsIndexedEvent,
@@ -70,6 +72,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "timeseries.analyzed": TimeseriesAnalyzedEvent,
     "gnn.analyzed": GnnAnalyzedEvent,
     "risk.scored": RiskScoredEvent,
+    "identity.link_decision.recorded": IdentityLinkDecisionRecordedEvent,
     "explainability.generated": ExplainabilityGeneratedEvent,
     "documents.failed": DocumentsFailedEvent,
     "documents.extraction_warning": DocumentsExtractionWarningEvent,
@@ -77,6 +80,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "claims.ingested": ClaimsIngestedEvent,
     "config.updated": ConfigUpdatedEvent,
     "records.ingested": RecordsIngestedEvent,
+    "score_run.status_changed": ScoreRunStatusChangedEvent,
 }
 
 

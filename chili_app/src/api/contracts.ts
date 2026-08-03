@@ -6,7 +6,6 @@ type RequireFields<T, K extends keyof T> = T & {
 }
 type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-export type ApiEnvelope = Schemas['ApiEnvelope']
 export type PageInfo = Schemas['PageInfo']
 
 export type AlertSeverity = Schemas['AlertListItem']['severity']
@@ -16,6 +15,11 @@ export type AlertListResponse = RequireFields<Schemas['AlertListResponse'], 'ite
 export type AlertDetailResponse = RequireFields<
   Schemas['AlertDetailResponse'],
   'policy_citations' | 'related_entity_ids'
+>
+export type AlertOperationResponse = Schemas['AlertOperationResponse']
+export type AlertBulkStatusUpdateResponse = RequireFields<
+  Schemas['AlertBulkStatusUpdateResponse'],
+  'rejected_alerts' | 'updated_alerts'
 >
 
 export type PolicyCitation = Schemas['PolicyCitation']
@@ -65,6 +69,17 @@ export type InvestigationNeighborhoodResponse = Omit<
 export type InvestigationEntitySearchResponse = Omit<Schemas['EntitySearchResponse'], 'items'> & {
   items: RuntimeEntity[]
 }
+export type IdentityLinkDecisionRecordResponse = Schemas['IdentityLinkDecisionRecordResponse']
+export type IdentityLinkResponse = RequireFields<
+  Schemas['IdentityLinkResponse'],
+  'decision_history' | 'match_reasons' | 'source_refs'
+>
+export type CanonicalIdentityDetailResponse = Omit<
+  Schemas['CanonicalIdentityDetailResponse'],
+  'links'
+> & {
+  links: IdentityLinkResponse[]
+}
 
 export type EvidenceItemResponse = Schemas['EvidenceItemResponse']
 export type FeatureAttributionResponse = Schemas['FeatureAttributionResponse']
@@ -80,6 +95,7 @@ export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adeq
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']
+export type AuditEventResponse = Schemas['AuditEventResponse']
 export type AnalystFeedbackResponse = RequireFields<
   Schemas['AnalystFeedbackResponse'],
   'missing_evidence'
@@ -88,6 +104,16 @@ export type CaseDetailResponse = RequireFields<
   Schemas['CaseDetailResponse'],
   'alerts' | 'entity_timeline' | 'feedback_history'
 >
+export type CaseDossierResponse = RequireFields<
+  Schemas['CaseDossierResponse'],
+  | 'alerts'
+  | 'audit_events'
+  | 'evidence_packs'
+  | 'entity_timeline'
+  | 'explanation_review_summaries'
+  | 'feedback_history'
+>
+export type CaseDossierExportResponse = Schemas['CaseDossierExportResponse']
 export type CaseCreateRequest = Schemas['CaseCreateRequest']
 export type CaseUpdateRequest = Schemas['CaseUpdateRequest']
 export type CaseFeedbackCreateRequest = Schemas['CaseFeedbackCreateRequest']
@@ -196,12 +222,31 @@ export type ConfigSwapResponse = Schemas['ConfigSwapResponse']
 export type CaseAttachAlertRequest = Schemas['CaseAttachAlertRequest']
 export type EvidenceExportFormat = Schemas['EvidencePackExportResponse']['format']
 export type EvidencePackExportResponse = Schemas['EvidencePackExportResponse']
+export type ExplanationReviewCreateRequest = Schemas['ExplanationReviewCreateRequest']
+export type ExplanationReviewResponse = Schemas['ExplanationReviewResponse']
+export type ExplanationReviewListResponse = RequireFields<
+  Schemas['ExplanationReviewListResponse'],
+  'items'
+>
 
 export type RecordPushRequest = Schemas['RecordPushRequest']
 export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 
 export type WorkflowRunResponse = Schemas['WorkflowRunResponse']
 export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResponse'], 'items'>
+
+export type ScoreBatchResponse = RequireFields<Schemas['ScoreBatchResponse'], 'entity_ids'>
+export type ScoreRunStatus = Schemas['ScoreRunResponse']['status']
+export type ScoreRunStartRequest = Schemas['ScoreRunStartRequest']
+export type ScoreRunReplayRequest = Schemas['ScoreRunReplayRequest']
+export type ScoreRunResponse = Schemas['ScoreRunResponse']
+export type ScoreRunListResponse = RequireFields<Schemas['ScoreRunListResponse'], 'items'>
+export type ScoreRunDetailResponse = Omit<
+  RequireFields<Schemas['ScoreRunDetailResponse'], 'batches'>,
+  'batches'
+> & {
+  batches: ScoreBatchResponse[]
+}
 
 export type ScorecardRunStatus = Schemas['ScorecardRunResponse']['status']
 export type ScorecardExportFormat = Schemas['ScorecardExportResponse']['format']
@@ -247,6 +292,11 @@ export type HousingInstallationsResponse = RequireFields<
 >
 
 export type RiskFactorResponse = Schemas['RiskFactorResponse']
+export type RiskProjectionItemResponse = Schemas['RiskProjectionItemResponse']
+export type RiskProjectionListResponse = RequireFields<
+  Schemas['RiskProjectionListResponse'],
+  'items'
+>
 export type RiskScoreResponse = RequireFields<Schemas['RiskScoreResponse'], 'factors'>
 export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
 export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']
@@ -255,3 +305,41 @@ export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
 export type ClusterResult = Schemas['ClusterResult']
 export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']
+export type PeerDistributionSummaryResponse = Schemas['PeerDistributionSummaryResponse']
+export type PeerCohortContextResponse = Schemas['PeerCohortContextResponse']
+export type PeerMetricComparisonResponse = Schemas['PeerMetricComparisonResponse']
+export type PeerAnalysisResponse = RequireFields<Schemas['PeerAnalysisResponse'], 'metrics'>
+export type FeatureSourceMappingResponse = RequireFields<
+  Schemas['FeatureSourceMappingResponse'],
+  'raw_fields'
+>
+export type FeatureDefinitionResponse = Omit<
+  RequireFields<
+    Schemas['FeatureDefinitionResponse'],
+    'entity_types' | 'peer_dimensions' | 'source_mappings' | 'typology_ids'
+  >,
+  'source_mappings'
+> & {
+  source_mappings: FeatureSourceMappingResponse[]
+}
+export type FraudTypologyResponse = RequireFields<
+  Schemas['FraudTypologyResponse'],
+  'entity_types' | 'feature_ids' | 'playbook_ids' | 'policy_rule_ids'
+>
+export type FeatureCatalogResponse = Omit<
+  RequireFields<Schemas['FeatureCatalogResponse'], 'features' | 'typologies'>,
+  'features' | 'typologies'
+> & {
+  features: FeatureDefinitionResponse[]
+  typologies: FraudTypologyResponse[]
+}
+export type EntityFeatureValueResponse = RequireFields<
+  Schemas['EntityFeatureValueResponse'],
+  'source_refs'
+>
+export type EntityFeatureValueListResponse = Omit<
+  RequireFields<Schemas['EntityFeatureValueListResponse'], 'items'>,
+  'items'
+> & {
+  items: EntityFeatureValueResponse[]
+}

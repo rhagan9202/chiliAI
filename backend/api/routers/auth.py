@@ -17,7 +17,12 @@ from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
 import api.middleware.auth as _auth_module
-from api.dependencies import get_domain_config, get_session_store
+from api.dependencies import (
+    get_audit_log_service,
+    get_domain_config,
+    get_session_store,
+    record_auth_audit_event,
+)
 from api.middleware.auth import SESSION_COOKIE_NAME, User, coerce_roles, get_current_user
 from api.middleware.session_store import SessionNotFoundError, SessionRecord, SessionStoreProtocol
 from api.routers._oidc_client import (
@@ -27,6 +32,7 @@ from api.routers._oidc_client import (
     build_end_session_url,
     generate_pkce_pair,
 )
+from auditlog.service import AuditLogService
 from config.schema import AuthConfig, DomainConfig
 from shared.utils import generate_id
 
@@ -37,6 +43,14 @@ PKCE_STATE_TTL_SECONDS = 300
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _request_client_ip(request: Request) -> str | None:
+    return request.client.host if request.client is not None else None
+
+
+def _request_user_agent(request: Request) -> str | None:
+    return request.headers.get("user-agent")
 
 
 def _client_secret(auth_config: AuthConfig) -> str:
@@ -58,13 +72,27 @@ def _client_secret(auth_config: AuthConfig) -> str:
 
 @router.get("/login")
 def login(
+    request: Request,
     domain_config: DomainConfig = Depends(get_domain_config),
     session_store: SessionStoreProtocol = Depends(get_session_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> RedirectResponse:
     """Begin the OIDC authorization-code flow."""
 
     auth_config = domain_config.auth
     if auth_config is None or not auth_config.enabled:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.login.failure",
+            resource_type="auth_flow",
+            resource_id="oidc",
+            before=None,
+            after={"pkce_state_created": False},
+            outcome="failure",
+            failure_reason="auth_disabled",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Auth is disabled.",
@@ -79,6 +107,18 @@ def login(
             auth_config, state=state, code_challenge=challenge, nonce=nonce
         )
     except OidcConfigurationError as exc:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.login.failure",
+            resource_type="auth_flow",
+            resource_id="oidc",
+            before=None,
+            after={"pkce_state_created": False},
+            outcome="failure",
+            failure_reason="oidc_config_invalid",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
@@ -89,20 +129,44 @@ def login(
     session_store.save_pkce_state(
         state=state, verifier=verifier, ttl_seconds=PKCE_STATE_TTL_SECONDS, nonce=nonce
     )
+    record_auth_audit_event(
+        audit_service,
+        action="auth.login.start",
+        resource_type="auth_flow",
+        resource_id="oidc",
+        before=None,
+        after={"pkce_state_created": True},
+        client_ip=_request_client_ip(request),
+        user_agent=_request_user_agent(request),
+    )
     return RedirectResponse(url=url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/callback")
 def callback(
+    request: Request,
     code: str,
     state: str,
     domain_config: DomainConfig = Depends(get_domain_config),
     session_store: SessionStoreProtocol = Depends(get_session_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> RedirectResponse:
     """Exchange the authorization code for tokens and mint a session."""
 
     auth_config = domain_config.auth
     if auth_config is None or not auth_config.enabled:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="auth_disabled",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Auth is disabled.",
@@ -110,17 +174,56 @@ def callback(
 
     pkce = session_store.pop_pkce_state(state)
     if pkce is None:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="unknown_state",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unknown or expired state.",
         )
     verifier = pkce.verifier
 
-    secret = _client_secret(auth_config)
+    try:
+        secret = _client_secret(auth_config)
+    except HTTPException:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="client_secret_missing",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
+        raise
     oidc = OidcClient(auth_config=auth_config, client_secret=secret)
     try:
         tokens = oidc.exchange_code(code=code, code_verifier=verifier)
     except httpx.HTTPStatusError as exc:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="idp_token_rejected",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"IdP token endpoint rejected the code: {exc.response.text}",
@@ -129,6 +232,18 @@ def callback(
         # The IdP responded 2xx but the body doesn't match OidcTokens (missing
         # access_token/expires_in, wrong types, etc.) — a client-observable
         # upstream fault, not a chiliAI bug, so 400 rather than 500.
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="invalid_idp_response",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="IdP token endpoint returned an invalid response.",
@@ -144,6 +259,18 @@ def callback(
             jwks_cache=_auth_module.get_jwks_cache(),
         )
     except HTTPException as exc:
+        record_auth_audit_event(
+            audit_service,
+            action="auth.callback.failure",
+            resource_type="auth_flow",
+            resource_id="callback",
+            before=None,
+            after={"session_created": False},
+            outcome="failure",
+            failure_reason="invalid_token",
+            client_ip=_request_client_ip(request),
+            user_agent=_request_user_agent(request),
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"IdP returned an invalid token: {exc.detail}",
@@ -154,6 +281,18 @@ def callback(
     # see docs/auth/idp-templates.md.
     if tokens.id_token:
         if claims.get("nonce") != pkce.nonce:
+            record_auth_audit_event(
+                audit_service,
+                action="auth.callback.failure",
+                resource_type="auth_flow",
+                resource_id="callback",
+                before=None,
+                after={"session_created": False},
+                outcome="failure",
+                failure_reason="nonce_mismatch",
+                client_ip=_request_client_ip(request),
+                user_agent=_request_user_agent(request),
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="id_token nonce mismatch.",
@@ -180,6 +319,20 @@ def callback(
         ttl_seconds=auth_config.session_ttl_seconds,
     )
     session_store.save(record)
+    record_auth_audit_event(
+        audit_service,
+        action="auth.callback.success",
+        actor_user_id=user_id,
+        actor_email=email,
+        actor_roles=roles,
+        resource_type="auth_session",
+        resource_id=user_id,
+        before=None,
+        after={"session_created": True, "role_count": len(roles)},
+        metadata={"id_token_present": bool(tokens.id_token)},
+        client_ip=_request_client_ip(request),
+        user_agent=_request_user_agent(request),
+    )
 
     response = RedirectResponse(url="/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     response.set_cookie(
@@ -200,6 +353,7 @@ def logout(
     request: Request,
     domain_config: DomainConfig = Depends(get_domain_config),
     session_store: SessionStoreProtocol = Depends(get_session_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
     post_logout_redirect_uri: str | None = None,
 ) -> Response:
     """Delete the server-side session, clear the cookie, and (optionally) bounce to IdP."""
@@ -207,10 +361,18 @@ def logout(
     auth_config = domain_config.auth
     sid = request.cookies.get(SESSION_COOKIE_NAME)
     id_token: str | None = None
+    actor_user_id = "anonymous"
+    actor_email: str | None = None
+    actor_roles: list[str] = []
+    session_found = False
     if sid is not None:
         try:
             record = session_store.get(sid)
             id_token = record.id_token
+            actor_user_id = record.user_id
+            actor_email = record.email
+            actor_roles = list(record.roles)
+            session_found = True
             session_store.delete(sid)
         except SessionNotFoundError:
             # Session already gone — proceed to clear the cookie regardless.
@@ -236,6 +398,23 @@ def logout(
         key=SESSION_COOKIE_NAME,
         path="/",
         domain=auth_config.cookie_domain if auth_config is not None else None,
+    )
+    record_auth_audit_event(
+        audit_service,
+        action="auth.logout",
+        actor_user_id=actor_user_id,
+        actor_email=actor_email,
+        actor_roles=actor_roles,
+        resource_type="auth_session",
+        resource_id=actor_user_id,
+        before={"session_present": session_found},
+        after={"session_present": False},
+        metadata={
+            "cookie_present": sid is not None,
+            "idp_redirect": rp_url is not None,
+        },
+        client_ip=_request_client_ip(request),
+        user_agent=_request_user_agent(request),
     )
     return response
 

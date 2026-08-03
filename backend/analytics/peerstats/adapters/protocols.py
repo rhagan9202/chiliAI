@@ -51,8 +51,31 @@ class DerivedRiskSignalWriterProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class PeerSignalReaderProtocol(Protocol):
+    """Read derived peer signals for analyst-facing peer comparison views."""
+
+    def latest_signals(
+        self,
+        *,
+        knowledge_base_id: str,
+        entity_id: str,
+        metric_name: str | None = None,
+    ) -> list[DerivedRiskSignal]: ...
+
+    def peer_group_signals(
+        self,
+        *,
+        knowledge_base_id: str,
+        metric_name: str,
+        interval_start: datetime,
+        peer_group_key: str,
+    ) -> list[DerivedRiskSignal]: ...
+
+
 __all__ = [
     "ColumnRow",
     "DerivedRiskSignalWriterProtocol",
+    "PeerSignalReaderProtocol",
     "RecordColumnSourceProtocol",
 ]

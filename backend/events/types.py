@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -349,6 +349,32 @@ class RiskScoredEvent(EventBase):
     assessments: list[RiskScoredReference]
 
 
+class IdentityLinkDecisionReference(BaseModel):
+    knowledge_base_id: str
+    link_id: str
+    canonical_entity_id: str
+    source_entity_id: str
+    decision: Literal["approve_merge", "reject_merge", "split_identity"]
+    review_state: Literal[
+        "auto_linkable",
+        "steward_review",
+        "needs_review",
+        "merged",
+        "rejected",
+        "split",
+    ]
+    actor_user_id: str
+    score: float = Field(ge=0.0, le=1.0)
+    confidence: Literal["high", "medium", "low"]
+
+
+class IdentityLinkDecisionRecordedEvent(EventBase):
+    event_type: Literal["identity.link_decision.recorded"] = (
+        "identity.link_decision.recorded"
+    )
+    decisions: list[IdentityLinkDecisionReference]
+
+
 class ExplainabilityGeneratedReference(BaseModel):
     knowledge_base_id: str
     request_id: str
@@ -391,6 +417,7 @@ class AlertCreatedReference(BaseModel):
     entity_label: str = ""
     confidence: float = 0.0
     tags: list[str] = Field(default_factory=list)
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertsCreatedEvent(EventBase):
@@ -463,6 +490,21 @@ class RecordsIngestedEvent(EventBase):
     record_count: int = Field(ge=0)
 
 
+class ScoreRunStatusChangedEvent(EventBase):
+    """Published when score-all run state changes for operators/workers."""
+
+    event_type: Literal["score_run.status_changed"] = "score_run.status_changed"
+    knowledge_base_id: str
+    run_id: str
+    status: Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+    total_entities: int = Field(ge=0)
+    scored_entities: int = Field(ge=0)
+    failed_entities: int = Field(ge=0)
+    model_version: str
+    catalog_version: str
+    replay_of_run_id: str | None = None
+
+
 AnyEvent = (
     KnowledgeBaseCreatedEvent
     | KnowledgeBaseDeletedEvent
@@ -482,6 +524,7 @@ AnyEvent = (
     | TimeseriesAnalyzedEvent
     | GnnAnalyzedEvent
     | RiskScoredEvent
+    | IdentityLinkDecisionRecordedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -494,6 +537,7 @@ AnyEvent = (
     | ClaimsIngestedEvent
     | ConfigUpdatedEvent
     | RecordsIngestedEvent
+    | ScoreRunStatusChangedEvent
 )
 
 
@@ -531,6 +575,8 @@ __all__ = [
     "GnnAnalyzedReference",
     "GraphUpdatedDocumentReference",
     "GraphUpdatedEvent",
+    "IdentityLinkDecisionRecordedEvent",
+    "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",
     "KnowledgeBaseDeletedEvent",
     "KnowledgeBaseReadyEvent",
@@ -542,6 +588,7 @@ __all__ = [
     "RagCompletedEvent",
     "RagCompletionReference",
     "RecordsIngestedEvent",
+    "ScoreRunStatusChangedEvent",
     "RiskFactorReference",
     "RiskScoredEvent",
     "RiskScoredReference",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 import pytest
 
@@ -558,6 +559,52 @@ def test_evaluate_publishes_enriched_alert_references() -> None:
     assert ref.entity_label == ""
 
 
+def test_evaluate_publishes_generation_decisions_for_queue_review() -> None:
+    rule = SuppressionRule(
+        entity_type="claim",
+        metric_name="error_rate",
+        start_time=utc_now() - timedelta(minutes=5),
+        end_time=utc_now() + timedelta(minutes=5),
+        reason="Known claim-system maintenance.",
+    )
+    service, event_bus = _build_service(
+        [
+            _observation(
+                score=0.92,
+                entity_id="provider-7",
+                entity_type="provider",
+                metric_name="claim_volume",
+            ),
+            _observation(
+                score=0.95,
+                entity_id="claim-9",
+                entity_type="claim",
+                metric_name="error_rate",
+            ),
+        ],
+        suppression_rules=[rule],
+        dedup_window_seconds=900,
+    )
+
+    response = service.evaluate(_request())
+
+    assert response.alert_count == 1
+    assert isinstance(event_bus.published_events[-1], AlertsCreatedEvent)
+    event = event_bus.published_events[-1]
+    assert isinstance(event, AlertsCreatedEvent)
+    assert event.alerts[0].generation_metadata == {
+        "deduplication": {
+            "decision": "retained",
+            "reason": "No existing alert for provider-7 and claim_volume inside the 900 second dedup window.",
+            "window_seconds": 900,
+        },
+        "suppression": {
+            "decision": "retained",
+            "reason": "No active suppression rule matched provider and claim_volume.",
+        },
+    }
+
+
 def test_create_monitoring_service_stores_default_thresholds() -> None:
     """Service factories must accept DomainConfig-derived thresholds so the
     router does not have to pass them on every request."""
@@ -645,9 +692,10 @@ def test_evaluate_evicts_dedup_entries_older_than_window() -> None:
     )
 
     stale_timestamp = utc_now() - timedelta(seconds=120)
+    dedup_index = cast(dict[tuple[str, str], datetime], getattr(service, "_dedup_index"))
     for index in range(500):
-        service._dedup_index[(f"entity-{index}", "claim_volume")] = stale_timestamp
-    assert len(service._dedup_index) == 500
+        dedup_index[(f"entity-{index}", "claim_volume")] = stale_timestamp
+    assert len(dedup_index) == 500
 
     service.evaluate(
         MonitoringEvaluationRequest(
@@ -656,7 +704,10 @@ def test_evaluate_evicts_dedup_entries_older_than_window() -> None:
         )
     )
 
-    assert len(service._dedup_index) == 0, (
+    current_dedup_index = cast(
+        dict[tuple[str, str], datetime], getattr(service, "_dedup_index")
+    )
+    assert len(current_dedup_index) == 0, (
         "stale entries older than dedup_window_seconds must be evicted "
-        f"at the start of evaluate(); found {len(service._dedup_index)} remaining"
+        f"at the start of evaluate(); found {len(current_dedup_index)} remaining"
     )

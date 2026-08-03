@@ -23,6 +23,7 @@ _EXPECTED_TABLES = {
     "entity_metric_history",
     "entity_metrics_current",
     "risk_score_history",
+    "risk_projections",
     "alert_history",
     "entity_derived_signals",
 }

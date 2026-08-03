@@ -55,6 +55,12 @@ class TimeseriesAnomalyPurger(Protocol):
     def delete_by_kb(self, knowledge_base_id: str) -> int: ...
 
 
+class RiskProjectionPurger(Protocol):
+    """The slice of the risk projection repository the cascade needs."""
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class KbDeletionStores:
     """Every durable store purged by the KB-delete cascade."""
@@ -64,6 +70,7 @@ class KbDeletionStores:
     raw_record_store: RawRecordStore
     derived_signal_store: DerivedRiskSignalWriterProtocol
     risk_history_writer: RiskHistoryWriter
+    risk_projection_repository: RiskProjectionPurger
     observation_writer: ObservationWriter
     alert_history_writer: AlertHistoryWriter
     entity_metric_repository: EntityMetricRepository
@@ -111,6 +118,7 @@ def kb_deletion_steps(
         ("derived_signals", lambda: stores.derived_signal_store.delete_by_kb(kb)),
         ("timeseries_anomalies", lambda: stores.timeseries_anomaly_store.delete_by_kb(kb)),
         ("risk_history", lambda: stores.risk_history_writer.delete_by_kb(kb)),
+        ("risk_projections", lambda: stores.risk_projection_repository.delete_by_kb(kb)),
         ("observations", lambda: stores.observation_writer.delete_by_kb(kb)),
         ("alert_history", lambda: stores.alert_history_writer.delete_by_kb(kb)),
         ("gnn_clusters", lambda: stores.gnn_cluster_store.delete_by_kb(kb)),
@@ -129,6 +137,7 @@ def kb_deletion_steps(
 __all__ = [
     "GnnClusterPurger",
     "KbDeletionStores",
+    "RiskProjectionPurger",
     "TimeseriesAnomalyPurger",
     "delete_object_store_prefix",
     "kb_deletion_steps",

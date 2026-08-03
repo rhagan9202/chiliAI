@@ -2,8 +2,21 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
-import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
-import type { CaseFeedbackCreateRequest } from '../api/contracts'
+import {
+  exportCaseDossier,
+  useAddCaseFeedback,
+  useCase,
+  useCaseDossier,
+  useCases,
+  usePromoteCase,
+  useUpdateCase,
+} from '../api/cases'
+import type {
+  CaseDetailResponse,
+  CaseDossierResponse,
+  CaseFeedbackCreateRequest,
+  EvidenceExportFormat,
+} from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -15,6 +28,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { downloadTextFile, EXPORT_MIME_TYPES } from '../utils/downloadFile'
 import {
   applyCaseFilters,
   EMPTY_CASE_FILTERS,
@@ -33,6 +47,150 @@ const STATUS_OPTIONS = [
   { id: 'in_review', label: 'In review' },
   { id: 'closed', label: 'Closed' },
 ]
+
+const DOSSIER_EXPORT_FORMATS: EvidenceExportFormat[] = ['markdown', 'json']
+
+const appendIfPresent = (params: URLSearchParams, key: string, value: string | null | undefined) => {
+  if (typeof value === 'string' && value.length > 0) {
+    params.set(key, value)
+  }
+}
+
+function buildCaseCockpitUrl(detail: CaseDetailResponse, knowledgeBaseId: string): string | null {
+  const alertsById = new Map(detail.alerts.map((alertItem) => [alertItem.id, alertItem]))
+  const expectedPrimaryAlertId = detail.case.originating_alert_id ?? detail.case.alert_ids[0] ?? null
+  const primaryAlert =
+    detail.case.alert_ids
+      .map((alertId) => alertsById.get(alertId))
+      .find((alertItem) => typeof alertItem?.entity_id === 'string' && alertItem.entity_id.length > 0) ??
+    detail.alerts.find((alertItem) => typeof alertItem.entity_id === 'string' && alertItem.entity_id.length > 0)
+  const entityId = primaryAlert?.entity_id
+
+  if (!entityId) {
+    return null
+  }
+
+  const caseLevelEvidencePackId =
+    primaryAlert.id === expectedPrimaryAlertId ? (detail.case.evidence_pack_id ?? detail.evidence_pack?.id) : null
+  const evidencePackId = caseLevelEvidencePackId ?? primaryAlert.evidence_pack_id
+
+  const params = new URLSearchParams()
+  appendIfPresent(params, 'kb', knowledgeBaseId)
+  appendIfPresent(params, 'alert', primaryAlert.id)
+  appendIfPresent(params, 'case', detail.case.id)
+  appendIfPresent(params, 'evidence', evidencePackId)
+
+  const query = params.toString()
+  return `/investigation/${encodeURIComponent(entityId)}${query ? `?${query}` : ''}`
+}
+
+function exportFormatLabel(format: EvidenceExportFormat): string {
+  return format === 'markdown' ? 'Markdown' : 'JSON'
+}
+
+function humanizeCaseLabel(label: string): string {
+  return label.replace(/[._]/g, ' ')
+}
+
+function reasonLabel(count: number): string {
+  return `${count} ${count === 1 ? 'reason' : 'reasons'}`
+}
+
+function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
+  return (
+    <>
+      <div className="metric-stack">
+        <strong>Evidence bundle</strong>
+        {dossier.evidence_packs.length > 0 ? (
+          dossier.evidence_packs.map((pack) => (
+            <div className="metric-row metric-row--stacked" key={pack.id}>
+              <strong>{pack.id}</strong>
+              <span className="metric-row__label">{pack.reasoning}</span>
+              {pack.provenance.length > 0 ? (
+                <ul className="metric-row__label">
+                  {pack.provenance.map((reference) => (
+                    <li key={`${reference.reference_type}-${reference.reference_id}`}>
+                      {reference.label}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No evidence packs are attached to this case." title="No evidence" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Explanation reviews</strong>
+        {dossier.explanation_review_summaries.length > 0 ? (
+          dossier.explanation_review_summaries.map((summary) => (
+            <div className="metric-row metric-row--stacked" key={summary.review_id}>
+              <strong>{summary.evidence_pack_id}</strong>
+              <span className="metric-row__label">
+                {summary.target.target_type}:{summary.target.target_id}
+              </span>
+              <span className="metric-row__label">{summary.state}</span>
+              <span className="metric-row__label">{reasonLabel(summary.reason_count)}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            description="No explanation review status has been attached to this dossier."
+            title="No explanation reviews"
+          />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Chronology</strong>
+        {dossier.entity_timeline.length > 0 ? (
+          dossier.entity_timeline.map((event) => (
+            <div className="metric-row metric-row--stacked" key={`${event.label}-${event.occurred_at}`}>
+              <strong>{humanizeCaseLabel(event.label)}</strong>
+              <span className="metric-row__label">{event.detail}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No chronology has been captured for this case." title="No chronology" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Decisions</strong>
+        {dossier.feedback_history.length > 0 ? (
+          dossier.feedback_history.map((feedback) => (
+            <div className="metric-row metric-row--stacked" key={feedback.submitted_at}>
+              <strong>{humanizeCaseLabel(feedback.label)}</strong>
+              <span className="metric-row__label">Evidence adequacy: {feedback.evidence_adequacy}</span>
+              <span className="metric-row__label">{feedback.notes}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No analyst decisions are attached to this dossier." title="No decisions" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Audit trail</strong>
+        {dossier.audit_events.length > 0 ? (
+          dossier.audit_events.map((event) => (
+            <div className="metric-row metric-row--stacked" key={event.event_id}>
+              <strong>{humanizeCaseLabel(event.action)}</strong>
+              <span className="metric-row__label">{event.actor_email ?? event.actor_user_id}</span>
+              <span className="metric-row__label">
+                {new Date(event.occurred_at).toLocaleString()} · {event.outcome}
+              </span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No audit events are attached to this dossier." title="No audit events" />
+        )}
+      </div>
+    </>
+  )
+}
 
 export function CaseManagementPage() {
   const navigate = useNavigate()
@@ -74,8 +232,10 @@ export function CaseManagementPage() {
     ? requestedCaseId
     : selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
   const caseQuery = useCase(knowledgeBaseId, activeCaseId)
+  const dossierQuery = useCaseDossier(knowledgeBaseId, activeCaseId)
   const updateCaseMutation = useUpdateCase(knowledgeBaseId, activeCaseId)
   const feedbackMutation = useAddCaseFeedback(knowledgeBaseId, activeCaseId)
+  const [dossierExporting, setDossierExporting] = useState<EvidenceExportFormat | null>(null)
   const [feedbackLabel, setFeedbackLabel] = useState<CaseFeedbackCreateRequest['label']>('suspicious')
   const [evidenceAdequacy, setEvidenceAdequacy] =
     useState<CaseFeedbackCreateRequest['evidence_adequacy']>('high')
@@ -127,6 +287,7 @@ export function CaseManagementPage() {
   const unpromotedAlerts = alertsQuery.data.items.filter(
     (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
   )
+  const caseCockpitUrl = caseQuery.data ? buildCaseCockpitUrl(caseQuery.data, knowledgeBaseId) : null
 
   const handleUpdate = (status: 'in_review' | 'closed') => {
     updateCaseMutation.mutate(
@@ -136,6 +297,21 @@ export function CaseManagementPage() {
         onError: () => showToast('error', 'Could not update the case.'),
       },
     )
+  }
+
+  const handleDossierExport = async (format: EvidenceExportFormat) => {
+    if (!knowledgeBaseId || !activeCaseId) {
+      return
+    }
+    setDossierExporting(format)
+    try {
+      const payload = await exportCaseDossier(knowledgeBaseId, activeCaseId, format)
+      downloadTextFile(payload.filename, payload.content, EXPORT_MIME_TYPES[payload.format])
+    } catch {
+      showToast('error', 'Could not export the case dossier.')
+    } finally {
+      setDossierExporting(null)
+    }
   }
 
   return (
@@ -282,6 +458,11 @@ export function CaseManagementPage() {
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
               <div className="page-actions-inline">
+                {caseCockpitUrl ? (
+                  <Link className="page-button page-button--secondary" to={caseCockpitUrl}>
+                    Open cockpit
+                  </Link>
+                ) : null}
                 <button
                   aria-label={`Ask AI for ${caseQuery.data.case.title}`}
                   title={`Opens RAG Chat with this case and its evidence attached.`}
@@ -313,6 +494,33 @@ export function CaseManagementPage() {
                   <span className="metric-row__label">{caseQuery.data.evidence_pack.reasoning}</span>
                 </div>
               ) : null}
+              <section aria-label="Case dossier" className="metric-stack">
+                <div className="page-actions-inline">
+                  <strong>Case dossier</strong>
+                  {(dossierQuery.data?.export.formats ?? DOSSIER_EXPORT_FORMATS).map((format) => (
+                    <button
+                      className={format === 'markdown' ? 'page-button' : 'page-button page-button--secondary'}
+                      disabled={dossierExporting !== null}
+                      key={format}
+                      onClick={() => void handleDossierExport(format)}
+                      type="button"
+                    >
+                      {dossierExporting === format
+                        ? 'Exporting...'
+                        : `Export dossier ${exportFormatLabel(format)}`}
+                    </button>
+                  ))}
+                </div>
+                {dossierQuery.isLoading ? (
+                  <span className="metric-row__label">Loading case dossier</span>
+                ) : dossierQuery.isError ? (
+                  <span className="metric-row__label">Case dossier could not be loaded.</span>
+                ) : dossierQuery.data ? (
+                  <CaseDossierSummary dossier={dossierQuery.data} />
+                ) : (
+                  <span className="metric-row__label">Case dossier is not available.</span>
+                )}
+              </section>
               <div className="metric-stack">
                 <strong>Timeline</strong>
                 {caseQuery.data.entity_timeline.length > 0 ? (

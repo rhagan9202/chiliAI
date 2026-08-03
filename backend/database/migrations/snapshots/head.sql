@@ -15,7 +15,31 @@ CREATE TABLE public.alert_history (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_label text DEFAULT ''::text NOT NULL,
     confidence double precision DEFAULT 0 NOT NULL,
-    tags jsonb DEFAULT '[]'::jsonb NOT NULL
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    assignee text,
+    triage_history jsonb DEFAULT '[]'::jsonb NOT NULL,
+    generation_metadata jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+CREATE TABLE public.audit_log (
+    event_id text NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    tenant_id text NOT NULL,
+    knowledge_base_id text,
+    actor_user_id text NOT NULL,
+    actor_email text,
+    actor_roles jsonb DEFAULT '[]'::jsonb NOT NULL,
+    action text NOT NULL,
+    resource_type text NOT NULL,
+    resource_id text NOT NULL,
+    before jsonb,
+    after jsonb,
+    correlation_id text NOT NULL,
+    client_ip text,
+    user_agent text,
+    outcome text NOT NULL,
+    failure_reason text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT ck_audit_log_outcome CHECK ((outcome = ANY (ARRAY['success'::text, 'failure'::text])))
 );
 CREATE TABLE public.cases (
     knowledge_base_id text NOT NULL,
@@ -85,6 +109,45 @@ CREATE TABLE public.event_dlq (
     replayed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.explanation_reviews (
+    id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    evidence_pack_id text NOT NULL,
+    target_type text NOT NULL,
+    target_id text NOT NULL,
+    state text NOT NULL,
+    reasons jsonb DEFAULT '[]'::jsonb NOT NULL,
+    comment text,
+    actor_user_id text NOT NULL,
+    actor_email text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    update_count integer DEFAULT 0 NOT NULL,
+    CONSTRAINT ck_explanation_reviews_state CHECK ((state = ANY (ARRAY['useful'::text, 'incomplete'::text, 'misleading'::text, 'unsupported'::text, 'approved'::text, 'rejected'::text, 'regeneration_requested'::text]))),
+    CONSTRAINT ck_explanation_reviews_target_type CHECK ((target_type = ANY (ARRAY['narrative'::text, 'narrative_section'::text, 'feature_attribution'::text, 'evidence_item'::text, 'provenance_reference'::text]))),
+    CONSTRAINT ck_explanation_reviews_update_count CHECK ((update_count >= 0))
+);
+CREATE TABLE public.identity_links (
+    id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    canonical_entity_id text NOT NULL,
+    source_entity_id text NOT NULL,
+    relationship_type text NOT NULL,
+    confidence text NOT NULL,
+    score double precision NOT NULL,
+    review_state text NOT NULL,
+    decision_source text NOT NULL,
+    source_refs jsonb DEFAULT '[]'::jsonb NOT NULL,
+    match_reasons jsonb DEFAULT '[]'::jsonb NOT NULL,
+    decision_history jsonb DEFAULT '[]'::jsonb NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT ck_identity_links_confidence CHECK ((confidence = ANY (ARRAY['high'::text, 'medium'::text, 'low'::text]))),
+    CONSTRAINT ck_identity_links_decision_history_type CHECK ((jsonb_typeof(decision_history) = 'array'::text)),
+    CONSTRAINT ck_identity_links_decision_history_values CHECK (((decision_history = '[]'::jsonb) OR ((jsonb_array_length(jsonb_path_query_array(decision_history, '$[*]."decision"'::jsonpath)) = jsonb_array_length(decision_history)) AND (jsonb_path_query_array(decision_history, '$[*]."decision"'::jsonpath) <@ '["approve_merge", "reject_merge", "split_identity"]'::jsonb)))),
+    CONSTRAINT ck_identity_links_review_state CHECK ((review_state = ANY (ARRAY['auto_linkable'::text, 'steward_review'::text, 'needs_review'::text, 'merged'::text, 'rejected'::text, 'split'::text]))),
+    CONSTRAINT ck_identity_links_score CHECK (((score >= (0)::double precision) AND (score <= (1)::double precision)))
+);
 CREATE TABLE public.observations (
     knowledge_base_id text NOT NULL,
     entity_id text NOT NULL,
@@ -129,6 +192,23 @@ CREATE TABLE public.record_submissions (
     submission_hash text NOT NULL,
     correlation_id text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+CREATE TABLE public.risk_projections (
+    knowledge_base_id text NOT NULL,
+    entity_id text NOT NULL,
+    entity_type text NOT NULL,
+    overall_score double precision NOT NULL,
+    risk_level text NOT NULL,
+    top_typology_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    alert_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    case_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence_pack_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    score_run_id text,
+    model_version text NOT NULL,
+    catalog_version text NOT NULL,
+    scored_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    status text NOT NULL
 );
 CREATE TABLE public.risk_score_history (
     knowledge_base_id text NOT NULL,
@@ -183,6 +263,8 @@ CREATE TABLE public.timeseries_anomalies (
 );
 ALTER TABLE ONLY public.alert_history
     ADD CONSTRAINT alert_history_pkey PRIMARY KEY (knowledge_base_id, alert_id);
+ALTER TABLE ONLY public.audit_log
+    ADD CONSTRAINT audit_log_pkey PRIMARY KEY (event_id);
 ALTER TABLE ONLY public.cases
     ADD CONSTRAINT cases_pkey PRIMARY KEY (knowledge_base_id, case_id);
 ALTER TABLE ONLY public.conversations
@@ -195,14 +277,20 @@ ALTER TABLE ONLY public.entity_metrics_current
     ADD CONSTRAINT entity_metrics_current_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name);
 ALTER TABLE ONLY public.event_dlq
     ADD CONSTRAINT event_dlq_pkey PRIMARY KEY (dlq_id);
+ALTER TABLE ONLY public.explanation_reviews
+    ADD CONSTRAINT explanation_reviews_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.identity_links
+    ADD CONSTRAINT pk_identity_links PRIMARY KEY (knowledge_base_id, id);
 ALTER TABLE ONLY public.policy_items
     ADD CONSTRAINT policy_items_pkey PRIMARY KEY (knowledge_base_id, rule_id, target_ref);
 ALTER TABLE ONLY public.raw_records
     ADD CONSTRAINT raw_records_pkey PRIMARY KEY (knowledge_base_id, record_type, record_id);
 ALTER TABLE ONLY public.record_submissions
     ADD CONSTRAINT record_submissions_pkey PRIMARY KEY (knowledge_base_id, submission_hash);
+ALTER TABLE ONLY public.risk_projections
+    ADD CONSTRAINT risk_projections_pkey PRIMARY KEY (knowledge_base_id, entity_id);
 ALTER TABLE ONLY public.risk_score_history
     ADD CONSTRAINT risk_score_history_pkey PRIMARY KEY (request_id);
 ALTER TABLE ONLY public.scorecard_runs
@@ -213,17 +301,30 @@ ALTER TABLE ONLY public.source_document_status
     ADD CONSTRAINT source_document_status_pkey PRIMARY KEY (knowledge_base_id, source_document_id);
 ALTER TABLE ONLY public.timeseries_anomalies
     ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.explanation_reviews
+    ADD CONSTRAINT uq_explanation_reviews_target UNIQUE (knowledge_base_id, evidence_pack_id, target_type, target_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
+CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
+CREATE INDEX ix_audit_log_actor_occurred_at ON public.audit_log USING btree (actor_user_id, occurred_at DESC);
+CREATE INDEX ix_audit_log_kb_occurred_at ON public.audit_log USING btree (knowledge_base_id, occurred_at DESC);
+CREATE INDEX ix_audit_log_tenant_occurred_at ON public.audit_log USING btree (tenant_id, occurred_at DESC);
 CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);
 CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_history USING btree (knowledge_base_id, metric_name, observed_at);
 CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
+CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);
+CREATE INDEX ix_explanation_reviews_kb_state_updated ON public.explanation_reviews USING btree (knowledge_base_id, state, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_canonical_updated ON public.identity_links USING btree (knowledge_base_id, canonical_entity_id, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_review_state_updated ON public.identity_links USING btree (knowledge_base_id, review_state, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_source_updated ON public.identity_links USING btree (knowledge_base_id, source_entity_id, updated_at DESC);
 CREATE INDEX ix_observations_batch ON public.observations USING btree (knowledge_base_id, batch_id);
 CREATE INDEX ix_policy_items_status ON public.policy_items USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_raw_records_correlation ON public.raw_records USING btree (knowledge_base_id, correlation_id);
 CREATE INDEX ix_raw_records_payload ON public.raw_records USING gin (payload);
+CREATE INDEX ix_risk_projections_kb_score ON public.risk_projections USING btree (knowledge_base_id, overall_score DESC, scored_at DESC);
+CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btree (knowledge_base_id, status, risk_level);
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);

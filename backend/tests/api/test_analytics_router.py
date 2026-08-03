@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.testclient import TestClient
 
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
@@ -15,10 +15,14 @@ from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
 from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
 from analytics.metrics.models import EntityMetricSample
+from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
 from analytics.peerstats.exceptions import PeerStatsSourceError
-from analytics.peerstats.models import PeerAggregate
+from analytics.peerstats.models import DerivedRiskSignal, PeerAggregate
+from analytics.peerstats.peer_analysis import PeerAnalysisService
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RankedRiskEntry, RiskProfile, RiskSignal
+from analytics.risk.projection_service import RiskProjectionService
+from analytics.risk.projections import InMemoryRiskProjectionRepository, RiskProjectionRow
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.timeseries.adapters.in_memory import (
@@ -30,19 +34,29 @@ from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeS
 from analytics.timeseries.models import TimeSeriesObservation, TimeseriesAnomalyRecord
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
-from api.contracts import AnalyticsOverviewResponse, EntityTimeseriesResponse, RiskScoreResponse
+from api.contracts import (
+    AnalyticsOverviewResponse,
+    EntityTimeseriesResponse,
+    RiskProjectionRebuildRequest,
+    RiskScoreResponse,
+)
 from api.dependencies import (
     get_analytics_overview_payload,
     get_entity_series_source,
     get_gnn_service,
+    get_peer_analysis_service,
+    get_risk_projection_repository,
+    get_risk_projection_service,
     get_risk_score_payload,
     get_risk_service,
     get_timeseries_anomaly_store,
     get_timeseries_payload,
     get_timeseries_service,
 )
+from api.routers import analytics as analytics_router
 from api.routers.analytics import router
 from config.schema import DatabaseConfig, TimeseriesMetricSpec
+from config.schema import PeerCohortDefinitionConfig
 from database.runtime import create_connection_provider
 from events.adapters.in_memory import InMemoryEventBus
 
@@ -128,13 +142,126 @@ def _build_gnn_service(*, enabled: bool, with_clusters: bool = True) -> GnnServi
     )
 
 
+def _build_projection_repository() -> InMemoryRiskProjectionRepository:
+    return InMemoryRiskProjectionRepository(
+        [
+            RiskProjectionRow(
+                knowledge_base_id="kb-1",
+                entity_id="provider-1",
+                entity_type="provider",
+                overall_score=0.91,
+                risk_level="high",
+                top_typology_ids=["upcoding"],
+                alert_ids=["alert-1"],
+                case_ids=["case-1"],
+                evidence_pack_ids=["evidence-1"],
+                score_run_id="score-run-1",
+                model_version="risk-linear-v1",
+                catalog_version="cms-fraud-features-v1",
+                scored_at=datetime(2026, 8, 3, 10, 0, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 8, 3, 10, 1, tzinfo=timezone.utc),
+                status="case_open",
+            ),
+            RiskProjectionRow(
+                knowledge_base_id="kb-1",
+                entity_id="provider-2",
+                entity_type="provider",
+                overall_score=0.67,
+                risk_level="medium",
+                top_typology_ids=["billing-volume"],
+                model_version="risk-linear-v1",
+                catalog_version="cms-fraud-features-v1",
+                scored_at=datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 8, 1, 10, 1, tzinfo=timezone.utc),
+                status="active",
+            ),
+            RiskProjectionRow(
+                knowledge_base_id="kb-1",
+                entity_id="claim-1",
+                entity_type="claim",
+                overall_score=0.41,
+                risk_level="low",
+                top_typology_ids=["duplicate-claim"],
+                model_version="risk-linear-v1",
+                catalog_version="cms-fraud-features-v1",
+                scored_at=datetime(2026, 8, 3, 8, 0, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 8, 3, 8, 1, tzinfo=timezone.utc),
+                status="active",
+            ),
+        ]
+    )
+
+
+def _build_peer_analysis_service() -> PeerAnalysisService:
+    writer = InMemoryDerivedRiskSignalWriter()
+    interval = datetime(2026, 1, 12, tzinfo=timezone.utc)
+    for entity_id, value in (
+        ("provider:target", 100.0),
+        ("provider:a", 10.0),
+        ("provider:b", 50.0),
+        ("provider:c", 75.0),
+    ):
+        writer.write_signals(
+            [
+                DerivedRiskSignal(
+                    knowledge_base_id="kb-1",
+                    entity_id=entity_id,
+                    entity_type="provider",
+                    metric_name="weekly_billing",
+                    interval_start=interval,
+                    peer_group_key="provider|cardiology",
+                    aggregate_value=value,
+                    peer_mean=50.0,
+                    peer_std=20.0,
+                    z_score=(value - 50.0) / 20.0,
+                    signal_value=min(max(value / 100.0, 0.0), 1.0),
+                    weight=1.0,
+                    rationale="weekly billing compared to specialty peers",
+                    correlation_id="corr-1",
+                )
+            ]
+        )
+    return PeerAnalysisService(
+        writer,
+        min_cohort_size=4,
+        cohort_definitions=[
+            PeerCohortDefinitionConfig(
+                id="provider_specialty_billing",
+                label="Provider specialty billing",
+                entity_type="provider",
+                peer_metric="weekly_billing",
+                group_by=["specialty"],
+                version="v1",
+            )
+        ],
+    )
+
+
+class _StaticRiskProjectionRebuildSource:
+    def __init__(self, rows: list[RiskProjectionRow]) -> None:
+        self._rows = rows
+
+    def load_projection_rows(self, knowledge_base_id: str) -> list[RiskProjectionRow]:
+        return [
+            row.model_copy(deep=True)
+            for row in self._rows
+            if row.knowledge_base_id == knowledge_base_id
+        ]
+
+
 @pytest.fixture()
 def client() -> TestClient:
     app = FastAPI()
     app.include_router(router)
+    projection_repository = _build_projection_repository()
     app.dependency_overrides[get_risk_service] = _build_risk_service
+    app.dependency_overrides[get_risk_projection_repository] = lambda: projection_repository
+    app.dependency_overrides[get_risk_projection_service] = lambda: RiskProjectionService(
+        projection_repository
+    )
     app.dependency_overrides[get_timeseries_service] = _build_timeseries_service
     app.dependency_overrides[get_gnn_service] = lambda: _build_gnn_service(enabled=True)
+    app.dependency_overrides[get_peer_analysis_service] = _build_peer_analysis_service
     return TestClient(app)
 
 
@@ -165,6 +292,279 @@ def test_list_risk_scores_requires_kb_id(client: TestClient) -> None:
     response = client.get("/analytics/risk-scores")
 
     assert response.status_code == 422
+
+
+def test_list_risk_projections_returns_projection_metadata() -> None:
+    payload = analytics_router.list_risk_projections(
+        kb_id="kb-1",
+        entity_type=None,
+        risk_level=None,
+        typology_id=None,
+        status=None,
+        max_score_age_hours=None,
+        as_of=None,
+        limit=2,
+        offset=0,
+        repository=_build_projection_repository(),
+    )
+
+    assert payload.knowledge_base_id == "kb-1"
+    assert payload.total == 3
+    assert payload.limit == 2
+    assert payload.offset == 0
+    first = payload.items[0]
+    assert first.entity_id == "provider-1"
+    assert first.top_typology_ids == ["upcoding"]
+    assert first.alert_ids == ["alert-1"]
+    assert first.case_ids == ["case-1"]
+    assert first.evidence_pack_ids == ["evidence-1"]
+    assert first.score_run_id == "score-run-1"
+    assert first.model_version == "risk-linear-v1"
+    assert first.catalog_version == "cms-fraud-features-v1"
+    assert first.status == "case_open"
+
+
+def test_list_risk_projections_filters_score_age_independently() -> None:
+    payload = analytics_router.list_risk_projections(
+        kb_id="kb-1",
+        entity_type=None,
+        risk_level=None,
+        typology_id=None,
+        status=None,
+        max_score_age_hours=24,
+        as_of=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+        limit=20,
+        offset=0,
+        repository=_build_projection_repository(),
+    )
+
+    assert payload.total == 2
+    assert [item.entity_id for item in payload.items] == ["provider-1", "claim-1"]
+
+
+def test_list_risk_projections_filters_operator_facets() -> None:
+    payload = analytics_router.list_risk_projections(
+        kb_id="kb-1",
+        entity_type="provider",
+        risk_level="high",
+        typology_id="upcoding",
+        status="case_open",
+        max_score_age_hours=24,
+        as_of=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+        limit=20,
+        offset=0,
+        repository=_build_projection_repository(),
+    )
+
+    assert payload.total == 1
+    assert payload.items[0].entity_id == "provider-1"
+
+
+def test_list_risk_projections_supports_offset_pagination() -> None:
+    payload = analytics_router.list_risk_projections(
+        kb_id="kb-1",
+        entity_type=None,
+        risk_level=None,
+        typology_id=None,
+        status=None,
+        max_score_age_hours=None,
+        as_of=None,
+        limit=1,
+        offset=1,
+        repository=_build_projection_repository(),
+    )
+
+    assert payload.total == 3
+    assert payload.items[0].entity_id == "provider-2"
+
+
+def test_list_risk_projections_openapi_declares_query_contract() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    operation = app.openapi()["paths"]["/analytics/risk-projections"]["get"]
+    parameters = {param["name"]: param for param in operation["parameters"]}
+    assert parameters["knowledge_base_id"]["required"] is True
+    assert parameters["knowledge_base_id"]["in"] == "query"
+    assert parameters["risk_level"]["schema"]["anyOf"][0]["enum"] == [
+        "low",
+        "medium",
+        "high",
+        "critical",
+    ]
+    assert parameters["status"]["schema"]["anyOf"][0]["enum"] == [
+        "active",
+        "case_open",
+        "resolved",
+        "suppressed",
+        "stale",
+    ]
+    assert parameters["limit"]["schema"]["exclusiveMinimum"] == 0
+    assert parameters["limit"]["schema"]["maximum"] == 500
+    assert parameters["offset"]["schema"]["minimum"] == 0
+    assert (
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/RiskProjectionListResponse"
+    )
+
+
+def test_get_peer_analysis_returns_cohort_context(client: TestClient) -> None:
+    response = client.get(
+        "/analytics/peer-analysis/provider:target",
+        params={"knowledge_base_id": "kb-1"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["knowledge_base_id"] == "kb-1"
+    assert payload["entity_id"] == "provider:target"
+    assert payload["metrics"][0]["metric_name"] == "weekly_billing"
+    assert payload["metrics"][0]["entity_value"] == 100.0
+    assert payload["metrics"][0]["peer_mean"] == 50.0
+    assert payload["metrics"][0]["peer_std"] == 20.0
+    assert payload["metrics"][0]["z_score"] == 2.5
+    assert payload["metrics"][0]["cohort_size"] == 4
+    assert payload["metrics"][0]["percentile"] == 100.0
+    assert payload["metrics"][0]["confidence"] == "normal"
+    assert payload["metrics"][0]["distribution"] == {
+        "count": 4,
+        "minimum": 10.0,
+        "p50": 62.5,
+        "p90": 92.5,
+        "maximum": 100.0,
+    }
+    assert payload["metrics"][0]["cohort"]["id"] == "provider_specialty_billing"
+    assert payload["metrics"][0]["cohort"]["group_values"] == {
+        "specialty": "cardiology"
+    }
+    assert payload["metrics"][0]["cohort"]["member_entity_ids"] == [
+        "provider:a",
+        "provider:b",
+        "provider:c",
+        "provider:target",
+    ]
+
+
+def test_get_peer_analysis_filters_metric(client: TestClient) -> None:
+    response = client.get(
+        "/analytics/peer-analysis/provider:target",
+        params={"knowledge_base_id": "kb-1", "metric": "missing_metric"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"] == []
+
+
+def test_peer_analysis_openapi_declares_query_contract_and_role_guard() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    operation = app.openapi()["paths"]["/analytics/peer-analysis/{entity_id}"]["get"]
+    parameters = {param["name"]: param for param in operation["parameters"]}
+    assert parameters["knowledge_base_id"]["required"] is True
+    assert parameters["metric"]["required"] is False
+    assert (
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/PeerAnalysisResponse"
+    )
+
+    roles_by_path: dict[str, set[str]] = {}
+    for route_obj in router.routes:
+        path = getattr(route_obj, "path", "")
+        roles: set[str] = set()
+        for dependency in getattr(route_obj, "dependencies", []):
+            required = getattr(dependency.dependency, "_chiliai_required_role", None)
+            if isinstance(required, str):
+                roles.add(required)
+        roles_by_path[path] = roles
+
+    assert roles_by_path["/analytics/peer-analysis/{entity_id}"] == {"viewer"}
+
+
+def test_list_risk_projections_rejects_naive_as_of() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        analytics_router._projection_as_of(datetime(2026, 8, 3, 12, 0))
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "as_of must include timezone information."
+
+
+def test_rebuild_risk_projections_exposes_operator_seam() -> None:
+    repository = _build_projection_repository()
+    source = _StaticRiskProjectionRebuildSource(repository.list_all("kb-1"))
+    payload = analytics_router.rebuild_risk_projections(
+        RiskProjectionRebuildRequest(knowledge_base_id="kb-1"),
+        source,
+        RiskProjectionService(repository),
+    )
+
+    assert payload.knowledge_base_id == "kb-1"
+    assert payload.changed is False
+    assert payload.deleted == 0
+    assert payload.upserted == 0
+    assert payload.status == "completed"
+
+
+def test_rebuild_risk_projections_fails_when_source_unconfigured() -> None:
+    repository = _build_projection_repository()
+    with pytest.raises(HTTPException) as exc_info:
+        analytics_router.rebuild_risk_projections(
+            RiskProjectionRebuildRequest(knowledge_base_id="kb-1"),
+            None,
+            RiskProjectionService(repository),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Risk projection rebuild source is not configured."
+
+
+def test_rebuild_risk_projections_uses_configured_source() -> None:
+    repository = _build_projection_repository()
+    source = _StaticRiskProjectionRebuildSource(repository.list_all("kb-1")[:1])
+
+    payload = analytics_router.rebuild_risk_projections(
+        RiskProjectionRebuildRequest(knowledge_base_id="kb-1"),
+        source,
+        RiskProjectionService(repository),
+    )
+
+    assert payload.knowledge_base_id == "kb-1"
+    assert payload.changed is True
+    assert payload.deleted == 3
+    assert payload.upserted == 1
+    assert payload.status == "completed"
+    assert [row.entity_id for row in repository.list_all("kb-1")] == ["provider-1"]
+
+
+def test_rebuild_risk_projections_openapi_declares_body_and_response_contract() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    operation = app.openapi()["paths"]["/analytics/risk-projections/rebuild"]["post"]
+    assert (
+        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/RiskProjectionRebuildRequest"
+    )
+    assert (
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/RiskProjectionRebuildResponse"
+    )
+
+
+def test_risk_projection_routes_declare_role_guards() -> None:
+    roles_by_path: dict[str, set[str]] = {}
+    for route_obj in router.routes:
+        path = getattr(route_obj, "path", "")
+        roles: set[str] = set()
+        for dependency in getattr(route_obj, "dependencies", []):
+            required = getattr(dependency.dependency, "_chiliai_required_role", None)
+            if isinstance(required, str):
+                roles.add(required)
+        roles_by_path[path] = roles
+
+    assert roles_by_path["/analytics/risk-projections"] == {"viewer"}
+    assert roles_by_path["/analytics/risk-projections/rebuild"] == {"analyst"}
 
 
 def test_detail_risk_score_requires_kb_id(client: TestClient) -> None:

@@ -47,6 +47,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts/bulk/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Alert Status Bulk
+         * @description Transition selected KB-scoped alerts and report skipped rows.
+         */
+        post: operations["update_alert_status_bulk_alerts_bulk_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts/{alert_id}": {
         parameters: {
             query?: never;
@@ -78,13 +98,53 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Alert
-         * @description Acknowledge an alert; returns an ApiEnvelope status receipt.
+         * @description Acknowledge an alert; returns the updated row and audit receipt.
          */
         post: operations["acknowledge_alert_alerts__alert_id__acknowledge_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/alerts/{alert_id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Assign Alert
+         * @description Assign or clear one KB-scoped alert and return an audit receipt.
+         */
+        patch: operations["assign_alert_alerts__alert_id__assignment_patch"];
+        trace?: never;
+    };
+    "/alerts/{alert_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Alert Status
+         * @description Transition one KB-scoped alert and return an audit receipt.
+         */
+        patch: operations["update_alert_status_alerts__alert_id__status_patch"];
         trace?: never;
     };
     "/analytics/gnn/clusters": {
@@ -123,6 +183,66 @@ export interface paths {
         get: operations["get_analytics_overview_analytics_overview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/analytics/peer-analysis/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Peer Analysis
+         * @description Return latest peer-comparison context for one entity.
+         */
+        get: operations["get_peer_analysis_analytics_peer_analysis__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/analytics/risk-projections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Risk Projections
+         * @description Return projection-backed risk rows for queue/dashboard consumers.
+         */
+        get: operations["list_risk_projections_analytics_risk_projections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/analytics/risk-projections/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Risk Projections
+         * @description Run the configured in-process risk projection rebuild seam for one KB.
+         */
+        post: operations["rebuild_risk_projections_analytics_risk_projections_rebuild_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -201,6 +321,46 @@ export interface paths {
          * @description Return chartable time-series points for one entity.
          */
         get: operations["get_entity_timeseries_analytics_timeseries__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit Events
+         * @description Return a filtered page of immutable audit ledger events.
+         */
+        get: operations["list_audit_events_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Audit Status
+         * @description Return audit ledger write-failure status.
+         */
+        get: operations["get_audit_status_audit_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -374,6 +534,46 @@ export interface paths {
          *     to one that already exists (UXA-405).
          */
         post: operations["attach_alert_to_case_cases__case_id__alerts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cases/{case_id}/dossier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case Dossier
+         * @description Return the case dossier projection.
+         */
+        get: operations["get_case_dossier_cases__case_id__dossier_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cases/{case_id}/dossier/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Case Dossier
+         * @description Return a portable case dossier export.
+         */
+        get: operations["export_case_dossier_cases__case_id__dossier_export_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -755,6 +955,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evidence-packs/{evidence_pack_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Pack Provenance
+         * @description Return structured provenance references for one evidence pack.
+         */
+        get: operations["get_evidence_pack_provenance_evidence_packs__evidence_pack_id__provenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-packs/{evidence_pack_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evidence Pack Reviews
+         * @description Return analyst review state for one evidence pack.
+         */
+        get: operations["list_evidence_pack_reviews_evidence_packs__evidence_pack_id__reviews_get"];
+        put?: never;
+        /**
+         * Create Evidence Pack Review
+         * @description Create or update one analyst review of an explanation target.
+         */
+        post: operations["create_evidence_pack_review_evidence_packs__evidence_pack_id__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graph/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -829,6 +1073,66 @@ export interface paths {
         get: operations["get_overview_housing_overview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/canonical/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Canonical Identity Detail
+         * @description Return source identities linked to a canonical entity.
+         */
+        get: operations["get_canonical_identity_detail_identity_canonical__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/links/{link_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Identity Link Decision
+         * @description Record a steward decision against one identity link.
+         */
+        post: operations["record_identity_link_decision_identity_links__link_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/resolve-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Identity Candidates
+         * @description Score a source identity against connector-provided canonical candidates.
+         */
+        post: operations["resolve_identity_candidates_identity_resolve_candidates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1035,6 +1339,150 @@ export interface paths {
         get: operations["preview_knowledge_base_document_knowledgebases__knowledge_base_id__documents__document_id__preview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/entities/{entity_type}/{entity_id}/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entity Feature Values
+         * @description Return normalized feature values for one entity in an existing knowledge base.
+         */
+        get: operations["list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/evidence-packs/{evidence_pack_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kb Evidence Pack Provenance
+         * @description Return structured provenance references for one KB-scoped evidence pack.
+         */
+        get: operations["get_kb_evidence_pack_provenance_knowledgebases__knowledge_base_id__evidence_packs__evidence_pack_id__provenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/features/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feature Catalog
+         * @description Return the active domain's feature catalog for an existing knowledge base.
+         */
+        get: operations["get_feature_catalog_knowledgebases__knowledge_base_id__features_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Score Runs
+         * @description Return recent score-all runs for a knowledge base.
+         */
+        get: operations["list_score_runs_knowledgebases__knowledge_base_id__score_runs_get"];
+        put?: never;
+        /**
+         * Start Score Run
+         * @description Start or return an idempotent KB-scoped score-all run.
+         */
+        post: operations["start_score_run_knowledgebases__knowledge_base_id__score_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score Run
+         * @description Return one score-all run plus current batch state.
+         */
+        get: operations["get_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Score Run
+         * @description Request cooperative cancellation of a queued or running score-all run.
+         */
+        post: operations["cancel_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Score Run
+         * @description Create or return a replay run for failed score batches.
+         */
+        post: operations["replay_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__replay_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1337,6 +1785,63 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * AlertAssignmentRequest
+         * @description Assign or clear assignment for one KB-scoped alert.
+         */
+        AlertAssignmentRequest: {
+            /** Assignee */
+            assignee?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * AlertBulkRejection
+         * @description One alert skipped by a bulk lifecycle mutation.
+         */
+        AlertBulkRejection: {
+            /** Alert Id */
+            alert_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_found" | "invalid_transition";
+        };
+        /**
+         * AlertBulkStatusUpdateRequest
+         * @description Transition a selected group of KB-scoped alerts where transitions are valid.
+         */
+        AlertBulkStatusUpdateRequest: {
+            /** Alert Ids */
+            alert_ids: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "acknowledged" | "investigating" | "resolved" | "dismissed";
+        };
+        /**
+         * AlertBulkStatusUpdateResponse
+         * @description Response for a bulk alert lifecycle mutation.
+         */
+        AlertBulkStatusUpdateResponse: {
+            /** Message */
+            message: string;
+            /** Rejected Alerts */
+            rejected_alerts?: components["schemas"]["AlertBulkRejection"][];
+            /**
+             * Status
+             * @constant
+             */
+            status: "accepted";
+            /** Updated Alerts */
+            updated_alerts?: components["schemas"]["AlertListItem"][];
+        };
+        /**
          * AlertDetailResponse
          * @description Expanded alert record used by alert and investigation views.
          */
@@ -1352,6 +1857,8 @@ export interface components {
          * @description Summary alert row consumed by the analyst feed.
          */
         AlertListItem: {
+            /** Assignee */
+            assignee?: string | null;
             /** Confidence */
             confidence: number;
             /**
@@ -1367,6 +1874,10 @@ export interface components {
             entity_type: string;
             /** Evidence Pack Id */
             evidence_pack_id?: string | null;
+            /** Generation Metadata */
+            generation_metadata?: {
+                [key: string]: unknown;
+            };
             /** Id */
             id: string;
             /** Knowledge Base Id */
@@ -1401,6 +1912,62 @@ export interface components {
             /** Items */
             items?: components["schemas"]["AlertListItem"][];
             page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * AlertOperationResponse
+         * @description Response for one alert queue mutation.
+         */
+        AlertOperationResponse: {
+            alert: components["schemas"]["AlertListItem"];
+            audit_event: components["schemas"]["AlertTriageEventResponse"];
+            /** Message */
+            message: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "accepted";
+        };
+        /**
+         * AlertStatusUpdateRequest
+         * @description Transition one KB-scoped alert to a new lifecycle status.
+         */
+        AlertStatusUpdateRequest: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "acknowledged" | "investigating" | "resolved" | "dismissed";
+        };
+        /**
+         * AlertTriageEventResponse
+         * @description Audit receipt for an alert assignment or lifecycle transition.
+         */
+        AlertTriageEventResponse: {
+            /** Actor */
+            actor: string;
+            /** Assignee */
+            assignee?: string | null;
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            event_type: "assigned" | "status_changed";
+            /** From Status */
+            from_status?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason?: string | null;
+            /** To Status */
+            to_status?: string | null;
         };
         /**
          * AlertsConfig
@@ -1489,19 +2056,6 @@ export interface components {
             open_cases: number;
         };
         /**
-         * ApiEnvelope
-         * @description Common status envelope for simple mutation responses.
-         */
-        ApiEnvelope: {
-            /** Message */
-            message: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "accepted" | "ok";
-        };
-        /**
          * ApplyPackRequest
          * @description Input for ``POST /config/apply``.
          *
@@ -1514,6 +2068,100 @@ export interface components {
              * @description Pack name or path within the allowed config directories; defaults to the currently active pack.
              */
             pack?: string | null;
+        };
+        /**
+         * AuditEventListResponse
+         * @description Paginated audit ledger query response.
+         */
+        AuditEventListResponse: {
+            /** Items */
+            items?: components["schemas"]["AuditEventResponse"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * AuditEventResponse
+         * @description One immutable audit ledger event.
+         */
+        AuditEventResponse: {
+            /** Action */
+            action: string;
+            /** Actor Email */
+            actor_email?: string | null;
+            /** Actor Roles */
+            actor_roles?: string[];
+            /** Actor User Id */
+            actor_user_id: string;
+            /** After */
+            after?: {
+                [key: string]: unknown | null;
+            } | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown | null;
+            } | null;
+            /** Client Ip */
+            client_ip?: string | null;
+            /** Correlation Id */
+            correlation_id: string;
+            /** Event Id */
+            event_id: string;
+            /** Failure Reason */
+            failure_reason?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown | null;
+            };
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure";
+            /** Resource Id */
+            resource_id: string;
+            /** Resource Type */
+            resource_type: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** User Agent */
+            user_agent?: string | null;
+        };
+        /**
+         * AuditStatusResponse
+         * @description Operational audit ledger write-failure status.
+         */
+        AuditStatusResponse: {
+            /** Failed Write Count */
+            failed_write_count: number;
+            /** Recent Write Failures */
+            recent_write_failures?: components["schemas"]["AuditWriteFailureResponse"][];
+        };
+        /**
+         * AuditWriteFailureResponse
+         * @description One captured audit sink write failure.
+         */
+        AuditWriteFailureResponse: {
+            /** Action */
+            action: string;
+            /** Error Class */
+            error_class: string;
+            /** Error Message */
+            error_message: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Resource Id */
+            resource_id: string;
+            /** Resource Type */
+            resource_type: string;
         };
         /**
          * AuthConfig
@@ -1616,6 +2264,24 @@ export interface components {
             file: string;
         };
         /**
+         * CanonicalIdentityDetailResponse
+         * @description Source identities linked to one canonical entity.
+         */
+        CanonicalIdentityDetailResponse: {
+            /** Canonical Entity Id */
+            canonical_entity_id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Limit */
+            limit: number;
+            /** Links */
+            links?: components["schemas"]["IdentityLinkResponse"][];
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * CapabilitiesConfig
          * @description Feature toggles for optional analytics capabilities.
          */
@@ -1696,6 +2362,78 @@ export interface components {
             evidence_pack?: components["schemas"]["EvidencePackResponse"] | null;
             /** Feedback History */
             feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
+        };
+        /**
+         * CaseDossierExportMetadataResponse
+         * @description Export affordances advertised with a case dossier.
+         */
+        CaseDossierExportMetadataResponse: {
+            /** Default Filename */
+            default_filename: string;
+            /** Formats */
+            formats?: ("json" | "markdown")[];
+        };
+        /**
+         * CaseDossierExportResponse
+         * @description Portable case dossier rendering for reviewer handoff.
+         */
+        CaseDossierExportResponse: {
+            /** Case Id */
+            case_id: string;
+            /** Content */
+            content: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "markdown";
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * CaseDossierResponse
+         * @description Case-level dossier preserving alerts, evidence, chronology, and decisions.
+         */
+        CaseDossierResponse: {
+            /** Alerts */
+            alerts?: components["schemas"]["AlertListItem"][];
+            /** Audit Events */
+            audit_events?: components["schemas"]["AuditEventResponse"][];
+            case: components["schemas"]["CaseSummaryResponse"];
+            /** Entity Timeline */
+            entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];
+            /** Evidence Packs */
+            evidence_packs?: components["schemas"]["EvidencePackResponse"][];
+            /** Explanation Review Summaries */
+            explanation_review_summaries?: components["schemas"]["CaseExplanationReviewSummaryResponse"][];
+            export: components["schemas"]["CaseDossierExportMetadataResponse"];
+            /** Feedback History */
+            feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
+        };
+        /**
+         * CaseExplanationReviewSummaryResponse
+         * @description Sanitized case-dossier summary for one explanation review.
+         */
+        CaseExplanationReviewSummaryResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Reason Count */
+            reason_count: number;
+            /** Review Id */
+            review_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * CaseFeedbackCreateRequest
@@ -2307,6 +3045,7 @@ export interface components {
             entities: components["schemas"]["EntityDefinition"][];
             /** @default null */
             events: components["schemas"]["EventBusConfig"] | null;
+            feature_catalog?: components["schemas"]["FeatureCatalogConfig"];
             /** @default null */
             gnn: components["schemas"]["GnnConfig"] | null;
             /** @default null */
@@ -2336,6 +3075,8 @@ export interface components {
             storage: components["schemas"]["ObjectStoreConfig"] | null;
             /** @default null */
             timeseries: components["schemas"]["TimeseriesAnalyticsConfig"] | null;
+            /** Typologies */
+            typologies?: components["schemas"]["FraudTypologyConfig"][];
             /** @default null */
             ui: components["schemas"]["UiConfig"] | null;
             /** @default null */
@@ -2468,6 +3209,46 @@ export interface components {
          */
         EntityDetailResponse: {
             entity: components["schemas"]["Entity"];
+        };
+        /**
+         * EntityFeatureValueListResponse
+         * @description Feature values for one entity in a knowledge base.
+         */
+        EntityFeatureValueListResponse: {
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Items */
+            items?: components["schemas"]["EntityFeatureValueResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * EntityFeatureValueResponse
+         * @description One normalized feature value for an entity.
+         */
+        EntityFeatureValueResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Feature Id */
+            feature_id: string;
+            /** Normalized Value */
+            normalized_value?: number | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Score Run Id */
+            score_run_id?: string | null;
+            /** Source Refs */
+            source_refs?: string[];
+            /** Transformation Version */
+            transformation_version: string;
+            /** Value */
+            value?: string | number | boolean | null;
         };
         /**
          * EntityLocationListResponse
@@ -2635,6 +3416,8 @@ export interface components {
             narrative_sections?: components["schemas"]["NarrativeSectionResponse"][];
             /** Policy Citations */
             policy_citations?: components["schemas"]["PolicyCitation"][];
+            /** Provenance */
+            provenance?: components["schemas"]["EvidenceProvenanceReferenceResponse"][];
             /** Reasoning */
             reasoning: string;
             /** Scores */
@@ -2647,6 +3430,127 @@ export interface components {
             subgraph_edge_ids?: string[];
             /** Subgraph Node Ids */
             subgraph_node_ids?: string[];
+        };
+        /**
+         * EvidenceProvenanceListResponse
+         * @description Structured provenance references for one evidence pack.
+         */
+        EvidenceProvenanceListResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Items */
+            items?: components["schemas"]["EvidenceProvenanceReferenceResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * EvidenceProvenanceReferenceResponse
+         * @description A normalized source reference supporting an evidence pack assertion.
+         */
+        EvidenceProvenanceReferenceResponse: {
+            /** Confidence */
+            confidence?: number | null;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown | null;
+            };
+            /** Reference Id */
+            reference_id: string;
+            /** Reference Type */
+            reference_type: string;
+            /** Route Target */
+            route_target?: string | null;
+            /** Source System */
+            source_system?: string | null;
+            /** Source Version */
+            source_version?: string | null;
+            /** Transformation Version */
+            transformation_version?: string | null;
+        };
+        /**
+         * ExplanationReviewCreateRequest
+         * @description Create or update one analyst review of an explanation target.
+         */
+        ExplanationReviewCreateRequest: {
+            /** Comment */
+            comment?: string | null;
+            /** Reasons */
+            reasons?: ("missing_source" | "wrong_peer_group" | "stale_data" | "unsupported_claim" | "contradicts_evidence" | "unclear_rationale" | "other")[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+        };
+        /**
+         * ExplanationReviewListResponse
+         * @description Page of review state for one evidence pack.
+         */
+        ExplanationReviewListResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Items */
+            items?: components["schemas"]["ExplanationReviewResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * ExplanationReviewResponse
+         * @description Stored analyst review state for one explanation target.
+         */
+        ExplanationReviewResponse: {
+            /** Actor Email */
+            actor_email?: string | null;
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reasons */
+            reasons?: ("missing_source" | "wrong_peer_group" | "stale_data" | "unsupported_claim" | "contradicts_evidence" | "unclear_rationale" | "other")[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+            /** Update Count */
+            update_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ExplanationReviewTargetResponse
+         * @description One reviewable subtarget inside an evidence pack.
+         */
+        ExplanationReviewTargetResponse: {
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "narrative" | "narrative_section" | "feature_attribution" | "evidence_item" | "provenance_reference";
         };
         /**
          * FeatureAttributionResponse
@@ -2662,6 +3566,176 @@ export interface components {
              * @default
              */
             rationale: string;
+        };
+        /**
+         * FeatureCatalogConfig
+         * @description Versioned collection of feature definitions for a domain.
+         */
+        FeatureCatalogConfig: {
+            /** Features */
+            features?: components["schemas"]["FeatureDefinitionConfig"][];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * FeatureCatalogResponse
+         * @description Feature catalog metadata scoped to a knowledge base.
+         */
+        FeatureCatalogResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Features */
+            features?: components["schemas"]["FeatureDefinitionResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Typologies */
+            typologies?: components["schemas"]["FraudTypologyResponse"][];
+        };
+        /**
+         * FeatureDefinitionConfig
+         * @description A reusable, domain-neutral feature definition.
+         */
+        FeatureDefinitionConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Peer Dimensions */
+            peer_dimensions?: string[];
+            /** Source Mappings */
+            source_mappings?: components["schemas"]["FeatureSourceMappingConfig"][];
+            /** Threshold Hints */
+            threshold_hints?: {
+                [key: string]: number;
+            };
+            /**
+             * Transformation Version
+             * @default v1
+             */
+            transformation_version: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Value Type
+             * @default decimal
+             * @enum {string}
+             */
+            value_type: "boolean" | "integer" | "decimal" | "string" | "categorical";
+        };
+        /**
+         * FeatureDefinitionResponse
+         * @description A reusable, domain-neutral feature definition.
+         */
+        FeatureDefinitionResponse: {
+            /** Description */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Peer Dimensions */
+            peer_dimensions?: string[];
+            /** Source Mappings */
+            source_mappings?: components["schemas"]["FeatureSourceMappingResponse"][];
+            /** Threshold Hints */
+            threshold_hints?: {
+                [key: string]: number;
+            };
+            /** Transformation Version */
+            transformation_version: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Value Type
+             * @enum {string}
+             */
+            value_type: "boolean" | "integer" | "decimal" | "string" | "categorical";
+        };
+        /**
+         * FeatureSourceMappingConfig
+         * @description A source path used to derive a normalized feature value.
+         */
+        FeatureSourceMappingConfig: {
+            /** Raw Fields */
+            raw_fields?: string[];
+            /** Source Ref */
+            source_ref: string;
+            /** Source Type */
+            source_type: string;
+        };
+        /**
+         * FeatureSourceMappingResponse
+         * @description A source path used to derive a normalized feature value.
+         */
+        FeatureSourceMappingResponse: {
+            /** Raw Fields */
+            raw_fields?: string[];
+            /** Source Ref */
+            source_ref: string;
+            /** Source Type */
+            source_type: string;
+        };
+        /**
+         * FraudTypologyConfig
+         * @description A versioned fraud-pattern label described by a domain pack.
+         */
+        FraudTypologyConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Playbook Ids */
+            playbook_ids?: string[];
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /**
+             * Severity Hint
+             * @default null
+             */
+            severity_hint: ("low" | "medium" | "high" | "critical") | null;
+        };
+        /**
+         * FraudTypologyResponse
+         * @description A versioned fraud-pattern label described by a domain pack.
+         */
+        FraudTypologyResponse: {
+            /** Description */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Playbook Ids */
+            playbook_ids?: string[];
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Severity Hint */
+            severity_hint?: ("low" | "medium" | "high" | "critical") | null;
         };
         /**
          * GnnClusterResponse
@@ -2975,6 +4049,178 @@ export interface components {
              * @default 0
              */
             total_installations: number;
+        };
+        /**
+         * IdentityCandidateEntityRequest
+         * @description Candidate canonical entity scoped to one knowledge base.
+         */
+        IdentityCandidateEntityRequest: {
+            entity: components["schemas"]["Entity"];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * IdentityCandidateScoreResponse
+         * @description Scored canonical identity candidate.
+         */
+        IdentityCandidateScoreResponse: {
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Match Reasons */
+            match_reasons?: components["schemas"]["IdentityMatchReasonResponse"][];
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "auto_linkable" | "steward_review" | "needs_review";
+            /** Score */
+            score: number;
+        };
+        /**
+         * IdentityLinkDecisionRecordResponse
+         * @description One steward decision recorded against an identity link.
+         */
+        IdentityLinkDecisionRecordResponse: {
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve_merge" | "reject_merge" | "split_identity";
+        };
+        /**
+         * IdentityLinkDecisionRequestPayload
+         * @description Payload for recording a steward identity-link decision.
+         */
+        IdentityLinkDecisionRequestPayload: {
+            /** Comment */
+            comment?: string | null;
+            /** Correlation Id */
+            correlation_id?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve_merge" | "reject_merge" | "split_identity";
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Tenant Id
+             * @default platform
+             */
+            tenant_id: string;
+        };
+        /**
+         * IdentityLinkResponse
+         * @description Stored identity link returned by the API.
+         */
+        IdentityLinkResponse: {
+            /** Canonical Entity Id */
+            canonical_entity_id: string;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decision History */
+            decision_history?: components["schemas"]["IdentityLinkDecisionRecordResponse"][];
+            /** Decision Source */
+            decision_source: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Match Reasons */
+            match_reasons?: {
+                [key: string]: unknown;
+            }[];
+            /** Relationship Type */
+            relationship_type: string;
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "auto_linkable" | "steward_review" | "needs_review" | "merged" | "rejected" | "split";
+            /** Score */
+            score: number;
+            /** Source Entity Id */
+            source_entity_id: string;
+            /** Source Refs */
+            source_refs?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * IdentityMatchReasonResponse
+         * @description One reason contributing to an identity candidate score.
+         */
+        IdentityMatchReasonResponse: {
+            /** Candidate Value */
+            candidate_value: string;
+            /** Field */
+            field: string;
+            /** Reason */
+            reason: string;
+            /** Score Contribution */
+            score_contribution: number;
+            /** Source Value */
+            source_value: string;
+        };
+        /**
+         * IdentityResolutionRequestPayload
+         * @description Payload for scoring a source identity against canonical candidates.
+         */
+        IdentityResolutionRequestPayload: {
+            /** Address Fields */
+            address_fields?: string[];
+            /** Candidates */
+            candidates?: components["schemas"]["IdentityCandidateEntityRequest"][];
+            /** Identifier Fields */
+            identifier_fields?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Natural Key Fields */
+            natural_key_fields?: string[];
+            source_entity: components["schemas"]["Entity"];
+        };
+        /**
+         * IdentityResolutionResponse
+         * @description Ranked identity candidates for a source entity.
+         */
+        IdentityResolutionResponse: {
+            /** Candidates */
+            candidates?: components["schemas"]["IdentityCandidateScoreResponse"][];
+            /** Excluded Candidate Ids */
+            excluded_candidate_ids?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Source Entity Id */
+            source_entity_id: string;
         };
         /**
          * IngestionConfig
@@ -3336,6 +4582,167 @@ export interface components {
             total_items: number;
         };
         /**
+         * PeerAnalysisResponse
+         * @description Peer-analysis context for one entity.
+         */
+        PeerAnalysisResponse: {
+            /** Entity Id */
+            entity_id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Metrics */
+            metrics?: components["schemas"]["PeerMetricComparisonResponse"][];
+        };
+        /**
+         * PeerCohortContextResponse
+         * @description Cohort definition and membership context for one comparison.
+         */
+        PeerCohortContextResponse: {
+            /** Entity Type */
+            entity_type: string;
+            /** Exclusions */
+            exclusions?: components["schemas"]["PeerCohortExclusionResponse"][];
+            /** Group By */
+            group_by?: string[];
+            /** Group Values */
+            group_values?: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Member Count */
+            member_count: number;
+            /** Member Entity Ids */
+            member_entity_ids?: string[];
+            /** Peer Metric */
+            peer_metric: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * PeerCohortDefinitionConfig
+         * @description Versioned peer cohort definition for analyst-facing comparisons.
+         */
+        PeerCohortDefinitionConfig: {
+            /** Entity Type */
+            entity_type: string;
+            /** Exclusions */
+            exclusions?: components["schemas"]["PeerCohortExclusionConfig"][];
+            /** Group By */
+            group_by?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Min Cohort Size
+             * @default 5
+             */
+            min_cohort_size: number;
+            /** Peer Metric */
+            peer_metric: string;
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * PeerCohortExclusionConfig
+         * @description One exclusion rule documented for a cohort definition.
+         */
+        PeerCohortExclusionConfig: {
+            /** Field */
+            field: string;
+            /**
+             * Operator
+             * @enum {string}
+             */
+            operator: "equals" | "not_equals" | "in" | "not_in" | "exists" | "missing";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Values */
+            values?: string[];
+        };
+        /**
+         * PeerCohortExclusionResponse
+         * @description Configured cohort exclusion rule.
+         */
+        PeerCohortExclusionResponse: {
+            /** Field */
+            field: string;
+            /** Operator */
+            operator: string;
+            /** Reason */
+            reason: string;
+            /** Values */
+            values?: string[];
+        };
+        /**
+         * PeerDistributionSummaryResponse
+         * @description Metric distribution summary for one peer group.
+         */
+        PeerDistributionSummaryResponse: {
+            /** Count */
+            count: number;
+            /** Maximum */
+            maximum: number;
+            /** Minimum */
+            minimum: number;
+            /** P50 */
+            p50: number;
+            /** P90 */
+            p90: number;
+        };
+        /**
+         * PeerMetricComparisonResponse
+         * @description One peer-metric comparison for an entity.
+         */
+        PeerMetricComparisonResponse: {
+            cohort?: components["schemas"]["PeerCohortContextResponse"] | null;
+            /** Cohort Size */
+            cohort_size: number;
+            /**
+             * Confidence
+             * @default normal
+             * @enum {string}
+             */
+            confidence: "normal" | "low";
+            /** Confidence Reason */
+            confidence_reason?: string | null;
+            distribution?: components["schemas"]["PeerDistributionSummaryResponse"] | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Entity Value */
+            entity_value: number;
+            /**
+             * Interval Start
+             * Format: date-time
+             */
+            interval_start: string;
+            /** Metric Name */
+            metric_name: string;
+            /** Peer Group Key */
+            peer_group_key: string;
+            /** Peer Mean */
+            peer_mean: number;
+            /** Peer Std */
+            peer_std: number;
+            /** Percentile */
+            percentile: number;
+            /** Rationale */
+            rationale: string;
+            /** Signal Value */
+            signal_value: number;
+            /** Z Score */
+            z_score: number;
+        };
+        /**
          * PeerMetricSpec
          * @description One cross-sectional peer-group z-score metric derived from a record column.
          */
@@ -3399,6 +4806,8 @@ export interface components {
          * @description Collection of peer-group z-score metric specs for a domain.
          */
         PeerStatsConfig: {
+            /** Cohorts */
+            cohorts?: components["schemas"]["PeerCohortDefinitionConfig"][];
             /** Metrics */
             metrics?: components["schemas"]["PeerMetricSpec"][];
         };
@@ -3967,6 +5376,98 @@ export interface components {
             rationale?: string | null;
         };
         /**
+         * RiskProjectionItemResponse
+         * @description Projection-backed risk row for queue/dashboard/entity consumers.
+         */
+        RiskProjectionItemResponse: {
+            /** Alert Ids */
+            alert_ids?: string[];
+            /** Case Ids */
+            case_ids?: string[];
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Evidence Pack Ids */
+            evidence_pack_ids?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Model Version */
+            model_version: string;
+            /** Overall Score */
+            overall_score: number;
+            /**
+             * Risk Level
+             * @enum {string}
+             */
+            risk_level: "low" | "medium" | "high" | "critical";
+            /** Score Run Id */
+            score_run_id?: string | null;
+            /**
+             * Scored At
+             * Format: date-time
+             */
+            scored_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "case_open" | "resolved" | "suppressed" | "stale";
+            /** Top Typology Ids */
+            top_typology_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * RiskProjectionListResponse
+         * @description Paginated risk projections for one knowledge base.
+         */
+        RiskProjectionListResponse: {
+            /** Items */
+            items?: components["schemas"]["RiskProjectionItemResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * RiskProjectionRebuildRequest
+         * @description Operator request to rebuild risk projections for one knowledge base.
+         */
+        RiskProjectionRebuildRequest: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * RiskProjectionRebuildResponse
+         * @description Outcome of an in-process projection rebuild request.
+         */
+        RiskProjectionRebuildResponse: {
+            /** Changed */
+            changed: boolean;
+            /** Deleted */
+            deleted: number;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Status
+             * @default completed
+             * @constant
+             */
+            status: "completed";
+            /** Upserted */
+            upserted: number;
+        };
+        /**
          * RiskScore
          * @description A single ranked risk score entry.
          */
@@ -4016,6 +5517,151 @@ export interface components {
             risk_level: "low" | "medium" | "high" | "critical";
             /** Unavailable Reason */
             unavailable_reason?: string | null;
+        };
+        /**
+         * ScoreBatchResponse
+         * @description Score-all batch state.
+         */
+        ScoreBatchResponse: {
+            /** Attempts */
+            attempts: number;
+            /** Batch Number */
+            batch_number: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Entity Ids */
+            entity_ids?: string[];
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "canceled" | "replayed";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScoreRunDetailResponse
+         * @description Score run plus current batches.
+         */
+        ScoreRunDetailResponse: {
+            /** Batches */
+            batches?: components["schemas"]["ScoreBatchResponse"][];
+            /**
+             * Created
+             * @default false
+             */
+            created: boolean;
+            run: components["schemas"]["ScoreRunResponse"];
+        };
+        /**
+         * ScoreRunListResponse
+         * @description Page of score-all runs for one knowledge base.
+         */
+        ScoreRunListResponse: {
+            /** Items */
+            items?: components["schemas"]["ScoreRunResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ScoreRunReplayRequest
+         * @description Payload for replaying failed score batches.
+         */
+        ScoreRunReplayRequest: {
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+        };
+        /**
+         * ScoreRunResponse
+         * @description Score-all run state.
+         */
+        ScoreRunResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Failed Entities */
+            failed_entities: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Model Version */
+            model_version: string;
+            /** Replay Of Run Id */
+            replay_of_run_id?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Scored Entities */
+            scored_entities: number;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "canceled" | "replayed";
+            /** Total Entities */
+            total_entities: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScoreRunStartRequest
+         * @description Payload for starting a KB-scoped score-all run.
+         */
+        ScoreRunStartRequest: {
+            /**
+             * Batch Size
+             * @default 100
+             */
+            batch_size: number;
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Ids */
+            entity_ids?: string[] | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Model Version */
+            model_version: string;
+            /** Requested By */
+            requested_by?: string | null;
         };
         /**
          * ScorecardCitationResponse
@@ -4802,7 +6448,13 @@ export interface operations {
         parameters: {
             query?: {
                 knowledge_base_id?: string | null;
-                status?: string | null;
+                status?: string[] | null;
+                severity?: string[] | null;
+                typology?: string[] | null;
+                from?: string | null;
+                to?: string | null;
+                evidence?: string | null;
+                freshness?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -4819,6 +6471,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_alert_status_bulk_alerts_bulk_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertBulkStatusUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertBulkStatusUpdateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4888,7 +6573,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope"];
+                    "application/json": components["schemas"]["AlertOperationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_alert_alerts__alert_id__assignment_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Alert identifier. */
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOperationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_alert_status_alerts__alert_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Alert identifier. */
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertStatusUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOperationResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4952,6 +6709,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_peer_analysis_analytics_peer_analysis__entity_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                metric?: string | null;
+            };
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerAnalysisResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_risk_projections_analytics_risk_projections_get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                entity_type?: string | null;
+                risk_level?: ("low" | "medium" | "high" | "critical") | null;
+                typology_id?: string | null;
+                status?: ("active" | "case_open" | "resolved" | "suppressed" | "stale") | null;
+                max_score_age_hours?: number | null;
+                as_of?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProjectionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_risk_projections_analytics_risk_projections_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskProjectionRebuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProjectionRebuildResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5098,6 +6961,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_events_audit_events_get: {
+        parameters: {
+            query: {
+                tenant_id: string;
+                knowledge_base_id?: string | null;
+                actor_user_id?: string | null;
+                action_prefix?: string | null;
+                resource_type?: string | null;
+                resource_id?: string | null;
+                outcome?: ("success" | "failure") | null;
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_audit_status_audit_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditStatusResponse"];
                 };
             };
         };
@@ -5413,6 +7337,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_dossier_cases__case_id__dossier_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Case identifier. */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDossierResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_case_dossier_cases__case_id__dossier_export_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+                /** @description Rendering to return: machine-readable JSON or readable Markdown. */
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                /** @description Case identifier. */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDossierExportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6022,6 +8018,117 @@ export interface operations {
             };
         };
     };
+    get_evidence_pack_provenance_evidence_packs__evidence_pack_id__provenance_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProvenanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evidence_pack_reviews_evidence_packs__evidence_pack_id__reviews_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+                state?: ("useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested") | null;
+                target_type?: ("narrative" | "narrative_section" | "feature_attribution" | "evidence_item" | "provenance_reference") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationReviewListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evidence_pack_review_evidence_packs__evidence_pack_id__reviews_post: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplanationReviewCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_entity_detail_graph_entities__entity_id__get: {
         parameters: {
             query?: never;
@@ -6131,6 +8238,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HousingOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canonical_identity_detail_identity_canonical__entity_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanonicalIdentityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_identity_link_decision_identity_links__link_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityLinkDecisionRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityLinkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_identity_candidates_identity_resolve_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityResolutionRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityResolutionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6532,6 +8742,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityFeatureValueListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kb_evidence_pack_provenance_knowledgebases__knowledge_base_id__evidence_packs__evidence_pack_id__provenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProvenanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feature_catalog_knowledgebases__knowledge_base_id__features_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_score_runs_knowledgebases__knowledge_base_id__score_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_score_run_knowledgebases__knowledge_base_id__score_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScoreRunStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScoreRunReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
                 };
             };
             /** @description Validation Error */

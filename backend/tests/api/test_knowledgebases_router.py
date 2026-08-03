@@ -16,6 +16,7 @@ from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseReposit
 from knowledgebases.models import DocumentRecord
 from api.app import create_app
 from api.dependencies import (
+    get_audit_log_service,
     get_alert_history_writer,
     get_document_status_store,
     get_event_bus,
@@ -26,14 +27,23 @@ from api.dependencies import (
     get_object_store,
     get_vector_service,
 )
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
+from analytics.features.service import FeatureCatalogService
 from config.schema import (
     AlertsConfig,
     AuthConfig,
     CapabilitiesConfig,
     DomainConfig,
     DomainInfo,
+    FeatureCatalogConfig,
+    FeatureDefinitionConfig,
+    FeatureSourceMappingConfig,
+    FraudTypologyConfig,
     IngestionConfig,
     ValidationConfig,
 )
@@ -54,6 +64,7 @@ from graph.models import GraphDeleteByProvenance, GraphMetrics
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+from api.routers import knowledgebases as knowledgebases_router
 from api.routers.knowledgebases import read_upload_file_with_limit
 from vectorstore.service_models import VectorDeleteResponse
 
@@ -71,6 +82,56 @@ def _build_config() -> DomainConfig:
             allowed_content_types=["text/plain", "application/json"],
         ),
         alerts=AlertsConfig(thresholds={}),
+    )
+
+
+def _build_feature_catalog_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        validation=ValidationConfig(
+            max_file_size_mb=1,
+            allowed_content_types=["text/plain", "application/json"],
+        ),
+        alerts=AlertsConfig(thresholds={}),
+        typologies=[
+            FraudTypologyConfig(
+                id="billing_spike",
+                label="Billing spike",
+                description="Provider billing volume increased beyond peer norms.",
+                severity_hint="high",
+                feature_ids=["weekly_provider_billing_zscore"],
+            )
+        ],
+        feature_catalog=FeatureCatalogConfig(
+            version="cms-fraud-features-v1",
+            features=[
+                FeatureDefinitionConfig(
+                    id="weekly_provider_billing_zscore",
+                    label="Weekly provider billing z-score",
+                    description="Peer-normalized weekly billed amount.",
+                    value_type="decimal",
+                    source_mappings=[
+                        FeatureSourceMappingConfig(
+                            source_type="derived_signal",
+                            source_ref="entity_derived_signals.weekly_provider_billing",
+                            raw_fields=[
+                                "billed_amount",
+                                "service_date",
+                                "provider_npi",
+                            ],
+                        )
+                    ],
+                    threshold_hints={"high": 2.0, "critical": 3.0},
+                    transformation_version="peerstats-zscore-v1",
+                    typology_ids=["billing_spike"],
+                )
+            ],
+        ),
     )
 
 
@@ -125,8 +186,31 @@ class _RecordingReplacementVectorService:
         return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=1)
 
 
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
+
+
 def _skip_policy_audit(app: FastAPI) -> None:
     del app
+
+
+def _install_audit_user(
+    client: TestClient,
+    audit_service: AuditLogService,
+    *,
+    user_id: str = "analyst-42",
+    roles: list[str] | None = None,
+    email: str | None = "analyst42@example.test",
+) -> None:
+    app = cast(FastAPI, client.app)
+    app.state.audit_log_service = audit_service
+    app.dependency_overrides[get_audit_log_service] = lambda: audit_service
+    app.dependency_overrides[get_current_user] = lambda: User(
+        user_id=user_id,
+        roles=roles or ["analyst"],
+        email=email,
+    )
 
 
 @pytest.fixture()
@@ -188,6 +272,43 @@ def test_create_knowledge_base_returns_201_and_publishes_event(
     assert created_events[0].knowledge_base_id == payload["id"]
 
 
+def test_create_knowledge_base_records_audit_event(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_user(client, audit_service)
+
+    response = client.post(
+        "/knowledgebases",
+        json={"name": "Audited KB", "description": "Initial KB"},
+    )
+
+    assert response.status_code == 201
+    kb_id = response.json()["id"]
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id=kb_id, knowledge_base_id=kb_id)
+    )
+    assert [event.action for event in page.items] == ["knowledge_base.create"]
+    event = page.items[0]
+    assert event.actor_user_id == "analyst-42"
+    assert event.actor_email == "analyst42@example.test"
+    assert event.resource_type == "knowledge_base"
+    assert event.resource_id == kb_id
+    assert event.before is None
+    assert event.after == {
+        "name": "Audited KB",
+        "domain": "test",
+        "pending_cleanup": False,
+    }
+    assert event.metadata["source"] == "api.knowledgebases"
+
+
 def test_create_knowledge_base_allows_duplicate_names(
     harness: tuple[
         TestClient,
@@ -204,6 +325,76 @@ def test_create_knowledge_base_allows_duplicate_names(
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.json()["id"] != second.json()["id"]
+
+
+def test_feature_catalog_returns_404_for_missing_kb() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+
+    with pytest.raises(HTTPException) as exc_info:
+        anyio.run(
+            knowledgebases_router.get_feature_catalog,
+            "missing",
+            repository,
+            FeatureCatalogService(_build_feature_catalog_config()),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Knowledge base 'missing' not found."
+
+
+def test_feature_catalog_returns_domain_config_typologies_and_features() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-feature",
+            name="Feature KB",
+            description="Feature catalog test",
+            created_at=utc_now(),
+        )
+    )
+
+    payload = anyio.run(
+        knowledgebases_router.get_feature_catalog,
+        "kb-feature",
+        repository,
+        FeatureCatalogService(_build_feature_catalog_config()),
+    )
+
+    assert payload.knowledge_base_id == "kb-feature"
+    assert payload.catalog_version == "cms-fraud-features-v1"
+    assert payload.typologies[0].id == "billing_spike"
+    assert payload.features[0].id == "weekly_provider_billing_zscore"
+    assert payload.features[0].source_mappings[0].raw_fields == [
+        "billed_amount",
+        "service_date",
+        "provider_npi",
+    ]
+
+
+def test_entity_feature_values_return_empty_list_for_existing_kb() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-feature",
+            name="Feature KB",
+            description="Feature catalog test",
+            created_at=utc_now(),
+        )
+    )
+
+    payload = anyio.run(
+        knowledgebases_router.list_entity_feature_values,
+        "kb-feature",
+        "provider",
+        "provider-204",
+        repository,
+        FeatureCatalogService(_build_feature_catalog_config()),
+    )
+
+    assert payload.knowledge_base_id == "kb-feature"
+    assert payload.entity_type == "provider"
+    assert payload.entity_id == "provider-204"
+    assert payload.items == []
 
 
 def test_list_knowledge_bases_paginates_results(
@@ -508,6 +699,82 @@ def test_delete_knowledge_base_removes_artifacts_and_publishes_event(
     # Subsequent GET / DELETE should both be 404.
     assert client.get(f"/knowledgebases/{kb_id}").status_code == 404
     assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
+
+
+def test_delete_knowledge_base_records_audit_event(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, _ = harness
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_user(
+        client,
+        audit_service,
+        user_id="admin-42",
+        roles=["admin"],
+        email="admin42@example.test",
+    )
+
+    created = client.post(
+        "/knowledgebases", json={"name": "ToDelete", "description": ""}
+    )
+    assert created.status_code == 201
+    kb_id = created.json()["id"]
+    object_store.put_bytes(
+        f"knowledgebases/{kb_id}/documents/doc-1/file.json",
+        b"{}",
+        media_type="application/json",
+    )
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+
+    assert response.status_code == 204
+    page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id=kb_id,
+            knowledge_base_id=kb_id,
+            action_prefix="knowledge_base.delete",
+        )
+    )
+    assert [event.action for event in page.items] == ["knowledge_base.delete"]
+    event = page.items[0]
+    assert event.actor_user_id == "admin-42"
+    assert event.actor_email == "admin42@example.test"
+    assert event.resource_type == "knowledge_base"
+    assert event.resource_id == kb_id
+    assert event.before == {
+        "name": "ToDelete",
+        "domain": "test",
+        "pending_cleanup": False,
+    }
+    assert event.after is None
+    assert event.metadata["cleanup_pending"] is False
+    assert event.metadata["source"] == "api.knowledgebases"
+
+
+def test_knowledge_base_mutation_still_succeeds_when_audit_sink_fails(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    audit_service = AuditLogService(_FailingAuditRepository())
+    _install_audit_user(client, audit_service)
+
+    response = client.post(
+        "/knowledgebases",
+        json={"name": "Audit Failure Tolerated", "description": ""},
+    )
+
+    assert response.status_code == 201
+    assert audit_service.failed_write_count == 1
 
 
 def test_delete_knowledge_base_prunes_alert_history(

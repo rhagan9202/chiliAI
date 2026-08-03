@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_domain_config, get_session_store
+from api.dependencies import get_audit_log_service, get_domain_config, get_session_store
 from api.middleware.session_store import InMemorySessionStore, SessionNotFoundError, SessionRecord
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 
@@ -46,6 +51,16 @@ def app_with_auth(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     # but auth-enabled tests immediately override get_session_store via dependency_overrides.
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/15")
     return create_app()
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
+
+
+def _install_audit_service(app: FastAPI, audit_service: AuditLogService) -> None:
+    app.state.audit_log_service = audit_service
+    app.dependency_overrides[get_audit_log_service] = lambda: audit_service
 
 
 def test_me_returns_401_when_unauthenticated(app_with_auth) -> None:
@@ -123,6 +138,48 @@ def test_login_redirects_to_authorize_endpoint_with_pkce_and_state(app_with_auth
     state = qs["state"][0]
     # PKCE state must be persisted so the callback can recover the verifier
     assert store.pop_pkce_state(state) is not None
+
+
+def test_login_records_audit_event(app_with_auth: FastAPI) -> None:
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_service(app_with_auth, audit_service)
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 307
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="platform", action_prefix="auth.login")
+    )
+    assert [event.action for event in page.items] == ["auth.login.start"]
+    event = page.items[0]
+    assert event.actor_user_id == "anonymous"
+    assert event.resource_type == "auth_flow"
+    assert event.resource_id == "oidc"
+    assert event.before is None
+    assert event.after == {"pkce_state_created": True}
+    assert event.metadata["source"] == "api.auth"
+
+
+def test_auth_login_still_redirects_when_audit_sink_fails(
+    app_with_auth: FastAPI,
+) -> None:
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    audit_service = AuditLogService(_FailingAuditRepository())
+    _install_audit_service(app_with_auth, audit_service)
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 307
+    assert audit_service.failed_write_count == 1
 
 
 def test_login_includes_nonce_in_authorize_url(app_with_auth: FastAPI) -> None:
@@ -205,6 +262,8 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300, nonce="nonce-1")
 
     domain = _domain_with_auth()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_service(app_with_auth, audit_service)
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
 
@@ -258,6 +317,19 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     assert saved.access_token == "acc-tok"
     assert saved.refresh_token == "ref-tok"
     assert saved.id_token == "id-tok"
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="platform", action_prefix="auth.callback")
+    )
+    assert [event.action for event in page.items] == ["auth.callback.success"]
+    event = page.items[0]
+    assert event.actor_user_id == "user-cb"
+    assert event.actor_email == "cb@example.com"
+    assert event.actor_roles == ["analyst"]
+    assert event.resource_type == "auth_session"
+    assert event.resource_id == "user-cb"
+    assert event.after == {"session_created": True, "role_count": 1}
+    assert "auth-code" not in str(event.metadata)
+    assert "state-1" not in str(event.metadata)
 
 
 def test_callback_idp_response_missing_access_token_is_400(
@@ -298,6 +370,8 @@ def test_callback_idp_response_missing_access_token_is_400(
 def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
     store = InMemorySessionStore()  # no PKCE state stored
     domain = _domain_with_auth()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_service(app_with_auth, audit_service)
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
 
@@ -306,6 +380,17 @@ def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
 
     assert response.status_code == 400
     assert "state" in response.json()["detail"].lower()
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="platform", action_prefix="auth.callback")
+    )
+    assert [event.action for event in page.items] == ["auth.callback.failure"]
+    event = page.items[0]
+    assert event.outcome == "failure"
+    assert event.failure_reason == "unknown_state"
+    assert event.actor_user_id == "anonymous"
+    assert event.resource_type == "auth_flow"
+    assert event.resource_id == "callback"
+    assert "unknown" not in str(event.metadata)
 
 
 def test_callback_propagates_idp_token_error(
@@ -385,7 +470,7 @@ def test_callback_returns_400_when_id_token_validation_fails(
     assert "IdP returned an invalid token" in response.json()["detail"]
 
 
-def _fake_token_handler(*, id_token: str | None) -> "object":
+def _fake_token_handler(*, id_token: str | None) -> Callable[[httpx.Request], httpx.Response]:
     import httpx
 
     def fake_handler(request: httpx.Request) -> httpx.Response:
@@ -606,6 +691,8 @@ def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
         )
     )
     domain = _domain_with_auth()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_service(app_with_auth, audit_service)
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
 
@@ -620,6 +707,18 @@ def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
     # Session must be gone
     with pytest.raises(SessionNotFoundError):
         store.get("sid-out")
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="platform", action_prefix="auth.logout")
+    )
+    assert [event.action for event in page.items] == ["auth.logout"]
+    event = page.items[0]
+    assert event.actor_user_id == "user-1"
+    assert event.actor_email == "u@e.com"
+    assert event.actor_roles == ["analyst"]
+    assert event.resource_type == "auth_session"
+    assert event.resource_id == "user-1"
+    assert event.before == {"session_present": True}
+    assert event.after == {"session_present": False}
 
 
 def test_logout_redirects_to_idp_end_session_when_configured(app_with_auth: FastAPI) -> None:

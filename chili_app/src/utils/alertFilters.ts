@@ -24,6 +24,11 @@ export interface FilterableAlert {
   title: string
   confidence: number
   created_at: string
+  tags?: readonly string[]
+  assignee?: string | null
+  case_state?: string | null
+  score_freshness?: string | null
+  evidence_pack_id?: string | null
 }
 
 export type AlertSortId = 'newest' | 'oldest' | 'severity' | 'confidence'
@@ -31,6 +36,11 @@ export type AlertSortId = 'newest' | 'oldest' | 'severity' | 'confidence'
 export interface AlertFilterState {
   severities: string[]
   statuses: string[]
+  typologies: string[]
+  assignees: string[]
+  caseStates: string[]
+  scoreFreshnesses: string[]
+  evidenceAvailability: string[]
   search: string
   sort: AlertSortId
   /** Inclusive `YYYY-MM-DD` bounds on `created_at`; empty means unbounded. */
@@ -51,6 +61,11 @@ const DEFAULT_SORT: AlertSortId = 'newest'
 export const EMPTY_ALERT_FILTERS: AlertFilterState = {
   severities: [],
   statuses: [],
+  typologies: [],
+  assignees: [],
+  caseStates: [],
+  scoreFreshnesses: [],
+  evidenceAvailability: [],
   search: '',
   sort: DEFAULT_SORT,
   from: '',
@@ -98,6 +113,22 @@ function matchesSearch(alert: FilterableAlert, search: string): boolean {
   )
 }
 
+function normalizedAssignee(alert: FilterableAlert): string {
+  return alert.assignee?.trim() || 'unassigned'
+}
+
+function normalizedCaseState(alert: FilterableAlert): string {
+  return alert.case_state?.trim() || 'no_case'
+}
+
+function normalizedScoreFreshness(alert: FilterableAlert): string {
+  return alert.score_freshness?.trim() || 'unknown'
+}
+
+function normalizedEvidenceAvailability(alert: FilterableAlert): string {
+  return alert.evidence_pack_id ? 'with_evidence' : 'without_evidence'
+}
+
 const COMPARATORS: Record<
   AlertSortId,
   (left: FilterableAlert, right: FilterableAlert) => number
@@ -118,10 +149,22 @@ export function applyAlertFilters<T extends FilterableAlert>(
 ): T[] {
   const severities = new Set(filters.severities)
   const statuses = new Set(filters.statuses)
+  const typologies = new Set(filters.typologies)
+  const assignees = new Set(filters.assignees)
+  const caseStates = new Set(filters.caseStates)
+  const scoreFreshnesses = new Set(filters.scoreFreshnesses)
+  const evidenceAvailability = new Set(filters.evidenceAvailability)
   const matched = alerts.filter(
     (alert) =>
       (severities.size === 0 || severities.has(alert.severity)) &&
       (statuses.size === 0 || statuses.has(alert.status)) &&
+      (typologies.size === 0 || (alert.tags ?? []).some((tag) => typologies.has(tag))) &&
+      (assignees.size === 0 || assignees.has(normalizedAssignee(alert))) &&
+      (caseStates.size === 0 || caseStates.has(normalizedCaseState(alert))) &&
+      (scoreFreshnesses.size === 0 ||
+        scoreFreshnesses.has(normalizedScoreFreshness(alert))) &&
+      (evidenceAvailability.size === 0 ||
+        evidenceAvailability.has(normalizedEvidenceAvailability(alert))) &&
       matchesSearch(alert, filters.search) &&
       withinDateRange(alert, filters.from, filters.to),
   )
@@ -138,6 +181,11 @@ export function parseAlertFilters(params: URLSearchParams): AlertFilterState {
   return {
     severities: params.getAll('severity'),
     statuses: params.getAll('status'),
+    typologies: params.getAll('typology'),
+    assignees: params.getAll('assignee'),
+    caseStates: params.getAll('case'),
+    scoreFreshnesses: params.getAll('freshness'),
+    evidenceAvailability: params.getAll('evidence'),
     search: params.get('q') ?? '',
     sort: isSortId(sort) ? sort : DEFAULT_SORT,
     from: params.get('from') ?? '',
@@ -150,6 +198,11 @@ export function serializeAlertFilters(filters: AlertFilterState): URLSearchParam
   const params = new URLSearchParams()
   for (const severity of filters.severities) params.append('severity', severity)
   for (const status of filters.statuses) params.append('status', status)
+  for (const typology of filters.typologies) params.append('typology', typology)
+  for (const assignee of filters.assignees) params.append('assignee', assignee)
+  for (const caseState of filters.caseStates) params.append('case', caseState)
+  for (const freshness of filters.scoreFreshnesses) params.append('freshness', freshness)
+  for (const availability of filters.evidenceAvailability) params.append('evidence', availability)
   if (filters.search) params.set('q', filters.search)
   if (filters.sort !== DEFAULT_SORT) params.set('sort', filters.sort)
   if (filters.from) params.set('from', filters.from)
@@ -161,6 +214,11 @@ export function hasActiveAlertFilters(filters: AlertFilterState): boolean {
   return (
     filters.severities.length > 0 ||
     filters.statuses.length > 0 ||
+    filters.typologies.length > 0 ||
+    filters.assignees.length > 0 ||
+    filters.caseStates.length > 0 ||
+    filters.scoreFreshnesses.length > 0 ||
+    filters.evidenceAvailability.length > 0 ||
     filters.search !== '' ||
     filters.from !== '' ||
     filters.to !== ''

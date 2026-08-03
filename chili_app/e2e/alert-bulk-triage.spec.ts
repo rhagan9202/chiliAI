@@ -28,7 +28,7 @@ test.describe('Bulk triage', () => {
 
     await expect
       .poll(async () => {
-        const response = await fetch(`${API}/alerts/${alertId}`)
+        const response = await fetch(`${API}/alerts/${alertId}?knowledge_base_id=${kb}`)
         const payload = (await response.json()) as { alert: { status: string } }
         return payload.alert.status
       })
@@ -58,5 +58,35 @@ test.describe('Bulk triage', () => {
 
     await expect(selectAll).toBeChecked()
     await expect(page.getByText(/\d+ alerts? selected/)).toBeVisible()
+  })
+
+  test('keyboard filter, evidence preview, bulk status confirmation, and cockpit handoff stay connected', async ({
+    page,
+  }) => {
+    const { knowledge_base_id: kb, evidence_pack_id: evidence } = seeded()
+    await page.goto(`/alerts?kb=${kb}`)
+
+    await page.keyboard.press('Tab')
+    await page.getByRole('button', { name: /^Critical, \d+ matching$/ }).focus()
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/severity=critical/)
+
+    await page.getByRole('button', { name: 'View evidence' }).first().click()
+    await expect(page).toHaveURL(/alert=/)
+    await expect(page.getByTestId('evidence-narrative')).toBeVisible()
+
+    await page.getByRole('checkbox', { name: 'Select all alerts in view' }).focus()
+    await page.keyboard.press('Space')
+    await expect(page.getByText(/\d+ alerts? selected/)).toBeVisible()
+
+    await page.getByLabel('Bulk status').selectOption('dismissed')
+    await page.getByRole('button', { name: /^Update \d+ alerts?$/ }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText(/Invalid transitions are skipped by the server/)
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+    await page.getByRole('link', { name: /^Investigate / }).first().click()
+    await expect(page).toHaveURL(new RegExp(`/investigation/.+evidence=${evidence}`))
+    await expect(page.getByRole('button', { name: 'View cockpit evidence' })).toBeVisible()
   })
 })

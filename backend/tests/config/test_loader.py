@@ -230,6 +230,23 @@ def test_policy_rules_default_to_empty_when_block_absent(tmp_path: Path) -> None
     assert cfg.policy_rules == []
 
 
+def test_medicare_fraud_pack_declares_typologies_and_features() -> None:
+    cfg = _load_default("medicare_fraud")
+
+    assert len(cfg.typologies) >= 8
+    assert len(cfg.feature_catalog.features) >= 20
+    assert {typology.id for typology in cfg.typologies} >= {
+        "dmepos_overutilization",
+        "billing_spike",
+        "peer_outlier",
+        "referral_ring_exposure",
+        "geographic_anomaly",
+        "enrollment_risk",
+        "never_provided_service",
+        "policy_threshold_exposure",
+    }
+
+
 # ---------------------------------------------------------------------------
 # CHILI_CONFIG_OVERLAY_PATH env overlay wiring (BL-044, config.04)
 # ---------------------------------------------------------------------------
@@ -302,6 +319,11 @@ def test_cms_pack_declares_peerstats_and_timeseries() -> None:
     config = _load_default("medicare_fraud_cms_desynpuf")
     assert config.capabilities.peer_stats is True
     assert config.peer_stats is not None and len(config.peer_stats.metrics) == 2
+    assert {cohort.id for cohort in config.peer_stats.cohorts} == {
+        "provider_specialty_carrier_billing",
+        "provider_geography_carrier_billing",
+        "provider_service_mix_inpatient_billing",
+    }
     assert config.timeseries is not None
     names = [spec.name for spec in config.timeseries.metrics]
     assert names == ["weekly_carrier_billing_self", "monthly_inpatient_billing_self"]

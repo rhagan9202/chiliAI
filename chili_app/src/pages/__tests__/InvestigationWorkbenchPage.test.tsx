@@ -7,10 +7,16 @@ import { useAppStore } from '../../stores/appStore'
 
 import type {
   ClusterResult,
+  CanonicalIdentityDetailResponse,
   DomainCapabilities,
   DomainConfig,
+  EntityFeatureValueResponse,
+  EvidencePackResponse,
+  FeatureCatalogResponse,
+  PeerAnalysisResponse,
   RiskFactorResponse,
   RuntimeEntity,
+  CaseDossierResponse,
 } from '../../api/contracts'
 import { InvestigationWorkbenchPage } from '../InvestigationWorkbenchPage'
 
@@ -43,6 +49,9 @@ const mocks = vi.hoisted(() => ({
     evidence_pack_id: string | null
   }>,
   useAlerts: vi.fn(),
+  useCase: vi.fn(),
+  useCaseDossier: vi.fn(),
+  evidencePacks: {} as Record<string, EvidencePackResponse>,
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
   navigate: vi.fn(),
@@ -54,6 +63,10 @@ const mocks = vi.hoisted(() => ({
   riskOverallScore: 0,
   riskLevel: 'low' as 'low' | 'medium' | 'high' | 'critical',
   riskFactors: [] as RiskFactorResponse[],
+  peerAnalysis: null as PeerAnalysisResponse | null,
+  peerAnalysisError: false,
+  featureCatalog: null as FeatureCatalogResponse | null,
+  featureValues: [] as EntityFeatureValueResponse[],
   clusters: [] as ClusterResult[],
   capabilities: { timeseries: true, gnn: true, risk_scoring: true, rag_chat: true, explainability: true, peer_stats: false } as DomainCapabilities,
   policyItems: [] as Array<{
@@ -66,11 +79,15 @@ const mocks = vi.hoisted(() => ({
     status: 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
     title: string
   }>,
+  identityDetail: null as CanonicalIdentityDetailResponse | null,
 }))
 
 const analyticsCalls = vi.hoisted(() => ({
   risk: [] as Array<[string | null, string | null]>,
   timeseries: [] as Array<[string | null, string | null]>,
+  peerAnalysis: [] as Array<[string | null, string | null, string | null]>,
+  featureCatalog: [] as Array<[string | null]>,
+  featureValues: [] as Array<[string | null, string | null, string | null]>,
 }))
 
 const domainConfig: DomainConfig = {
@@ -181,8 +198,24 @@ vi.mock('../../api/investigation', () => ({
   }),
 }))
 
+vi.mock('../../api/identity', () => ({
+  useCanonicalIdentityDetail: (knowledgeBaseId: string | null, entityId: string | null) => ({
+    isLoading: false,
+    isError: false,
+    data:
+      knowledgeBaseId && entityId && mocks.identityDetail
+        ? mocks.identityDetail
+        : undefined,
+  }),
+}))
+
 vi.mock('../../api/alerts', () => ({
   useAlerts: mocks.useAlerts,
+}))
+
+vi.mock('../../api/cases', () => ({
+  useCase: mocks.useCase,
+  useCaseDossier: mocks.useCaseDossier,
 }))
 
 vi.mock('../../api/analytics', () => ({
@@ -220,10 +253,68 @@ vi.mock('../../api/analytics', () => ({
     isError: false,
     data: { knowledge_base_id: knowledgeBaseId ?? '', clusters: mocks.clusters },
   }),
+  usePeerAnalysis: (
+    knowledgeBaseId: string | null,
+    entityId: string | null,
+    metric: string | null = null,
+  ) => {
+    analyticsCalls.peerAnalysis.push([knowledgeBaseId, entityId, metric])
+    return {
+      isLoading: false,
+      isError: mocks.peerAnalysisError,
+      data: mocks.peerAnalysis ?? undefined,
+    }
+  },
+}))
+
+vi.mock('../../api/features', () => ({
+  useFeatureCatalog: (knowledgeBaseId: string | null) => {
+    analyticsCalls.featureCatalog.push([knowledgeBaseId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: mocks.featureCatalog ?? undefined,
+    }
+  },
+  useEntityFeatureValues: (
+    knowledgeBaseId: string | null,
+    entityType: string | null,
+    entityId: string | null,
+  ) => {
+    analyticsCalls.featureValues.push([knowledgeBaseId, entityType, entityId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: {
+        knowledge_base_id: knowledgeBaseId ?? '',
+        entity_type: entityType ?? '',
+        entity_id: entityId ?? '',
+        items: mocks.featureValues,
+      },
+    }
+  },
 }))
 
 vi.mock('../../api/evidence', () => ({
-  useEvidencePack: () => ({ isLoading: false, isError: false, data: undefined }),
+  useEvidencePack: (evidencePackId: string | null) => ({
+    isLoading: false,
+    isError: false,
+    data: evidencePackId ? mocks.evidencePacks[evidencePackId] : undefined,
+  }),
+}))
+
+vi.mock('../../api/explanationReviews', () => ({
+  useCreateEvidencePackReview: () => ({ isPending: false, mutate: vi.fn() }),
+  useEvidencePackReviews: () => ({
+    data: {
+      evidence_pack_id: '',
+      items: [],
+      knowledge_base_id: '',
+      page: { page: 1, page_size: 50, total_items: 0 },
+    },
+    isError: false,
+    isLoading: false,
+  }),
 }))
 
 vi.mock('../../api/policy', () => ({
@@ -274,6 +365,80 @@ function selectLiveProvider(): RuntimeEntity {
   return provider
 }
 
+function evidencePack(id: string, alertId: string, reasoning: string): EvidencePackResponse {
+  return {
+    id,
+    alert_id: alertId,
+    reasoning,
+    confidence: 0.91,
+    created_at: '2026-08-02T12:00:00Z',
+    items: [],
+    policy_citations: [],
+    scores: {},
+    source_documents: [],
+    subgraph_edge_ids: [],
+    subgraph_node_ids: ['provider-204'],
+  }
+}
+
+function cockpitCaseDossier(): CaseDossierResponse {
+  return {
+    case: {
+      id: 'case-1',
+      knowledge_base_id: 'kb-live',
+      title: 'Case #1',
+      status: 'open',
+      priority: 'high',
+      assignee: null,
+      alert_ids: ['alert-live'],
+      evidence_pack_id: 'evidence-live',
+      updated_at: '2026-08-02T12:00:00Z',
+    },
+    alerts: [],
+    entity_timeline: [],
+    feedback_history: [],
+    evidence_packs: [],
+    explanation_review_summaries: [],
+    audit_events: [
+      {
+        event_id: 'audit-feedback',
+        occurred_at: '2026-08-02T12:10:00Z',
+        tenant_id: 'kb-live',
+        knowledge_base_id: 'kb-live',
+        actor_user_id: 'analyst-42',
+        actor_email: 'analyst42@example.test',
+        actor_roles: ['analyst'],
+        action: 'case.feedback.create',
+        resource_type: 'case',
+        resource_id: 'case-1',
+        before: { feedback_count: 0 },
+        after: { feedback_count: 1, notes: 'Escalation note with sensitive detail.' },
+        correlation_id: 'cases:kb-live:case.feedback.create:case-1',
+        outcome: 'success',
+        metadata: { source: 'api.cases' },
+      },
+      {
+        event_id: 'audit-promote',
+        occurred_at: '2026-08-02T12:00:00Z',
+        tenant_id: 'kb-live',
+        knowledge_base_id: 'kb-live',
+        actor_user_id: 'analyst-42',
+        actor_email: 'analyst42@example.test',
+        actor_roles: ['analyst'],
+        action: 'case.promote',
+        resource_type: 'case',
+        resource_id: 'case-1',
+        before: null,
+        after: { status: 'open', priority: 'high' },
+        correlation_id: 'cases:kb-live:case.promote:case-1',
+        outcome: 'success',
+        metadata: { source: 'api.cases' },
+      },
+    ],
+    export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
+  }
+}
+
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
     // The active knowledge base is remembered across pages; reset it so one
@@ -283,6 +448,9 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.knowledgeBases = []
     mocks.alerts = []
     mocks.useAlerts.mockReset()
+    mocks.useCase.mockReset()
+    mocks.useCaseDossier.mockReset()
+    mocks.evidencePacks = {}
     mocks.useAlerts.mockImplementation((filters?: { knowledgeBaseId?: string }) => {
       const items = filters?.knowledgeBaseId
         ? mocks.alerts.filter((alert) => alert.knowledge_base_id === filters.knowledgeBaseId)
@@ -292,6 +460,16 @@ describe('InvestigationWorkbenchPage', () => {
         isError: false,
         data: { items, page: { page: 1, page_size: items.length, total_items: items.length } },
       }
+    })
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: undefined,
+    })
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: undefined,
     })
     mocks.searchItems = []
     mocks.selectedEntity = null
@@ -304,11 +482,19 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.riskOverallScore = 0
     mocks.riskLevel = 'low'
     mocks.riskFactors = []
+    mocks.peerAnalysis = null
+    mocks.peerAnalysisError = false
+    mocks.featureCatalog = null
+    mocks.featureValues = []
     mocks.clusters = []
     mocks.capabilities = { ...FULL_CAPABILITIES }
     mocks.policyItems = []
+    mocks.identityDetail = null
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
+    analyticsCalls.peerAnalysis = []
+    analyticsCalls.featureCatalog = []
+    analyticsCalls.featureValues = []
   })
 
   it('renders a live no-KB state instead of seeded graph data', () => {
@@ -493,6 +679,52 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.queryByText('Risk pressure trend')).not.toBeInTheDocument()
   })
 
+  it('renders identity links for the selected entity', () => {
+    selectLiveProvider()
+    mocks.identityDetail = {
+      canonical_entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      limit: 50,
+      offset: 0,
+      total: 1,
+      links: [
+        {
+          id: 'identity-link-1',
+          knowledge_base_id: 'kb-live',
+          canonical_entity_id: 'provider-204',
+          source_entity_id: 'source-provider-204',
+          relationship_type: 'same_as',
+          confidence: 'medium',
+          score: 0.74,
+          review_state: 'steward_review',
+          decision_source: 'deterministic_rules',
+          source_refs: ['nppes:1234567890', 'beneficiary_mbi:1EG4-TE5-MK73'],
+          match_reasons: [{ field: 'npi', reason: 'identifier_exact', score_contribution: 0.6 }],
+          decision_history: [
+            {
+              decision: 'approve_merge',
+              actor_user_id: 'analyst-42',
+              comment: 'same provider after source review',
+              created_at: '2026-08-03T12:30:00Z',
+            },
+          ],
+          created_at: '2026-08-03T12:00:00Z',
+          updated_at: '2026-08-03T12:30:00Z',
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const panel = screen.getByRole('group', { name: 'Identity resolution' })
+    expect(within(panel).getByText('source-provider-204')).toBeInTheDocument()
+    expect(within(panel).getByText('medium confidence')).toBeInTheDocument()
+    expect(within(panel).getByText('steward review')).toBeInTheDocument()
+    expect(within(panel).getByText('nppes:1234567890')).toBeInTheDocument()
+    expect(within(panel).queryByText('beneficiary_mbi:1EG4-TE5-MK73')).not.toBeInTheDocument()
+    expect(within(panel).getByText('approve merge')).toBeInTheDocument()
+  })
+
   it('renders unavailable risk analytics with a next step, not a restated reason', () => {
     selectLiveProvider()
     mocks.riskUnavailableReason = null
@@ -594,6 +826,372 @@ describe('InvestigationWorkbenchPage', () => {
     )
   })
 
+  it('honors explicit alert, case, and evidence cockpit state from the URL', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Explicit cockpit evidence.'),
+      'evidence-fallback': evidencePack('evidence-fallback', 'alert-fallback', 'Fallback evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    expect(mocks.useCase).toHaveBeenCalledWith('kb-live', 'case-1')
+    const state = screen.getByRole('group', { name: 'Cockpit state' })
+    expect(within(state).getByText('Cockpit state')).toBeInTheDocument()
+    expect(within(state).getByText('alert-live')).toBeInTheDocument()
+    expect(within(state).getByText('Case #1')).toBeInTheDocument()
+    expect(within(state).getByText('evidence-live')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+
+    expect(screen.getByText('Explicit cockpit evidence.')).toBeInTheDocument()
+    expect(screen.queryByText('Fallback evidence.')).not.toBeInTheDocument()
+  })
+
+  it('renders a compact redacted audit trail for the explicit cockpit case', () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: cockpitCaseDossier().case,
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: cockpitCaseDossier(),
+    })
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1')
+
+    expect(mocks.useCaseDossier).toHaveBeenCalledWith('kb-live', 'case-1')
+    const auditTrail = screen.getByRole('group', { name: 'Cockpit audit trail' })
+    expect(within(auditTrail).getByText('Audit trail')).toBeInTheDocument()
+    expect(within(auditTrail).getByText('case feedback create')).toBeInTheDocument()
+    expect(within(auditTrail).getByText('case promote')).toBeInTheDocument()
+    expect(within(auditTrail).getAllByText('analyst42@example.test')).toHaveLength(2)
+    expect(within(auditTrail).getAllByText('success')).toHaveLength(2)
+    expect(screen.queryByText('Escalation note with sensitive detail.')).not.toBeInTheDocument()
+  })
+
+  it('renders cockpit actions only for validated alert, case, and evidence context', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Action rail evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    expect(screen.getByRole('link', { name: 'Open alert' })).toHaveAttribute(
+      'href',
+      '/alerts?kb=kb-live&alert=alert-live',
+    )
+    expect(screen.getByRole('link', { name: 'Open case' })).toHaveAttribute(
+      'href',
+      '/cases?kb=kb-live&case=case-1',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'View cockpit evidence' }))
+
+    expect(screen.getByText('Action rail evidence.')).toBeInTheDocument()
+  })
+
+  it('summarizes risk, graph, case, and evidence in the first-viewport cockpit overview', () => {
+    selectLiveProvider()
+    mocks.riskAvailable = true
+    mocks.riskOverallScore = 0.82
+    mocks.riskLevel = 'high'
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Overview evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    const overview = screen.getByRole('group', { name: 'Cockpit overview' })
+    expect(within(overview).getByText('82')).toBeInTheDocument()
+    expect(within(overview).getByText('high risk')).toBeInTheDocument()
+    expect(within(overview).getByText('1 entity · 0 relationships')).toBeInTheDocument()
+    expect(within(overview).getByText('Case #1')).toBeInTheDocument()
+    expect(within(overview).getByText('evidence-live')).toBeInTheDocument()
+  })
+
+  it('launches Ask AI with explicit cockpit state instead of the fallback entity alert', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Explicit cockpit evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&case=case-1&evidence=evidence-live&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('marks an invalid explicit alert and does not silently launch AI against a fallback alert', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live&alert=alert-missing')
+
+    expect(screen.getByText('alert-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('drops an invalid explicit evidence pack from AI handoff', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&evidence=evidence-missing',
+    )
+
+    expect(screen.getByText('evidence-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('drops an invalid case from AI handoff', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: null,
+      },
+    ]
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      data: undefined,
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-missing',
+    )
+
+    expect(screen.getByText('case-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('clears alert, case, and evidence context when switching knowledge bases', async () => {
+    selectLiveProvider()
+    mocks.knowledgeBases.push({
+      id: 'kb-other',
+      name: 'Other KB',
+      description: 'Other KB',
+      status: 'ready',
+      document_count: 1,
+      entity_count: 1,
+      relationship_count: 0,
+      created_at: '2026-05-11T00:00:00Z',
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    await userEvent.selectOptions(screen.getByLabelText('Knowledge base'), 'kb-other')
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      pathname: '/investigation',
+      search: 'kb=kb-other',
+    })
+  })
+
   it('loads alerts in the active knowledge base scope for entity Ask AI context', () => {
     selectLiveProvider()
     mocks.alerts = [
@@ -674,6 +1272,241 @@ describe('InvestigationWorkbenchPage', () => {
     const band = screen.getByTestId('signal-band')
     expect(within(band).getByText(/AI ANALYSIS · 1 RISK SIGNAL\b/)).toBeInTheDocument()
     expect(within(band).getByText('weekly carrier billing self')).toBeInTheDocument()
+  })
+
+  it('shows catalog feature labels and typologies in the Signals tab', () => {
+    selectLiveProvider()
+    mocks.riskAvailable = true
+    mocks.riskFactors = [
+      {
+        factor_name: 'weekly_provider_billing_zscore',
+        contribution: 0.42,
+        rationale: 'self-history anomaly z=4.5',
+      },
+    ]
+    mocks.featureCatalog = {
+      knowledge_base_id: 'kb-live',
+      catalog_version: 'cms-fraud-features-v1',
+      typologies: [
+        {
+          id: 'billing_spike',
+          label: 'Billing spike',
+          description: 'Unexpected billing acceleration.',
+          entity_types: ['provider'],
+          feature_ids: ['weekly_provider_billing_zscore'],
+          policy_rule_ids: [],
+          playbook_ids: [],
+          severity_hint: 'high',
+        },
+      ],
+      features: [
+        {
+          id: 'weekly_provider_billing_zscore',
+          label: 'Weekly provider billing z-score',
+          description: 'Provider billing deviation from baseline.',
+          entity_types: ['provider'],
+          typology_ids: ['billing_spike'],
+          value_type: 'decimal',
+          transformation_version: 'peerstats-zscore-v1',
+          source_mappings: [],
+          peer_dimensions: ['specialty'],
+          threshold_hints: { high: 0.8 },
+        },
+      ],
+    }
+    mocks.featureValues = [
+      {
+        entity_type: 'provider',
+        entity_id: 'provider-204',
+        feature_id: 'weekly_provider_billing_zscore',
+        value: 4.2,
+        normalized_value: 0.84,
+        catalog_version: 'cms-fraud-features-v1',
+        transformation_version: 'peerstats-zscore-v1',
+        source_refs: ['entity_derived_signals.weekly_provider_billing'],
+        observed_at: '2026-08-02T12:00:00Z',
+        score_run_id: 'score-run-1',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.featureCatalog.at(-1)).toEqual(['kb-live'])
+    expect(analyticsCalls.featureValues.at(-1)).toEqual(['kb-live', 'provider', 'provider-204'])
+    expect(screen.getByText('Feature values')).toBeInTheDocument()
+    const featureList = screen.getByTestId('feature-list')
+    expect(within(featureList).getByText('Weekly provider billing z-score')).toBeInTheDocument()
+    expect(within(featureList).getByText('Billing spike')).toBeInTheDocument()
+    expect(within(featureList).getByText('84%')).toBeInTheDocument()
+    expect(within(featureList).getByText('entity_derived_signals.weekly_provider_billing')).toBeInTheDocument()
+  })
+
+  it('surfaces typology, feature, and peer context in the cockpit before tab review', () => {
+    selectLiveProvider()
+    mocks.featureCatalog = {
+      knowledge_base_id: 'kb-live',
+      catalog_version: 'cms-fraud-features-v1',
+      typologies: [
+        {
+          id: 'billing_spike',
+          label: 'Billing spike',
+          description: 'Unexpected billing acceleration.',
+          entity_types: ['provider'],
+          feature_ids: ['weekly_provider_billing_zscore'],
+          policy_rule_ids: [],
+          playbook_ids: [],
+          severity_hint: 'high',
+        },
+      ],
+      features: [
+        {
+          id: 'weekly_provider_billing_zscore',
+          label: 'Weekly provider billing z-score',
+          description: 'Provider billing deviation from baseline.',
+          entity_types: ['provider'],
+          typology_ids: ['billing_spike'],
+          value_type: 'decimal',
+          transformation_version: 'peerstats-zscore-v1',
+          source_mappings: [],
+          peer_dimensions: ['specialty'],
+          threshold_hints: { high: 0.8 },
+        },
+      ],
+    }
+    mocks.featureValues = [
+      {
+        entity_type: 'provider',
+        entity_id: 'provider-204',
+        feature_id: 'weekly_provider_billing_zscore',
+        value: 4.2,
+        normalized_value: 0.84,
+        catalog_version: 'cms-fraud-features-v1',
+        transformation_version: 'peerstats-zscore-v1',
+        source_refs: ['entity_derived_signals.weekly_provider_billing'],
+        observed_at: '2026-08-02T12:00:00Z',
+        score_run_id: 'score-run-1',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const context = screen.getByRole('group', { name: 'Cockpit context' })
+    expect(within(context).getByText('Billing spike')).toBeInTheDocument()
+    expect(within(context).getByText('Weekly provider billing z-score')).toBeInTheDocument()
+    expect(within(context).getByText('84%')).toBeInTheDocument()
+    expect(within(context).getByText('Specialty')).toBeInTheDocument()
+  })
+
+  it('renders peer comparison medians, p90, z-score, percentile, and cohort confidence in the cockpit', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, peer_stats: true }
+    mocks.peerAnalysis = {
+      entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      metrics: [
+        {
+          metric_name: 'weekly_provider_billing',
+          entity_type: 'provider',
+          interval_start: '2026-08-02T00:00:00Z',
+          peer_group_key: 'provider|Pain Management',
+          entity_value: 100,
+          peer_mean: 48.25,
+          peer_std: 12.5,
+          z_score: 4.14,
+          signal_value: 4.14,
+          percentile: 99.2,
+          cohort_size: 18,
+          rationale: 'Provider weekly billing is materially above its peers.',
+          confidence: 'normal',
+          confidence_reason: null,
+          distribution: {
+            count: 18,
+            minimum: 12,
+            p50: 44,
+            p90: 82,
+            maximum: 100,
+          },
+          cohort: {
+            id: 'provider_specialty_billing',
+            label: 'Provider specialty billing',
+            version: 'v1',
+            entity_type: 'provider',
+            peer_metric: 'weekly_provider_billing',
+            group_by: ['specialty'],
+            group_values: { specialty: 'Pain Management' },
+            exclusions: [],
+            member_entity_ids: ['provider-204', 'provider-301'],
+            member_count: 18,
+          },
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.peerAnalysis.at(-1)).toEqual(['kb-live', 'provider-204', null])
+    const peerPanel = screen.getByRole('group', { name: 'Peer comparisons' })
+    expect(within(peerPanel).getByText('weekly provider billing')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Entity 100')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Peer median 44')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Peer p90 82')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('z-score 4.14')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('99.2 percentile')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('18 peers · normal confidence')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Provider specialty billing')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('specialty: Pain Management')).toBeInTheDocument()
+  })
+
+  it('omits peer comparisons when the active domain does not expose peer stats', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, peer_stats: false }
+    mocks.peerAnalysis = {
+      entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      metrics: [
+        {
+          metric_name: 'weekly_provider_billing',
+          entity_type: 'provider',
+          interval_start: '2026-08-02T00:00:00Z',
+          peer_group_key: 'provider|Pain Management',
+          entity_value: 100,
+          peer_mean: 48.25,
+          peer_std: 12.5,
+          z_score: 4.14,
+          signal_value: 4.14,
+          percentile: 99.2,
+          cohort_size: 18,
+          rationale: 'Provider weekly billing is materially above its peers.',
+          confidence: 'normal',
+          confidence_reason: null,
+          distribution: {
+            count: 18,
+            minimum: 12,
+            p50: 44,
+            p90: 82,
+            maximum: 100,
+          },
+          cohort: null,
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.peerAnalysis).toEqual([])
+    expect(screen.queryByRole('group', { name: 'Peer comparisons' })).not.toBeInTheDocument()
+  })
+
+  it('shows domain-neutral cockpit context empty states when feature values are missing', () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const context = screen.getByRole('group', { name: 'Cockpit context' })
+    expect(within(context).getByText('No typology context')).toBeInTheDocument()
+    expect(within(context).getByText('No mapped feature typology')).toBeInTheDocument()
+    expect(within(context).getByText('No scored feature')).toBeInTheDocument()
+    expect(within(context).getByText('No peer dimensions')).toBeInTheDocument()
   })
 
   it('hides the signal band when risk is unavailable, even with factors on the raw payload', () => {

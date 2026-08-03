@@ -82,16 +82,44 @@ class InMemoryDerivedRiskSignalWriter:
         return len(keys)
 
     def latest_signals(
-        self, *, knowledge_base_id: str, entity_id: str
+        self,
+        *,
+        knowledge_base_id: str,
+        entity_id: str,
+        metric_name: str | None = None,
     ) -> list[DerivedRiskSignal]:
         by_metric: dict[str, DerivedRiskSignal] = {}
         for signal in self._signals.values():
             if (
                 signal.knowledge_base_id != knowledge_base_id
                 or signal.entity_id != entity_id
+                or (metric_name is not None and signal.metric_name != metric_name)
             ):
                 continue
             current = by_metric.get(signal.metric_name)
             if current is None or signal.interval_start >= current.interval_start:
                 by_metric[signal.metric_name] = signal
-        return list(by_metric.values())
+        return sorted(
+            by_metric.values(),
+            key=lambda signal: (signal.metric_name, signal.interval_start),
+        )
+
+    def peer_group_signals(
+        self,
+        *,
+        knowledge_base_id: str,
+        metric_name: str,
+        interval_start: datetime,
+        peer_group_key: str,
+    ) -> list[DerivedRiskSignal]:
+        return sorted(
+            [
+                signal
+                for signal in self._signals.values()
+                if signal.knowledge_base_id == knowledge_base_id
+                and signal.metric_name == metric_name
+                and signal.interval_start == interval_start
+                and signal.peer_group_key == peer_group_key
+            ],
+            key=lambda signal: signal.entity_id,
+        )

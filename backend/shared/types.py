@@ -13,9 +13,9 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime
 import re
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from shared.utils import utc_now
 
@@ -129,6 +129,7 @@ class Alert(BaseModel):
     # TODO(production): `acknowledged` is deprecated in favor of `status`.
     resolved_by: str | None = None
     resolution_notes: str | None = None
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class FeatureAttribution(BaseModel):
@@ -147,6 +148,42 @@ class EvidenceNarrativeSection(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class EvidenceProvenanceReference(BaseModel):
+    """A normalized source reference supporting an evidence pack assertion."""
+
+    reference_type: str = Field(min_length=1)
+    reference_id: str = Field(min_length=1)
+    label: str = ""
+    source_system: str | None = None
+    source_version: str | None = None
+    transformation_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    route_target: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def _metadata_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _assert_json_safe(value)
+        return value
+
+
+def _assert_json_safe(value: Any) -> None:
+    if value is None or isinstance(value, str | int | float | bool):
+        return
+    if isinstance(value, list):
+        for item in cast(list[Any], value):
+            _assert_json_safe(item)
+        return
+    if isinstance(value, dict):
+        for key, item in cast(dict[Any, Any], value).items():
+            if not isinstance(key, str):
+                raise ValueError("Evidence provenance metadata keys must be strings.")
+            _assert_json_safe(item)
+        return
+    raise ValueError("Evidence provenance metadata must contain only JSON-safe values.")
+
+
 class EvidencePack(BaseModel):
     """Supporting evidence bundle attached to an alert."""
 
@@ -159,8 +196,15 @@ class EvidencePack(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
     scores: dict[str, float] = Field(default_factory=dict)
     source_documents: list[str] = Field(default_factory=list)
-    attribution: list[FeatureAttribution] = Field(default_factory=list)
-    narrative_sections: list[EvidenceNarrativeSection] = Field(default_factory=list)
+    attribution: list[FeatureAttribution] = Field(
+        default_factory=lambda: list[FeatureAttribution]()
+    )
+    narrative_sections: list[EvidenceNarrativeSection] = Field(
+        default_factory=lambda: list[EvidenceNarrativeSection]()
+    )
+    provenance: list[EvidenceProvenanceReference] = Field(
+        default_factory=lambda: list[EvidenceProvenanceReference]()
+    )
     # TODO(production): Enrich EvidencePack with structured fields:
     # - timeline_events: list[TimelineEntry] for temporal evidence ordering
     # - visual_layout: dict for pre-computed graph visualization coordinates
@@ -399,6 +443,7 @@ __all__ = [
     "EntityDefinition",
     "EvidenceNarrativeSection",
     "EvidencePack",
+    "EvidenceProvenanceReference",
     "FeatureAttribution",
     "KnowledgeBase",
     "MonitoringObservation",

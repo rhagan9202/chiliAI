@@ -13,6 +13,13 @@ import {
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
 import { usePushRecords, useUploadRecordFile } from '../api/records'
+import {
+  useCancelScoreRun,
+  useReplayScoreRun,
+  useScoreRun,
+  useScoreRuns,
+  useStartScoreRun,
+} from '../api/scoreRuns'
 import type {
   KnowledgeBaseDocumentPreviewResponse,
   RecordIngestReceipt,
@@ -23,6 +30,7 @@ import { IngestionStepper } from '../components/ingestion/IngestionStepper'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
 import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
+import { ScoreRunStatusPanel } from '../components/knowledgebase/ScoreRunStatusPanel'
 import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
 import { RecordsPreviewTable } from '../components/ingestion/RecordsPreviewTable'
 import { RunTimeline } from '../components/ingestion/RunTimeline'
@@ -61,19 +69,21 @@ export function KnowledgeBaseManagerPage() {
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
   // AlertFeedPage / PolicyIntelligencePage / InvestigationWorkbenchPage. If the
   // requested KB isn't in the visible list, the auto-select fallback below wins.
-  // Initializer-only: a client-side navigation that changes ?kb= without
-  // remounting this page will not rebind selection — no in-app link carries
-  // ?kb= here today; revisit if one is added.
   const [searchParams] = useSearchParams()
+  const requestedKnowledgeBaseId = searchParams.get('kb')
+  const requestedDocumentId = searchParams.get('document')
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(
-    () => searchParams.get('kb'),
+    () => requestedKnowledgeBaseId,
   )
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    () => requestedDocumentId,
+  )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
   const [uploadPercent, setUploadPercent] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [selectedScoreRunId, setActiveScoreRunId] = useState<string | null>(null)
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
@@ -105,6 +115,10 @@ export function KnowledgeBaseManagerPage() {
   )
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
   const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId)
+  const scoreRunsQuery = useScoreRuns(activeKnowledgeBaseId, { limit: 1 })
+  const scoreRuns = scoreRunsQuery.data?.items ?? []
+  const activeScoreRunId = selectedScoreRunId ?? scoreRuns[0]?.id ?? null
+  const scoreRunQuery = useScoreRun(activeKnowledgeBaseId, activeScoreRunId)
   const documents = documentsQuery.data?.items ?? []
   const workflows = workflowsQuery.data?.items ?? []
   const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
@@ -128,6 +142,9 @@ export function KnowledgeBaseManagerPage() {
   const deleteDocumentMutation = useDeleteKnowledgeBaseDocument(activeKnowledgeBaseId)
   const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
   const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
+  const startScoreRunMutation = useStartScoreRun(activeKnowledgeBaseId)
+  const cancelScoreRunMutation = useCancelScoreRun(activeKnowledgeBaseId, activeScoreRunId)
+  const replayScoreRunMutation = useReplayScoreRun(activeKnowledgeBaseId, activeScoreRunId)
 
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
   const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
@@ -397,6 +414,14 @@ export function KnowledgeBaseManagerPage() {
   const errorStepIds = new Set(contentErrors.length > 0 ? (['validate'] as const) : [])
 
   const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
+  const scoreRunStartDisabled = !knowledgeBase || knowledgeBase.entity_count === 0
+  const scoreRunPendingAction = startScoreRunMutation.isPending
+    ? 'start'
+    : cancelScoreRunMutation.isPending
+      ? 'cancel'
+      : replayScoreRunMutation.isPending
+        ? 'replay'
+        : null
 
   return (
     <section className="page-grid">
@@ -439,6 +464,7 @@ export function KnowledgeBaseManagerPage() {
                     onSuccess: (created) => {
                       setSelectedKnowledgeBaseId(created.id)
                       setSelectedDocumentId(null)
+                      setActiveScoreRunId(null)
                       setKnowledgeBaseName('')
                       setKnowledgeBaseDescription('')
                       studio.setCurrentStep('source')
@@ -451,6 +477,7 @@ export function KnowledgeBaseManagerPage() {
                   onSuccess: () => {
                     setSelectedKnowledgeBaseId(null)
                     setSelectedDocumentId(null)
+                    setActiveScoreRunId(null)
                     studio.setCurrentStep('knowledge-base')
                   },
                 })
@@ -458,6 +485,7 @@ export function KnowledgeBaseManagerPage() {
               onSelect={(knowledgeBaseId) => {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
                 setSelectedDocumentId(null)
+                setActiveScoreRunId(null)
                 studio.setCurrentStep('source')
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
@@ -603,6 +631,47 @@ export function KnowledgeBaseManagerPage() {
               />
             </Card>
           ) : null}
+
+          <Card>
+            <ScoreRunStatusPanel
+              detail={scoreRunQuery.data ?? null}
+              disabled={!activeKnowledgeBaseId}
+              error={scoreRunQuery.isError ? 'Score run status could not be loaded.' : null}
+              loading={scoreRunQuery.isLoading}
+              onCancel={() => {
+                cancelScoreRunMutation.mutate(undefined, {
+                  onSuccess: (detail) => setActiveScoreRunId(detail.run.id),
+                })
+              }}
+              onReplay={() => {
+                replayScoreRunMutation.mutate(
+                  { idempotency_key: `score-replay:${activeScoreRunId ?? 'missing'}` },
+                  { onSuccess: (detail) => setActiveScoreRunId(detail.run.id) },
+                )
+              }}
+              onStart={() => {
+                if (!activeKnowledgeBaseId || scoreRunStartDisabled) {
+                  return
+                }
+                const currentRun = scoreRunQuery.data?.run
+                startScoreRunMutation.mutate(
+                  {
+                    batch_size: 100,
+                    catalog_version: currentRun?.catalog_version ?? 'cms-fraud-features-v1',
+                    model_version: currentRun?.model_version ?? 'risk-linear-v1',
+                  },
+                  { onSuccess: (detail) => setActiveScoreRunId(detail.run.id) },
+                )
+              }}
+              pendingAction={scoreRunPendingAction}
+              startDisabled={scoreRunStartDisabled}
+              startTitle={
+                scoreRunStartDisabled
+                  ? 'Start requires ingested entities in this knowledge base.'
+                  : undefined
+              }
+            />
+          </Card>
 
           <Card>
             <DocumentInventory

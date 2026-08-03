@@ -38,6 +38,17 @@ def _reference(alert_id: str) -> AlertCreatedReference:
         entity_label="Claim C1",
         confidence=0.82,
         tags=["upcoding", "velocity"],
+        generation_metadata={
+            "suppression": {
+                "decision": "retained",
+                "reason": "No active suppression rule matched claim and claim_anomaly.",
+            },
+            "deduplication": {
+                "decision": "retained",
+                "reason": "No existing alert inside the dedup window.",
+                "window_seconds": 900,
+            },
+        },
     )
 
 
@@ -80,6 +91,8 @@ def test_flow4_maps_entity_label_confidence_and_tags_onto_history_record() -> No
     assert record.entity_label == "Claim C1"
     assert record.confidence == 0.82
     assert record.tags == ["upcoding", "velocity"]
+    assert record.generation_metadata["suppression"]["decision"] == "retained"
+    assert record.generation_metadata["deduplication"]["window_seconds"] == 900
 
 
 def test_flow4_is_idempotent_on_replay() -> None:

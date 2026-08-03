@@ -85,6 +85,7 @@ from graph.exceptions import (
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
+    ExplanationLineage,
     ExplanationSubgraph,
 )
 from analytics.explainability.protocols import (
@@ -139,7 +140,11 @@ from analytics.peerstats.models import DerivedRiskSignal
 from analytics.peerstats.service import PeerStatsService, create_peerstats_service
 from analytics.peerstats.service_models import PeerStatsComputeRequest
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
-from analytics.risk.adapters.postgres import PostgresRiskHistoryStore, PostgresRiskSignalSource
+from analytics.risk.adapters.postgres import (
+    PostgresRiskHistoryStore,
+    PostgresRiskProjectionRepository,
+    PostgresRiskSignalSource,
+)
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import (
     RiskConfigurationError,
@@ -147,6 +152,14 @@ from analytics.risk.exceptions import (
     RiskInsufficientSignalsError,
 )
 from analytics.risk.models import RiskAssessmentRecord, RiskFactor
+from analytics.risk.projection_service import (
+    RiskProjectionService,
+    RiskProjectionWriteRequest,
+)
+from analytics.risk.projections import (
+    InMemoryRiskProjectionRepository,
+    RiskProjectionRepositoryProtocol,
+)
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
     RiskAssessmentRequest,
@@ -335,6 +348,7 @@ __all__ = [
     "build_policy_service",
     "build_raw_record_store",
     "build_risk_history_writer",
+    "build_risk_projection_repository",
     "build_risk_signal_source",
     "build_scorecard_run_repository",
     "build_timeseries_anomaly_store",
@@ -448,6 +462,7 @@ class WorkerDependencies:
     document_status_store: SourceDocumentStatusStore
     dlq_record_store: DlqRecordStore
     graph_embeddings_enabled: bool = False
+    risk_projection_service: RiskProjectionService | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +848,16 @@ def build_risk_history_writer(
     return PostgresRiskHistoryStore(provider)
 
 
+def build_risk_projection_repository(
+    provider: ConnectionProvider | None,
+) -> RiskProjectionRepositoryProtocol:
+    """Select a risk projection repository: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryRiskProjectionRepository()
+    return PostgresRiskProjectionRepository(provider)
+
+
 def build_alert_history_writer(
     provider: ConnectionProvider | None,
 ) -> AlertHistoryWriter:
@@ -866,6 +891,7 @@ def build_kb_deletion_stores(
     alert_history_writer: AlertHistoryWriter,
     entity_metric_repository: EntityMetricRepository,
     timeseries_anomaly_store: TimeseriesAnomalyPurger,
+    risk_projection_repository: RiskProjectionRepositoryProtocol | None = None,
 ) -> KbDeletionStores:
     """Assemble the shared KB-delete cascade bundle for the worker.
 
@@ -890,6 +916,11 @@ def build_kb_deletion_stores(
         raw_record_store=raw_record_store,
         derived_signal_store=derived_signal_store,
         risk_history_writer=risk_history_writer,
+        risk_projection_repository=(
+            risk_projection_repository
+            if risk_projection_repository is not None
+            else build_risk_projection_repository(provider)
+        ),
         observation_writer=observation_writer,
         alert_history_writer=alert_history_writer,
         entity_metric_repository=entity_metric_repository,
@@ -1179,6 +1210,8 @@ def build_worker_dependencies() -> WorkerDependencies:
     policy_rules = list(config.policy_rules)
     entity_metric_repository = build_entity_metric_repository(connection_provider)
     risk_history_writer = build_risk_history_writer(connection_provider)
+    risk_projection_repository = build_risk_projection_repository(connection_provider)
+    risk_projection_service = RiskProjectionService(risk_projection_repository)
     alert_history_writer = build_alert_history_writer(connection_provider)
     analytics_config = config.analytics or AnalyticsConfig()
     metrics_throttle = MetricsRecomputeThrottle(
@@ -1207,6 +1240,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         derived_signal_store=derived_signal_store,
         observation_writer=observation_writer,
         risk_history_writer=risk_history_writer,
+        risk_projection_repository=risk_projection_repository,
         alert_history_writer=alert_history_writer,
         entity_metric_repository=entity_metric_repository,
         timeseries_anomaly_store=timeseries_anomaly_store,
@@ -1251,6 +1285,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         records_analytics_throttle=records_analytics_throttle,
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
+        risk_projection_service=risk_projection_service,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -2387,6 +2422,7 @@ def _run_explainability_stage(
             entity_id=entity_id,
             alert_id=alert_id,
             risk_response=risk_response,
+            correlation_id=event.correlation_id,
         )
         response = explainability_service.generate_from_context(context)
     except (ExplainabilityError, GraphError) as exc:
@@ -2446,6 +2482,7 @@ def build_explanation_context(
     entity_id: str,
     alert_id: str,
     risk_response: RiskAssessmentResponse,
+    correlation_id: str | None = None,
 ) -> ExplanationContext:
     """Assemble a real explanation context from the graph subgraph + risk assessment.
 
@@ -2508,6 +2545,10 @@ def build_explanation_context(
         subgraph=ExplanationSubgraph(node_ids=node_ids, edge_ids=edge_ids),
         confidence=risk_response.overall_score,
         scores=scores,
+        lineage=ExplanationLineage(
+            score_request_id=risk_response.request_id,
+            correlation_id=correlation_id,
+        ),
     )
 
 
@@ -2688,6 +2729,8 @@ def handle_risk_scored_for_graph(
     *,
     risk_history_writer: RiskHistoryWriter,
     graph_service: GraphService,
+    risk_projection_service: RiskProjectionService | None = None,
+    feature_typology_index: dict[str, list[str]] | None = None,
 ) -> int:
     """Flow 3 — persist risk assessments and snapshot risk onto the graph entity.
 
@@ -2697,7 +2740,7 @@ def handle_risk_scored_for_graph(
     so it cannot re-trigger the analytics pipeline.
     """
 
-    assessed_at = datetime.now(tz=timezone.utc)
+    assessed_at = event.occurred_at
     processed = 0
     for assessment in event.assessments:
         record = RiskAssessmentRecord(
@@ -2719,6 +2762,18 @@ def handle_risk_scored_for_graph(
             assessed_at=assessed_at,
         )
         risk_history_writer.write_assessment(record)
+        if risk_projection_service is not None:
+            risk_projection_service.project_assessment(
+                RiskProjectionWriteRequest(
+                    assessment=assessment,
+                    entity_type=_entity_type_from_id(assessment.entity_id),
+                    model_version="risk-score-history",
+                    catalog_version="risk-score-history",
+                    scored_at=assessed_at,
+                    score_run_id=assessment.request_id,
+                    feature_typology_index=feature_typology_index or {},
+                )
+            )
         try:
             graph_service.update_entity_properties(
                 assessment.knowledge_base_id,
@@ -2738,6 +2793,19 @@ def handle_risk_scored_for_graph(
             )
         processed += 1
     return processed
+
+
+def _entity_type_from_id(entity_id: str) -> str:
+    return entity_id.split(":", 1)[0] if ":" in entity_id else entity_id
+
+
+def _feature_typology_index(config: DomainConfig | None) -> dict[str, list[str]]:
+    if config is None:
+        return {}
+    return {
+        feature.id: list(feature.typology_ids)
+        for feature in config.feature_catalog.features
+    }
 
 
 def handle_alerts_created_for_graph(
@@ -2775,6 +2843,7 @@ def handle_alerts_created_for_graph(
                 entity_label=alert.entity_label,
                 confidence=alert.confidence,
                 tags=alert.tags,
+                generation_metadata=dict(alert.generation_metadata),
             )
         )
         severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity
@@ -3791,6 +3860,7 @@ def handle_event(
     records_analytics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
+    risk_projection_service: RiskProjectionService | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
     peerstats_service: PeerStatsService | None = None,
@@ -3857,6 +3927,7 @@ def handle_event(
             records_analytics_throttle=records_analytics_throttle,
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
+            risk_projection_service=risk_projection_service,
             graph_embeddings_enabled=graph_embeddings_enabled,
             peerstats_service=peerstats_service,
             peer_stats_config=peer_stats_config,
@@ -3907,6 +3978,7 @@ def _dispatch_event(
     records_analytics_throttle: MetricsRecomputeThrottle | None,
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
+    risk_projection_service: RiskProjectionService | None,
     graph_embeddings_enabled: bool,
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
@@ -4044,6 +4116,8 @@ def _dispatch_event(
                 event,
                 risk_history_writer=risk_history_writer,
                 graph_service=graph_service,
+                risk_projection_service=risk_projection_service,
+                feature_typology_index=_feature_typology_index(domain_config),
             )
         return processed
     if isinstance(event, AlertsCreatedEvent):
@@ -4273,6 +4347,7 @@ async def drain_ingestion_events(
     records_analytics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
+    risk_projection_service: RiskProjectionService | None = None,
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
@@ -4359,6 +4434,7 @@ async def drain_ingestion_events(
                 records_analytics_throttle=records_analytics_throttle,
                 risk_history_writer=risk_history_writer,
                 alert_history_writer=alert_history_writer,
+                risk_projection_service=risk_projection_service,
                 workflow_tracker=workflow_tracker,
                 graph_embeddings_enabled=graph_embeddings_enabled,
                 peerstats_service=peerstats_service,
@@ -4493,6 +4569,7 @@ async def _drain_once(
         records_analytics_throttle=deps.records_analytics_throttle,
         risk_history_writer=deps.risk_history_writer,
         alert_history_writer=deps.alert_history_writer,
+        risk_projection_service=deps.risk_projection_service,
         peerstats_service=deps.peerstats_service,
         peer_stats_config=deps.peer_stats_config,
         peer_stats_enabled=deps.peer_stats_enabled,

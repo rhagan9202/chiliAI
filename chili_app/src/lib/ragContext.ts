@@ -1,3 +1,5 @@
+import { resolveRagCitationTarget, type RagCitationReference } from './citationTargets'
+
 export type RagLaunchSource = 'alert' | 'entity' | 'case' | 'housing'
 
 export type RagLaunchContext = {
@@ -10,11 +12,6 @@ export type RagLaunchContext = {
   installationId?: string | null
   scorecardRunId?: string | null
   question?: string | null
-}
-
-type RagCitation = {
-  content_id?: string | null
-  entity_id?: string | null
 }
 
 type NavigationTarget = {
@@ -83,43 +80,12 @@ export function buildRagMessageFilters(context: RagLaunchContext): Record<string
 }
 
 export function citationNavigationTarget(
-  citation: RagCitation,
+  citation: RagCitationReference,
   context: RagLaunchContext,
 ): NavigationTarget | null {
-  if (nonEmpty(citation.entity_id)) {
-    const params = new URLSearchParams()
-    appendIfPresent(params, 'kb', context.knowledgeBaseId)
+  const target = resolveRagCitationTarget({ citation, context })
+  if (target.kind !== 'link') return null
 
-    return {
-      pathname: `/investigation/${encodeURIComponent(citation.entity_id)}`,
-      search: params.toString(),
-    }
-  }
-
-  if (context.source === 'alert' && nonEmpty(context.alertId)) {
-    return {
-      pathname: '/alerts',
-      search: new URLSearchParams({ alert: context.alertId }).toString(),
-    }
-  }
-
-  if (context.source === 'case' && nonEmpty(context.caseId)) {
-    const params = new URLSearchParams()
-    appendIfPresent(params, 'kb', context.knowledgeBaseId)
-    params.set('case', context.caseId)
-
-    return {
-      pathname: '/cases',
-      search: params.toString(),
-    }
-  }
-
-  if (context.source === 'housing' && nonEmpty(context.installationId)) {
-    return {
-      pathname: '/housing',
-      search: new URLSearchParams({ installation: context.installationId }).toString(),
-    }
-  }
-
-  return null
+  const [pathname, search = ''] = target.to.split('?', 2)
+  return { pathname, search }
 }

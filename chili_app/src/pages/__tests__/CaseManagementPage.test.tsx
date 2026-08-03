@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,10 +7,13 @@ import { CaseManagementPage } from '../CaseManagementPage'
 
 const mocks = vi.hoisted(() => ({
   addFeedback: vi.fn(),
+  downloadTextFile: vi.fn(),
+  exportCaseDossier: vi.fn(),
   promote: vi.fn(),
   updateCase: vi.fn(),
   useAlerts: vi.fn(),
   useCase: vi.fn(),
+  useCaseDossier: vi.fn(),
   useCases: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useDomainConfig: vi.fn(),
@@ -31,10 +34,19 @@ vi.mock('../../api/config', () => ({
 vi.mock('../../api/cases', () => ({
   useAddCaseFeedback: () => ({ mutate: mocks.addFeedback }),
   useCase: mocks.useCase,
+  useCaseDossier: mocks.useCaseDossier,
   useCases: mocks.useCases,
+  exportCaseDossier: mocks.exportCaseDossier,
   usePromoteCase: () => ({ mutate: mocks.promote, isPending: false }),
   useUpdateCase: () => ({ mutate: mocks.updateCase }),
 }))
+
+vi.mock('../../utils/downloadFile', async () => {
+  const actual = await vi.importActual<typeof import('../../utils/downloadFile')>(
+    '../../utils/downloadFile',
+  )
+  return { ...actual, downloadTextFile: mocks.downloadTextFile }
+})
 
 const caseSummary = {
   id: 'case-1',
@@ -113,6 +125,8 @@ function renderPageWithLocationProbe(initialEntry = '/cases?kb=kb-1&case=case-1'
 describe('CaseManagementPage', () => {
   beforeEach(() => {
     mocks.addFeedback.mockReset()
+    mocks.downloadTextFile.mockReset()
+    mocks.exportCaseDossier.mockReset()
     mocks.promote.mockReset()
     mocks.updateCase.mockReset()
     // Query mocks keep their implementation but must forget prior calls, or a
@@ -160,6 +174,93 @@ describe('CaseManagementPage', () => {
             submitted_at: '2026-05-12T00:00:00Z',
           },
         ],
+      },
+    })
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: caseSummary,
+        alerts: [alert],
+        evidence_packs: [
+          {
+            id: 'evidence-1',
+            alert_id: 'alert-1',
+            reasoning: 'Originating alert evidence.',
+            confidence: 0.91,
+            scores: {},
+            subgraph_node_ids: ['provider-204'],
+            subgraph_edge_ids: [],
+            attribution: [],
+            narrative_sections: [],
+            provenance: [
+              {
+                reference_type: 'document',
+                reference_id: 'source-doc#0',
+                label: 'Origin claim source',
+                source_system: 'cms-claims',
+                source_version: '2026-08-demo',
+                transformation_version: 'safe-cms-008-test',
+                confidence: 0.91,
+                route_target: '/knowledgebases/kb-1/documents/source-doc/preview',
+                metadata: { document_id: 'source-doc' },
+              },
+            ],
+            created_at: '2026-05-12T00:00:00Z',
+            source_documents: ['source-doc'],
+          },
+        ],
+        explanation_review_summaries: [],
+        entity_timeline: [
+          { occurred_at: '2026-05-12T00:00:00Z', label: 'alert_raised', detail: 'Outlier billing concentration' },
+        ],
+        feedback_history: [
+          {
+            case_id: 'case-1',
+            label: 'insufficient_evidence',
+            evidence_adequacy: 'medium',
+            missing_evidence: ['claims history'],
+            notes: 'Need more claims history.',
+            submitted_at: '2026-05-12T00:00:00Z',
+          },
+        ],
+        audit_events: [
+          {
+            event_id: 'audit-feedback',
+            occurred_at: '2026-05-12T00:03:00Z',
+            tenant_id: 'kb-1',
+            knowledge_base_id: 'kb-1',
+            actor_user_id: 'analyst-42',
+            actor_email: 'analyst42@example.test',
+            actor_roles: ['analyst'],
+            action: 'case.feedback.create',
+            resource_type: 'case',
+            resource_id: 'case-1',
+            before: { feedback_count: 0 },
+            after: { feedback_count: 1, label: 'insufficient_evidence' },
+            correlation_id: 'cases:kb-1:case.feedback.create:case-1',
+            outcome: 'success',
+            metadata: { source: 'api.cases' },
+          },
+          {
+            event_id: 'audit-promote',
+            occurred_at: '2026-05-12T00:01:00Z',
+            tenant_id: 'kb-1',
+            knowledge_base_id: 'kb-1',
+            actor_user_id: 'analyst-42',
+            actor_email: 'analyst42@example.test',
+            actor_roles: ['analyst'],
+            action: 'case.promote',
+            resource_type: 'case',
+            resource_id: 'case-1',
+            before: null,
+            after: { status: 'open', priority: 'critical' },
+            correlation_id: 'cases:kb-1:case.promote:case-1',
+            outcome: 'success',
+            metadata: { source: 'api.cases' },
+          },
+        ],
+        export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
       },
     })
   })
@@ -216,6 +317,48 @@ describe('CaseManagementPage', () => {
     )
   })
 
+  it('links the selected case back to the investigation cockpit with full context', () => {
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Open cockpit' })).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-1&alert=alert-1&case=case-1&evidence=evidence-1',
+    )
+  })
+
+  it('keeps the cockpit link alert, entity, and evidence from one usable case alert', () => {
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          ...caseSummary,
+          alert_ids: ['alert-missing', 'alert-2'],
+          evidence_pack_id: 'case-evidence-for-missing-alert',
+          originating_alert_id: 'alert-missing',
+        },
+        alerts: [
+          {
+            ...unpromotedAlert,
+            id: 'alert-2',
+            entity_id: 'provider-777',
+            evidence_pack_id: 'evidence-2',
+          },
+        ],
+        evidence_pack: null,
+        entity_timeline: [],
+        feedback_history: [],
+      },
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Open cockpit' })).toHaveAttribute(
+      'href',
+      '/investigation/provider-777?kb=kb-1&alert=alert-2&case=case-1&evidence=evidence-2',
+    )
+  })
+
   it('loads alerts for the selected knowledge base and hides out-of-scope promote actions', () => {
     const alerts = [alert, unpromotedAlert, otherKnowledgeBaseAlert]
     mocks.useAlerts.mockImplementation((filters = {}) => ({
@@ -265,11 +408,87 @@ describe('CaseManagementPage', () => {
   it('renders complete feedback history fields', () => {
     renderPage()
 
-    expect(screen.getByText('insufficient evidence')).toBeInTheDocument()
-    expect(screen.getByText('Evidence adequacy: medium')).toBeInTheDocument()
-    expect(screen.getByText('Need more claims history.')).toBeInTheDocument()
+    expect(screen.getAllByText('insufficient evidence').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Evidence adequacy: medium').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Need more claims history.').length).toBeGreaterThan(0)
     expect(screen.getByText('claims history')).toBeInTheDocument()
     expect(screen.getByText('prior auth')).toBeInTheDocument()
+  })
+
+  it('renders a case dossier with evidence, chronology, decisions, and export actions', () => {
+    renderPage()
+
+    expect(mocks.useCaseDossier).toHaveBeenCalledWith('kb-1', 'case-1')
+    const dossier = screen.getByRole('region', { name: 'Case dossier' })
+    expect(within(dossier).getByText('Evidence bundle')).toBeInTheDocument()
+    expect(within(dossier).getByText('Originating alert evidence.')).toBeInTheDocument()
+    expect(within(dossier).getByText('Origin claim source')).toBeInTheDocument()
+    expect(within(dossier).getByText('Chronology')).toBeInTheDocument()
+    expect(within(dossier).getByText('Decisions')).toBeInTheDocument()
+    expect(within(dossier).getByText('Audit trail')).toBeInTheDocument()
+    expect(within(dossier).getByText('case feedback create')).toBeInTheDocument()
+    expect(within(dossier).getByText('case promote')).toBeInTheDocument()
+    expect(within(dossier).getAllByText('analyst42@example.test')).toHaveLength(2)
+    expect(within(dossier).getByRole('button', { name: 'Export dossier Markdown' })).toBeInTheDocument()
+    expect(within(dossier).getByRole('button', { name: 'Export dossier JSON' })).toBeInTheDocument()
+  })
+
+  it('surfaces explanation review status summaries in the case dossier', () => {
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: caseSummary,
+        alerts: [alert],
+        evidence_packs: [],
+        explanation_review_summaries: [
+          {
+            evidence_pack_id: 'evidence-1',
+            review_id: 'review-1',
+            target: { target_type: 'narrative', target_id: 'narrative' },
+            state: 'unsupported',
+            reason_count: 1,
+            updated_at: '2026-08-03T18:00:00Z',
+          },
+        ],
+        entity_timeline: [],
+        feedback_history: [],
+        audit_events: [],
+        export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
+      },
+    })
+
+    renderPage()
+
+    const dossier = screen.getByRole('region', { name: 'Case dossier' })
+    expect(within(dossier).getByText('Explanation reviews')).toBeInTheDocument()
+    expect(within(dossier).getByText('evidence-1')).toBeInTheDocument()
+    expect(within(dossier).getByText('narrative:narrative')).toBeInTheDocument()
+    expect(within(dossier).getByText('unsupported')).toBeInTheDocument()
+    expect(within(dossier).getByText('1 reason')).toBeInTheDocument()
+    expect(within(dossier).queryByText(/SECRET beneficiary note/i)).not.toBeInTheDocument()
+  })
+
+  it('downloads case dossier exports through the case export endpoint', async () => {
+    mocks.exportCaseDossier.mockResolvedValue({
+      case_id: 'case-1',
+      knowledge_base_id: 'kb-1',
+      format: 'markdown',
+      filename: 'case-case-1.md',
+      content: '# Redwood DME escalation',
+    })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Export dossier Markdown' }))
+
+    await waitFor(() => {
+      expect(mocks.exportCaseDossier).toHaveBeenCalledWith('kb-1', 'case-1', 'markdown')
+    })
+    expect(mocks.downloadTextFile).toHaveBeenCalledWith(
+      'case-case-1.md',
+      '# Redwood DME escalation',
+      'text/markdown',
+    )
   })
 
   it('expresses "open or in review" in one view', () => {

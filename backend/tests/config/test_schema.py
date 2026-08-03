@@ -380,6 +380,170 @@ class TestDomainConfigValid:
         assert cfg.ui.navigation.pages[0].route == "/dashboard"
 
 
+def test_typologies_and_feature_catalog_round_trip() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    payload["policy_rules"] = [
+        {
+            "id": "billing_thresholds",
+            "name": "Billing thresholds",
+            "thresholds": {"max_billed_amount": 5000},
+            "rules": [
+                {
+                    "id": "claim_over_billed",
+                    "title_template": "Claim {target_ref} exceeds threshold",
+                    "severity": "high",
+                    "target_kind": "entity",
+                    "target_selector": {"entity_type": "provider"},
+                    "predicate": {
+                        "field": "properties.amount",
+                        "op": "gt",
+                        "value": {"config_ref": "max_billed_amount"},
+                    },
+                    "citations": [],
+                }
+            ],
+        }
+    ]
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "description": "Provider billing volume increased beyond peer norms.",
+            "entity_types": ["provider"],
+            "severity_hint": "high",
+            "feature_ids": ["weekly_provider_billing_zscore"],
+            "policy_rule_ids": ["billing_thresholds.claim_over_billed"],
+        }
+    ]
+    payload["feature_catalog"] = {
+        "version": "cms-fraud-features-v1",
+        "features": [
+            {
+                "id": "weekly_provider_billing_zscore",
+                "label": "Weekly provider billing z-score",
+                "description": "Peer-normalized weekly billed amount.",
+                "value_type": "decimal",
+                "entity_types": ["provider"],
+                "source_mappings": [
+                    {
+                        "source_type": "derived_signal",
+                        "source_ref": "entity_derived_signals.weekly_provider_billing",
+                        "raw_fields": [
+                            "billed_amount",
+                            "service_date",
+                            "provider_npi",
+                        ],
+                    }
+                ],
+                "peer_dimensions": ["provider"],
+                "threshold_hints": {"high": 2.0, "critical": 3.0},
+                "transformation_version": "peerstats-zscore-v1",
+                "typology_ids": ["billing_spike"],
+            }
+        ],
+    }
+
+    config = DomainConfig.model_validate(payload)
+
+    assert config.typologies[0].id == "billing_spike"
+    assert config.feature_catalog.version == "cms-fraud-features-v1"
+    assert config.feature_catalog.features[0].source_mappings[0].raw_fields == [
+        "billed_amount",
+        "service_date",
+        "provider_npi",
+    ]
+
+
+def test_typology_rejects_unknown_feature_reference() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "description": "Provider billing volume increased beyond peer norms.",
+            "entity_types": ["alpha"],
+            "feature_ids": ["missing_feature"],
+        }
+    ]
+    payload["feature_catalog"] = {"version": "v1", "features": []}
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "Typology 'billing_spike' references unknown feature_id "
+            "'missing_feature'"
+        ),
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_feature_catalog_rejects_duplicate_feature_ids() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    feature = {
+        "id": "weekly_provider_billing_zscore",
+        "label": "Weekly provider billing z-score",
+        "description": "Peer-normalized weekly billed amount.",
+        "value_type": "decimal",
+        "entity_types": ["provider"],
+        "source_mappings": [
+            {
+                "source_type": "derived_signal",
+                "source_ref": "entity_derived_signals.weekly_provider_billing",
+                "raw_fields": ["billed_amount"],
+            }
+        ],
+        "transformation_version": "peerstats-zscore-v1",
+        "typology_ids": [],
+    }
+    payload["feature_catalog"] = {
+        "version": "cms-fraud-features-v1",
+        "features": [feature, feature],
+    }
+
+    with pytest.raises(ValidationError, match="feature ids must be unique"):
+        DomainConfig.model_validate(payload)
+
+
+def test_typologies_reject_duplicate_ids() -> None:
+    payload = _make_config().model_dump(mode="json")
+    typology = {
+        "id": "billing_spike",
+        "label": "Billing spike",
+        "entity_types": ["alpha"],
+        "feature_ids": [],
+    }
+    payload["typologies"] = [typology, typology]
+
+    with pytest.raises(ValidationError, match="Typology ids must be unique"):
+        DomainConfig.model_validate(payload)
+
+
+def test_typology_rejects_unknown_policy_rule_reference() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "entity_types": ["alpha"],
+            "feature_ids": [],
+            "policy_rule_ids": ["billing_thresholds.missing_rule"],
+        }
+    ]
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "Typology 'billing_spike' references unknown policy_rule_id "
+            "'billing_thresholds.missing_rule'"
+        ),
+    ):
+        DomainConfig.model_validate(payload)
+
+
 # ---------------------------------------------------------------------------
 # Cross-field validation failures
 # ---------------------------------------------------------------------------
@@ -1283,6 +1447,123 @@ def test_domain_config_accepts_valid_timeseries_spec() -> None:
     assert cfg.timeseries is not None
     assert len(cfg.timeseries.metrics) == 1
     assert cfg.timeseries.metrics[0].detection_strategy == "z_score"
+
+
+def _config_payload_with_peer_metric() -> dict[str, object]:
+    config = _make_config(entities=[_minimal_entity("provider")])
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                    "specialty": {"type": "string", "display": "Specialty"},
+                    "amount": {"type": "decimal", "display": "Amount"},
+                    "service_date": {"type": "date", "display": "Service Date"},
+                },
+            }
+        ]
+    }
+    payload["peer_stats"] = {
+        "metrics": [
+            {
+                "name": "weekly_billing",
+                "record_type": "claim_record",
+                "entity_type": "provider",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "time_column": "service_date",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ],
+        "cohorts": [
+            {
+                "id": "provider_specialty_billing",
+                "label": "Provider specialty billing",
+                "entity_type": "provider",
+                "peer_metric": "weekly_billing",
+                "group_by": ["specialty"],
+                "version": "v1",
+            }
+        ],
+    }
+    return payload
+
+
+def test_domain_config_accepts_valid_peer_cohort_definition() -> None:
+    config = DomainConfig.model_validate(_config_payload_with_peer_metric())
+
+    assert config.peer_stats is not None
+    cohort = config.peer_stats.cohorts[0]
+    assert cohort.id == "provider_specialty_billing"
+    assert cohort.peer_metric == "weekly_billing"
+    assert cohort.group_by == ["specialty"]
+
+
+def test_domain_config_rejects_duplicate_peer_cohort_ids() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    peer_stats["cohorts"] = [cohorts[0], cohorts[0]]
+
+    with pytest.raises(ValidationError, match="Duplicate peer cohort id"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_unknown_metric() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["peer_metric"] = "missing_metric"
+
+    with pytest.raises(ValidationError, match="unknown peer metric 'missing_metric'"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_entity_type_mismatch() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["entity_type"] = "claim"
+
+    with pytest.raises(ValidationError, match="entity_type 'claim' does not match"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_group_field_missing_from_schema() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["group_by"] = ["missing_field"]
+
+    with pytest.raises(
+        ValidationError, match="group_by field 'missing_field' is not in record_schema"
+    ):
+        DomainConfig.model_validate(payload)
 
 
 class TestRecordsAnalyticsTriggerConfig:

@@ -18,20 +18,24 @@ from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
+from api.routers.audit import router as audit_router
 from api.routers.auth import router as auth_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
 from api.routers.dev_seed import router as dev_seed_router
+from api.routers.evidence import kb_router as evidence_kb_router
 from api.routers.evidence import router as evidence_router
 from api.routers.events import router as events_router
 from api.routers.graph import router as graph_router
 from api.routers.housing import router as housing_router
+from api.routers.identity import router as identity_router
 from api.routers.investigation import router as investigation_router
 from api.routers.knowledgebases import router as knowledgebases_router
 from api.routers.policy import router as policy_router
 from api.routers.rag import router as rag_router
 from api.routers.records import router as records_router
 from api.routers.scorecards import router as scorecards_router
+from api.routers.score_runs import router as score_runs_router
 from api.routers.workflows import router as workflows_router
 from api.routers.ws import router as ws_router
 from config.loader import load_config
@@ -116,13 +120,17 @@ def create_app() -> FastAPI:
     app.include_router(alerts_router)
     app.include_router(graph_router)
     app.include_router(evidence_router)
+    app.include_router(evidence_kb_router)
     app.include_router(cases_router)
     app.include_router(rag_router)
     app.include_router(records_router)
     app.include_router(workflows_router)
     app.include_router(analytics_router)
+    app.include_router(audit_router)
     app.include_router(scorecards_router)
+    app.include_router(score_runs_router)
     app.include_router(housing_router)
+    app.include_router(identity_router)
     app.include_router(policy_router)
     app.include_router(investigation_router)
     app.include_router(auth_router)

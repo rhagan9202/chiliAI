@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from analytics.explainability.adapters.evidence_in_memory import (
+    InMemoryEvidencePackRepository,
+)
 from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
@@ -20,10 +24,22 @@ from api.app import create_app
 from api.dependencies import (
     get_alert_feed_store,
     get_entity_series_source,
+    get_evidence_pack_repository,
+    get_explanation_review_service,
     get_graph_service,
     get_knowledge_base_repository,
     get_risk_service,
     get_timeseries_anomaly_store,
+)
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
+from analytics.explainability.reviews import (
+    ExplanationReviewCreate,
+    ExplanationReviewService,
+    ExplanationReviewTarget,
+    InMemoryExplanationReviewRepository,
 )
 from config.schema import TimeseriesMetricSpec
 from events.adapters.in_memory import InMemoryEventBus
@@ -34,9 +50,14 @@ from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.protocols import KnowledgeBaseRepository
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
-from shared.types import Entity, KnowledgeBase
+from shared.types import Entity, EvidencePack, EvidenceProvenanceReference, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
 
 
 def _second_alert_record() -> AlertHistoryRecord:
@@ -63,6 +84,8 @@ def _second_alert_record() -> AlertHistoryRecord:
 
 def _client_with_alert_history(
     extra: list[AlertHistoryRecord] | None = None,
+    evidence_repository: InMemoryEvidencePackRepository | None = None,
+    review_service: ExplanationReviewService | None = None,
 ) -> TestClient:
     """Create a test client with a deterministic durable alert row."""
     app = create_app()
@@ -92,7 +115,42 @@ def _client_with_alert_history(
     if extra:
         store.write_alerts(extra)
     app.dependency_overrides[get_alert_feed_store] = lambda: store
+    if evidence_repository is not None:
+        app.dependency_overrides[get_evidence_pack_repository] = lambda: evidence_repository
+    if review_service is not None:
+        app.dependency_overrides[get_explanation_review_service] = lambda: review_service
     return TestClient(app)
+
+
+def _evidence_pack(
+    evidence_pack_id: str,
+    *,
+    alert_id: str,
+    reasoning: str,
+    provenance_label: str,
+) -> EvidencePack:
+    return EvidencePack(
+        id=evidence_pack_id,
+        alert_id=alert_id,
+        reasoning=reasoning,
+        subgraph_nodes=["provider-204"],
+        subgraph_edges=[],
+        confidence=0.91,
+        provenance=[
+            EvidenceProvenanceReference(
+                reference_type="document",
+                reference_id=f"{evidence_pack_id}#source:0",
+                label=provenance_label,
+                source_system="cms-claims",
+                source_version="2026-08-demo",
+                transformation_version="safe-cms-008-test",
+                confidence=0.91,
+                route_target="/knowledgebases/kb-1/documents/source-doc/preview",
+                metadata={"document_id": "source-doc"},
+            )
+        ],
+        source_documents=["source-doc"],
+    )
 
 
 def test_alert_acknowledgement_changes_status() -> None:
@@ -160,6 +218,141 @@ def test_create_and_update_case_and_append_feedback() -> None:
     assert saved_feedback["notes"] == "Need authorization records before escalation."
 
 
+def test_case_create_update_and_feedback_record_audit_events() -> None:
+    client = _client_with_alert_history()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+
+    alert_id = client.get("/alerts").json()["items"][0]["id"]
+    kb = {"knowledge_base_id": "kb-1"}
+    created = client.post(
+        "/cases",
+        params=kb,
+        json={
+            "title": "Audited escalation",
+            "priority": "medium",
+            "assignee": "J. Chen",
+            "alert_ids": [alert_id],
+        },
+    )
+    assert created.status_code == 200
+    case_id = created.json()["case"]["id"]
+
+    updated = client.patch(
+        f"/cases/{case_id}",
+        params=kb,
+        json={"status": "in_review", "priority": "high"},
+    )
+    assert updated.status_code == 200
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "insufficient_evidence",
+            "evidence_adequacy": "low",
+            "missing_evidence": ["prior authorization records"],
+            "notes": "Need authorization records before escalation.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "case.feedback.create",
+        "case.update",
+        "case.create",
+    ]
+    assert {event.actor_user_id for event in page.items} == {"analyst-42"}
+    assert page.items[0].resource_id == case_id
+    assert page.items[0].before == {"feedback_count": 0}
+    assert page.items[0].after == {
+        "feedback_count": 1,
+        "label": "insufficient_evidence",
+        "evidence_adequacy": "low",
+        "missing_evidence_count": 1,
+    }
+    assert page.items[1].before == {"status": "open", "priority": "medium"}
+    assert page.items[1].after == {"status": "in_review", "priority": "high"}
+    assert page.items[2].before is None
+    assert page.items[2].after == {
+        "status": "open",
+        "priority": "medium",
+        "alert_count": 1,
+    }
+
+
+def test_case_promote_and_attach_record_audit_events() -> None:
+    client = _client_with_alert_history(extra=[_second_alert_record()])
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    attached = client.post(
+        f"/cases/{case_id}/alerts",
+        params=kb,
+        json={"alert_id": "alert-002", "notes": "Same provider, following week."},
+    )
+    assert attached.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "case.alert.attach",
+        "case.promote",
+    ]
+    assert page.items[0].resource_id == case_id
+    assert page.items[0].before == {"alert_count": 1, "alert_ids": ["alert-001"]}
+    assert page.items[0].after == {
+        "alert_count": 2,
+        "alert_ids": ["alert-001", "alert-002"],
+        "attached_alert_id": "alert-002",
+    }
+    assert page.items[1].before is None
+    assert page.items[1].after == {
+        "status": "open",
+        "priority": "critical",
+        "originating_alert_id": "alert-001",
+        "evidence_pack_id": "evidence-001",
+    }
+
+
+def test_case_mutation_still_succeeds_when_audit_sink_fails() -> None:
+    client = _client_with_alert_history()
+    audit_service = AuditLogService(_FailingAuditRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    kb = {"knowledge_base_id": "kb-1"}
+
+    response = client.post(
+        "/cases",
+        params=kb,
+        json={"title": "Audit failure tolerated", "priority": "medium"},
+    )
+
+    assert response.status_code == 200
+    assert audit_service.failed_write_count == 1
+    detail = client.get(
+        f"/cases/{response.json()['case']['id']}",
+        params=kb,
+    )
+    assert detail.status_code == 200
+
+
 def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
     client = _client_with_alert_history()
 
@@ -219,6 +412,234 @@ def test_promote_alert_from_different_knowledge_base_returns_404_without_case() 
     listed = client.get("/cases", params={"knowledge_base_id": "kb-2"})
     assert listed.status_code == 200
     assert listed.json()["items"] == []
+
+
+def test_case_dossier_includes_evidence_feedback_and_export_metadata() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-002",
+            alert_id="alert-002",
+            reasoning="Attached alert evidence.",
+            provenance_label="Attached claim source",
+        ),
+    )
+    client = _client_with_alert_history(
+        extra=[_second_alert_record()],
+        evidence_repository=evidence_repository,
+    )
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    attached = client.post(
+        f"/cases/{case_id}/alerts",
+        params=kb,
+        json={"alert_id": "alert-002", "notes": "Same provider, later spike"},
+    )
+    assert attached.status_code == 200
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "insufficient_evidence",
+            "evidence_adequacy": "medium",
+            "missing_evidence": ["supplier invoice"],
+            "notes": "Need invoice before referral.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    dossier = client.get(f"/cases/{case_id}/dossier", params=kb)
+
+    assert dossier.status_code == 200
+    payload = dossier.json()
+    assert payload["case"]["id"] == case_id
+    assert [alert["id"] for alert in payload["alerts"]] == ["alert-001", "alert-002"]
+    assert [pack["id"] for pack in payload["evidence_packs"]] == [
+        "evidence-001",
+        "evidence-002",
+    ]
+    assert payload["evidence_packs"][0]["provenance"][0]["label"] == "Origin claim source"
+    assert payload["entity_timeline"][0]["label"] == "alert_raised"
+    assert payload["entity_timeline"][-1]["label"] == "Alert attached"
+    assert payload["feedback_history"][0]["notes"] == "Need invoice before referral."
+    assert [event["action"] for event in payload["audit_events"]] == [
+        "case.feedback.create",
+        "case.alert.attach",
+        "case.promote",
+    ]
+    assert {event["actor_user_id"] for event in payload["audit_events"]} == {
+        "analyst-42"
+    }
+    assert payload["audit_events"][0]["resource_type"] == "case"
+    assert payload["audit_events"][0]["resource_id"] == case_id
+    assert "Need invoice before referral." not in json.dumps(payload["audit_events"])
+    assert payload["export"]["formats"] == ["markdown", "json"]
+    assert payload["export"]["default_filename"] == f"case-{case_id}.md"
+
+    wrong_kb = client.get(
+        f"/cases/{case_id}/dossier", params={"knowledge_base_id": "kb-2"}
+    )
+    assert wrong_kb.status_code == 404
+
+
+def test_case_dossier_export_renders_markdown_and_json() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    client = _client_with_alert_history(evidence_repository=evidence_repository)
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "suspicious",
+            "evidence_adequacy": "high",
+            "missing_evidence": [],
+            "notes": "Evidence is ready for supervisor review.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    markdown = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "markdown"},
+    )
+    assert markdown.status_code == 200
+    markdown_payload = markdown.json()
+    assert markdown_payload["case_id"] == case_id
+    assert markdown_payload["knowledge_base_id"] == "kb-1"
+    assert markdown_payload["format"] == "markdown"
+    assert markdown_payload["filename"] == f"case-{case_id}.md"
+    assert "Investigation: Outlier billing concentration" in markdown_payload["content"]
+    assert "Status: open" in markdown_payload["content"]
+    assert "Outlier billing concentration" in markdown_payload["content"]
+    assert "Originating alert evidence." in markdown_payload["content"]
+    assert "Origin claim source" in markdown_payload["content"]
+    assert "evidence-001#source:0" in markdown_payload["content"]
+    assert "/knowledgebases/kb-1/documents/source-doc/preview" in markdown_payload["content"]
+    assert "Evidence is ready for supervisor review." in markdown_payload["content"]
+    assert "## Audit Trail" in markdown_payload["content"]
+    assert "case.feedback.create" in markdown_payload["content"]
+    assert "case.promote" in markdown_payload["content"]
+
+    exported_json = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "json"},
+    )
+    assert exported_json.status_code == 200
+    json_payload = exported_json.json()
+    assert json_payload["filename"] == f"case-{case_id}.json"
+    exported_content = json.loads(json_payload["content"])
+    assert exported_content["case"]["id"] == case_id
+    assert exported_content["evidence_packs"][0]["provenance"][0]["label"] == (
+        "Origin claim source"
+    )
+    assert [event["action"] for event in exported_content["audit_events"]] == [
+        "case.feedback.create",
+        "case.promote",
+    ]
+    assert "Evidence is ready for supervisor review." not in json.dumps(
+        exported_content["audit_events"]
+    )
+
+
+def test_case_dossier_includes_explanation_review_status_without_raw_comments() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    review_service = ExplanationReviewService(InMemoryExplanationReviewRepository())
+    review_service.record_review(
+        ExplanationReviewCreate(
+            knowledge_base_id="kb-1",
+            evidence_pack_id="evidence-001",
+            target=ExplanationReviewTarget(
+                target_type="narrative",
+                target_id="narrative",
+            ),
+            state="unsupported",
+            reasons=["missing_source"],
+            actor_user_id="analyst-42",
+            actor_email="analyst42@example.test",
+            comment="SECRET beneficiary note 123-45-6789",
+        )
+    )
+    client = _client_with_alert_history(
+        evidence_repository=evidence_repository,
+        review_service=review_service,
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+
+    dossier = client.get(f"/cases/{case_id}/dossier", params=kb)
+
+    assert dossier.status_code == 200
+    payload = dossier.json()
+    assert payload["explanation_review_summaries"] == [
+        {
+            "evidence_pack_id": "evidence-001",
+            "review_id": payload["explanation_review_summaries"][0]["review_id"],
+            "target": {"target_type": "narrative", "target_id": "narrative"},
+            "state": "unsupported",
+            "reason_count": 1,
+            "updated_at": payload["explanation_review_summaries"][0]["updated_at"],
+        }
+    ]
+    assert "SECRET beneficiary note" not in json.dumps(payload)
+
+    markdown = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "markdown"},
+    )
+    assert markdown.status_code == 200
+    markdown_content = markdown.json()["content"]
+    assert "## Explanation Reviews" in markdown_content
+    assert "evidence-001 narrative:narrative - unsupported (1 reason)" in markdown_content
+    assert "SECRET beneficiary note" not in markdown_content
 
 
 def test_create_conversation_and_add_message() -> None:

@@ -5,10 +5,13 @@ import type {
   CaseAttachAlertRequest,
   CaseCreateRequest,
   CaseDetailResponse,
+  CaseDossierExportResponse,
+  CaseDossierResponse,
   CaseFeedbackCreateRequest,
   CaseListResponse,
   CasePromoteRequest,
   CaseUpdateRequest,
+  EvidenceExportFormat,
 } from './contracts'
 
 function kbQuery(knowledgeBaseId: string): string {
@@ -23,6 +26,10 @@ export function caseDetailQueryKey(knowledgeBaseId: string, caseId: string) {
   return ['cases', knowledgeBaseId, caseId] as const
 }
 
+export function caseDossierQueryKey(knowledgeBaseId: string, caseId: string) {
+  return ['cases', knowledgeBaseId, caseId, 'dossier'] as const
+}
+
 export function getCases(knowledgeBaseId: string): Promise<CaseListResponse> {
   return apiFetch<CaseListResponse>(`/cases?${kbQuery(knowledgeBaseId)}`)
 }
@@ -30,6 +37,26 @@ export function getCases(knowledgeBaseId: string): Promise<CaseListResponse> {
 export function getCase(knowledgeBaseId: string, caseId: string): Promise<CaseDetailResponse> {
   return apiFetch<CaseDetailResponse>(
     `/cases/${encodeURIComponent(caseId)}?${kbQuery(knowledgeBaseId)}`,
+  )
+}
+
+export function getCaseDossier(
+  knowledgeBaseId: string,
+  caseId: string,
+): Promise<CaseDossierResponse> {
+  return apiFetch<CaseDossierResponse>(
+    `/cases/${encodeURIComponent(caseId)}/dossier?${kbQuery(knowledgeBaseId)}`,
+  )
+}
+
+export function exportCaseDossier(
+  knowledgeBaseId: string,
+  caseId: string,
+  format: EvidenceExportFormat,
+): Promise<CaseDossierExportResponse> {
+  const query = new URLSearchParams({ knowledge_base_id: knowledgeBaseId, format })
+  return apiFetch<CaseDossierExportResponse>(
+    `/cases/${encodeURIComponent(caseId)}/dossier/export?${query.toString()}`,
   )
 }
 
@@ -122,6 +149,14 @@ export function useCase(knowledgeBaseId: string | null, caseId: string | null) {
   })
 }
 
+export function useCaseDossier(knowledgeBaseId: string | null, caseId: string | null) {
+  return useQuery({
+    queryKey: caseDossierQueryKey(knowledgeBaseId ?? 'missing', caseId ?? 'missing'),
+    queryFn: () => getCaseDossier(knowledgeBaseId ?? '', caseId ?? ''),
+    enabled: Boolean(knowledgeBaseId) && Boolean(caseId),
+  })
+}
+
 function useCaseInvalidation(knowledgeBaseId: string | null, caseId: string | null) {
   const queryClient = useQueryClient()
   return () => {
@@ -129,6 +164,9 @@ function useCaseInvalidation(knowledgeBaseId: string | null, caseId: string | nu
     if (knowledgeBaseId && caseId) {
       void queryClient.invalidateQueries({
         queryKey: caseDetailQueryKey(knowledgeBaseId, caseId),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: caseDossierQueryKey(knowledgeBaseId, caseId),
       })
     }
   }
@@ -180,6 +218,9 @@ export function useAttachAlertToCase(knowledgeBaseId: string | null) {
       if (knowledgeBaseId) {
         void queryClient.invalidateQueries({
           queryKey: caseDetailQueryKey(knowledgeBaseId, vars.caseId),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: caseDossierQueryKey(knowledgeBaseId, vars.caseId),
         })
       }
     },

@@ -112,6 +112,52 @@ type MockKnowledgeBase = {
   domain: string | null
 }
 
+type MockScoreRun = {
+  catalog_version: string
+  created_at: string
+  error_summary: string | null
+  failed_entities: number
+  finished_at: string | null
+  id: string
+  idempotency_key: string | null
+  knowledge_base_id: string
+  model_version: string
+  replay_of_run_id: string | null
+  requested_by: string | null
+  scored_entities: number
+  started_at: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'replayed'
+  total_entities: number
+  updated_at: string
+}
+
+type MockDocumentSummary = {
+  id: string
+  knowledge_base_id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  status: string
+  created_at: string
+  warning_count: number
+  warning_reasons: string[]
+}
+
+const existingDocument: MockDocumentSummary = {
+  id: 'doc-existing',
+  knowledge_base_id: 'kb-1',
+  filename: 'existing-policy.txt',
+  content_type: 'text/plain',
+  size_bytes: 1024,
+  status: 'validated',
+  created_at: '2026-05-11T00:00:00Z',
+  warning_count: 2,
+  warning_reasons: [
+    'csv.ragged_row: Row has 4 field(s) but the header declares 3',
+    'entity claim-1: normalization_failed: amount',
+  ],
+}
+
 /** In-scope KB for the mocked active domain (medicare_fraud). */
 const medicareKb: MockKnowledgeBase = {
   id: 'kb-1',
@@ -250,25 +296,37 @@ function installFetchMock({
   structuredRecordsFail = false,
   previewFail = false,
   previewText = 'Section 1\nSection 2\nSection 3',
+  previewTextByDocument = {},
   previewDelayMs = 0,
   kbDomain = null,
   kbItems,
+  documentItems,
   emptyInventory = false,
+  scoreRunItems = [],
 }: {
   documentFail?: boolean
   recordsFail?: boolean
   structuredRecordsFail?: boolean
   previewFail?: boolean
   previewText?: string
+  previewTextByDocument?: Record<string, string>
   previewDelayMs?: number
   /** `domain` stamped on the mocked knowledge base (null = legacy/unknown). */
   kbDomain?: string | null
   /** Full KB list override; defaults to the single kb-1 stamped with `kbDomain`. */
   kbItems?: MockKnowledgeBase[]
+  /** Full document inventory override for kb-1. */
+  documentItems?: MockDocumentSummary[]
   /** kb-1 has landed nothing yet — the brand-new knowledge base case. */
   emptyInventory?: boolean
+  scoreRunItems?: MockScoreRun[]
 } = {}) {
-  const knowledgeBaseItems = kbItems ?? [{ ...medicareKb, domain: kbDomain }]
+  const knowledgeBaseItems = (kbItems ?? [{ ...medicareKb, domain: kbDomain }]).map((item) => (
+    emptyInventory && item.id === 'kb-1'
+      ? { ...item, document_count: 0, entity_count: 0, relationship_count: 0 }
+      : item
+  ))
+  const inventoryItems = emptyInventory ? [] : documentItems ?? [existingDocument]
   installXhrMock({ documentFail, recordsFail })
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -285,6 +343,75 @@ function installFetchMock({
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
+    }
+
+    if (url.includes('/knowledgebases/kb-1/score-runs') && init?.method === 'POST') {
+      const body = typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
+      const run = {
+        catalog_version: String(body.catalog_version ?? 'cms-fraud-features-v1'),
+        created_at: '2026-08-02T10:00:00Z',
+        error_summary: null,
+        failed_entities: 0,
+        finished_at: null,
+        id: 'score-run-started',
+        idempotency_key: null,
+        knowledge_base_id: 'kb-1',
+        model_version: String(body.model_version ?? 'risk-linear-v1'),
+        replay_of_run_id: null,
+        requested_by: null,
+        scored_entities: 0,
+        started_at: null,
+        status: 'queued',
+        total_entities: 2,
+        updated_at: '2026-08-02T10:00:00Z',
+      }
+      return new Response(JSON.stringify({ run, batches: [], created: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    const scoreRunDetailMatch = url.match(/\/knowledgebases\/kb-1\/score-runs\/([^/?]+)$/)
+    if (scoreRunDetailMatch) {
+      const run = scoreRunItems.find((item) => item.id === scoreRunDetailMatch[1])
+        ?? (scoreRunDetailMatch[1] === 'score-run-started'
+          ? {
+              catalog_version: 'cms-fraud-features-v1',
+              created_at: '2026-08-02T10:00:00Z',
+              error_summary: null,
+              failed_entities: 0,
+              finished_at: null,
+              id: 'score-run-started',
+              idempotency_key: null,
+              knowledge_base_id: 'kb-1',
+              model_version: 'risk-linear-v1',
+              replay_of_run_id: null,
+              requested_by: null,
+              scored_entities: 0,
+              started_at: null,
+              status: 'queued',
+              total_entities: 2,
+              updated_at: '2026-08-02T10:00:00Z',
+            } satisfies MockScoreRun
+          : null)
+      if (run) {
+        return new Response(JSON.stringify({ run, batches: [], created: false }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+    }
+
+    if (url.includes('/knowledgebases/kb-1/score-runs')) {
+      return new Response(
+        JSON.stringify({
+          items: scoreRunItems,
+          total: scoreRunItems.length,
+          limit: 1,
+          offset: 0,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
     }
 
     if (url.endsWith('/knowledgebases')) {
@@ -342,29 +469,15 @@ function installFetchMock({
 
       return new Response(
         JSON.stringify({
-          items: [
-            {
-              id: 'doc-existing',
-              knowledge_base_id: 'kb-1',
-              filename: 'existing-policy.txt',
-              content_type: 'text/plain',
-              size_bytes: 1024,
-              status: 'validated',
-              created_at: '2026-05-11T00:00:00Z',
-              warning_count: 2,
-              warning_reasons: [
-                'csv.ragged_row: Row has 4 field(s) but the header declares 3',
-                'entity claim-1: normalization_failed: amount',
-              ],
-            },
-          ],
-          total: 1,
+          items: inventoryItems,
+          total: inventoryItems.length,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
 
-    if (url.endsWith('/knowledgebases/kb-1/documents/doc-existing/preview')) {
+    const previewMatch = url.match(/\/knowledgebases\/kb-1\/documents\/([^/]+)\/preview$/)
+    if (previewMatch) {
       if (previewDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, previewDelayMs))
       }
@@ -374,15 +487,24 @@ function installFetchMock({
           headers: { 'content-type': 'application/json' },
         })
       }
+      const documentId = decodeURIComponent(previewMatch[1])
+      const document = inventoryItems.find((item) => item.id === documentId)
+      if (!document) {
+        return new Response(JSON.stringify({ detail: 'Document not found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      const selectedPreviewText = previewTextByDocument[documentId] ?? previewText
 
       return new Response(
         JSON.stringify({
           knowledge_base_id: 'kb-1',
-          document_id: 'doc-existing',
-          filename: 'existing-policy.txt',
+          document_id: documentId,
+          filename: document.filename,
           content_type: 'text/plain',
-          preview_text: previewText,
-          line_count: previewText.length === 0 ? 0 : previewText.split('\n').length,
+          preview_text: selectedPreviewText,
+          line_count: selectedPreviewText.length === 0 ? 0 : selectedPreviewText.split('\n').length,
           truncated: false,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -711,12 +833,106 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.getByRole('button', { name: 'Watch runs' })).toBeEnabled()
   })
 
+  it('starts score-all without requiring client-side entity ids', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('existing-policy.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Start score-all' }))
+
+    await screen.findByText('score-run-started')
+    const startCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find((call) => {
+        const url = String(call[0])
+        const init = call[1]
+        return url.endsWith('/knowledgebases/kb-1/score-runs') && init?.method === 'POST'
+      })
+    expect(startCall).toBeDefined()
+    const body = JSON.parse(String(startCall?.[1]?.body)) as Record<string, unknown>
+    expect(body).toMatchObject({
+      batch_size: 100,
+      catalog_version: 'cms-fraud-features-v1',
+      model_version: 'risk-linear-v1',
+    })
+    expect(body).not.toHaveProperty('entity_ids')
+    expect(body).not.toHaveProperty('idempotency_key')
+  })
+
+  it('hydrates the score-run panel from the latest durable run', async () => {
+    installFetchMock({
+      scoreRunItems: [
+        {
+          catalog_version: 'cms-fraud-features-v1',
+          created_at: '2026-08-02T09:00:00Z',
+          error_summary: null,
+          failed_entities: 0,
+          finished_at: null,
+          id: 'score-run-latest',
+          idempotency_key: null,
+          knowledge_base_id: 'kb-1',
+          model_version: 'risk-linear-v1',
+          replay_of_run_id: null,
+          requested_by: 'operator-1',
+          scored_entities: 2,
+          started_at: '2026-08-02T09:00:00Z',
+          status: 'running',
+          total_entities: 4,
+          updated_at: '2026-08-02T09:01:00Z',
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('score-run-latest')).toBeInTheDocument()
+    expect(screen.getByText('2 / 4')).toBeInTheDocument()
+  })
+
   it('renders document preview content for the selected inventory document', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     expect(await screen.findByText('Document preview')).toBeInTheDocument()
     expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
     expect(screen.getByText(/3 lines from existing-policy\.txt/)).toBeInTheDocument()
+  })
+
+  it('honors a ?document= deep-link for document preview selection', async () => {
+    installFetchMock({
+      documentItems: [
+        existingDocument,
+        {
+          ...existingDocument,
+          id: 'doc-selected',
+          filename: 'selected-claim.txt',
+          warning_count: 0,
+          warning_reasons: [],
+        },
+      ],
+      previewTextByDocument: {
+        'doc-selected': 'Selected claim chunk\nLine two',
+      },
+    })
+
+    renderWithClient(
+      <KnowledgeBaseManagerPage />,
+      ['/knowledge-bases?kb=kb-1&document=doc-selected&chunk=7'],
+    )
+
+    expect(await screen.findByText(/Selected claim chunk/)).toBeInTheDocument()
+    expect(screen.getByText(/2 lines from selected-claim\.txt/)).toBeInTheDocument()
+
+    const requestedUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.map((call) => String(call[0]))
+    expect(
+      requestedUrls.some((requestedUrl) =>
+        requestedUrl.endsWith('/knowledgebases/kb-1/documents/doc-selected/preview'),
+      ),
+    ).toBe(true)
+    expect(
+      requestedUrls.some((requestedUrl) =>
+        requestedUrl.endsWith('/knowledgebases/kb-1/documents/doc-existing/preview'),
+      ),
+    ).toBe(false)
   })
 
   it('renders document preview empty state when preview text is blank', async () => {

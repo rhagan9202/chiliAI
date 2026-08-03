@@ -1,7 +1,7 @@
 # chiliAI v1 Consolidated Backlog
 
 > Owned by the Project Manager agent. The single source of truth for v1-scoped, prioritized work items.
-> Version: 6 · Last updated: 2026-07-16
+> Version: 8 · Last updated: 2026-08-03
 >
 > This file is a **curated v1 backlog** that consolidates and prioritizes work derived from:
 > - `docs/project/planning/requirements.md` (canonical requirements, v1.2 · 2026-07-12)
@@ -41,10 +41,64 @@
 | BL-050 | Workbench reshape + analytics surfacing implementation | REQ-UI | P1 (sprint 2026-28) | done — live-verified 2026-07-23 (Sprint 2026-28 U2, `feat/sprint-2026-28-u2-workbench-reshape`: all 9 implementation tasks + Task 10 unit-gate closeout + Task 11 controller live pass. Full Playwright suite 31 passed/2 skipped incl. new tab-aware workbench + triage/narrative-band evidence assertions against the live stack; browser pass confirmed on the TN KB (dossier, Network-tab clusters, Dashboard clusters panel — 4 swatches match); housing pack untouched, zero CMS strings, zero console errors. Final-review closeout fixed a Signals-tab capability-gating gap, added a dossier-header remount key, and dropped two dead `alert.tags` fallbacks; frontend gates green: `npm run test:run` 477/477, `npm run build`, `npm run lint`. See `docs/backlog/frontend.md` story frontend.27 and `docs/project/planning/sprints/2026-28.md`) | 0 SP |
 | BL-051 | Complete CMS demo: presenter script, make demo-cms, fraud rule packs, e2e walkthrough | REQ-DEMO | P1 (sprint 2026-28) | done — DoD-verified 2026-07-24 (Sprint 2026-28 D1, `feat/sprint-2026-28-d1-demo`: 2 config-only fraud rule packs firing on real TN data; `make demo-cms` one-command orchestration with 5 readiness probes + disclosed explicit analytics trigger (analytics.34 gap); 3-act presenter script at `docs/demo/` with every claim code-verified; `demo-walkthrough` e2e 7/7 in reference + live modes. Sprint DoD met: fresh `make clean` + `make dev` + `make demo-cms` ran green end-to-end (62m, KB ready / 3 alerts / 4756 clusters / evidence narrative / 2046 policy items), full presenter walkthrough browser-verified zero console errors, full e2e suite 39 passed/1 skipped. Closeout also fixed a real product gap the suite surfaced: Ingestion Studio ignored `?kb=` deep-links. See `docs/project/planning/sprints/2026-28.md`) (the disclosed trigger was the analytics.34 stand-in; analytics.34 shipped 2026-07-24 — the trigger tool is deleted and `make demo-cms` analytics now fire natively on records ingest) | 0 SP |
 | BL-052 | Trained GNN (BL-030 pulled forward as stretch): PyTorch Geometric behind existing protocols | REQ-ANALYTICS (GNN) | stretch (sprint 2026-28) | stretch — strictly after BL-051 demo-ready | 8 SP |
+| SAFE-CMS-001 | CMS fraud typology and feature layer | SAFE-CMS-SURGE | P1 (PI 1 Sprint 1) | done — backend/frontend implementation review-gated 2026-08-02; feature values persistence remains the SAFE-CMS-002 write path | 0 SP |
+| SAFE-CMS-002 | Durable score-all workflows | SAFE-CMS-SURGE | P1 (PI 1 Sprint 2) | done — score-run API/events/frontend operations landed 2026-08-03 (`41efb7e`) | 0 SP |
+| SAFE-CMS-003 | Production risk read models | SAFE-CMS-SURGE | P1 (PI 1 Sprint 3) | done — projection domain/service/API/dashboard slice landed 2026-08-03 (`235a6fc`, `87bd91d`, `627dd6f`); durable Postgres projection storage, rebuild source, KB cleanup purge, and live `risk.scored` writer landed 2026-08-03 | 0 SP |
+| SAFE-CMS-004 | Persist full evidence provenance | SAFE-CMS-SURGE | P1 (PI 1 Sprint 4) | done — provenance contract/query/generation/frontend slices landed 2026-08-03 (`4a220f2`..`dad0b90`) | 0 SP |
+| SAFE-CMS-005 | Unified Fraud Investigation Cockpit | SAFE-CMS-SURGE | P1 (PI 2 Sprint 5) | done — cockpit state/actions/context/continuity/responsive verification landed 2026-08-03 (`dd6bf82`..`fea9f91`) | 0 SP |
+| SAFE-CMS-006 | Analyst queue and triage operations | SAFE-CMS-SURGE | P1 (PI 2 Sprint 6) | done — queue filters, backend query, triage operations, audit, and suppression decisions landed 2026-08-03 (`cab2cbd`..`642c9d1`) | 0 SP |
+| SAFE-CMS-007 | Navigable citations and source drill-through | SAFE-CMS-SURGE | P1 (PI 2 Sprint 7) | done — resolver, evidence/RAG citation routing, document targets, and click-through smoke landed 2026-08-03 (`20d9dfd`..`d1c0005`) | 0 SP |
+| SAFE-CMS-008 | Case dossier and export workflow | SAFE-CMS-SURGE | P1 (PI 2 Sprint 8) | done — dossier API, UI, and browser export flow landed 2026-08-03 (`5f05bd7`..`13e6e35`) | 0 SP |
+| SAFE-CMS-009 | Immutable audit ledger for analyst and agent actions | SAFE-CMS-SURGE | P1 (PI 3 Sprint 9) | done — audit domain/API/Postgres/hooks/status/dossier timeline landed 2026-08-03 (`9b811d8`..`cd083bb`) | 0 SP |
+| SAFE-CMS-010 | Contestable explainability and human feedback | SAFE-CMS-SURGE | P1 (PI 3 Sprint 10) | done — explanation review domain/API/Postgres/UI/dossier persistence landed 2026-08-03 (`cb73e56`..`9a79cb1`) | 0 SP |
+| SAFE-CMS-011 | Cohort and peer analytics API | SAFE-CMS-SURGE | P1 (PI 3 Sprint 11) | done — peer-analysis API, domain-pack cohort definitions, cohort membership/distribution summaries, cockpit peer-comparison UI, and workflow capability adapter implemented 2026-08-03 | 0 SP |
+| SAFE-CMS-012 | Entity identity resolution and relationship scoring | SAFE-CMS-SURGE | P1 (PI 3 Sprint 12) | done — identity scoring/projection, Postgres persistence, audited merge/split decisions, API contract, generated frontend schema, and cockpit/dossier identity panel completed with review gates 2026-08-03 | 0 SP |
+| SAFE-CMS-013 | Versioned fraud playbooks | SAFE-CMS-SURGE | P1 (PI 4 Sprint 13) | planned — depends on typology and provenance models | 1 sprint |
+| SAFE-CMS-014 | User-authored workflow builder | SAFE-CMS-SURGE | P1 (PI 4 Sprint 14) | planned — gated by workflow ADR and playbooks | 1 sprint |
+| SAFE-CMS-015 | Capability registry and governed agent tools | SAFE-CMS-SURGE | P1 (PI 4 Sprint 15) | planned — depends on workflow builder scope | 1 sprint |
+| SAFE-CMS-016 | RAG and explanation contract cleanup | SAFE-CMS-SURGE | P1 (PI 4 Sprint 16) | planned — depends on cockpit and workflow contracts | 1 sprint |
+| SAFE-CMS-017 | Pull connectors for CMS-adjacent sources | SAFE-CMS-SURGE | P1 (PI 5 Sprint 17) | planned — depends on provenance and playbooks | 1 sprint |
+| SAFE-CMS-018 | Global KB, domain, and readiness controls | SAFE-CMS-SURGE | P1 (PI 5 Sprint 18) | planned — depends on durable workflow status and risk read models | 1 sprint |
+| SAFE-CMS-019 | Enterprise visual refinement and accessibility pass | SAFE-CMS-SURGE | P1 (PI 5 Sprint 19) | planned — depends on cockpit, queue, and citation surfaces | 1 sprint |
+| SAFE-CMS-020 | Governance, evals, and release evidence loop | SAFE-CMS-SURGE | P1 (PI 5 Sprint 20) | planned — depends on audit, feedback, workflow, and contract cleanup | 1 sprint |
 
 Sprint 2026-28 committed set (owner directive + approved design note `docs/superpowers/specs/2026-07-16-sprint28-cms-fraud-workbench-design.md`): BL-046..051 core (26 SP, two-track), BL-052 stretch. BL-030 remains the post-v1 record; BL-052 is its sprint-scoped stretch slice.
 
 **Big picture:** the v1 feature surface is complete (all P0s and P1 user-facing verticals shipped — see Done), and the config surface gained a full write/hot-swap path plus a third domain (Air Force housing scorecards) since 2026-06-23. What remains active is purely a hardening/DR/security-depth tail. Requirements v1.2 (2026-07-12) resolved all prior [NO-REQ]/contested items: BL-016 closed at its v1 bar (wizard + write hardening → post-v1, tracked as BL-040), and BL-038/BL-039 gained the REQ-SCORE-*/REQ-HOUSING-* families.
+
+---
+
+## SAFE-CMS Surge Backlog — 2026-08-02 Formalization
+
+These rows formalize the 20-sprint CMS fraud AI surge from
+`docs/superpowers/plans/2026-07-30-cms-fraud-ai-safe-agile-20-sprint-surge.md`.
+The surge is planned after v1 completion and keeps reusable platform code domain-neutral while CMS labels,
+thresholds, typologies, and playbooks live in the CMS domain pack. PI 1 implementation detail is captured in
+`docs/superpowers/specs/2026-08-02-safe-cms-pi1-analytics-foundation-design.md`; later PI specs should be
+drafted at each PI planning gate before implementation starts.
+
+| ID | PI/Sprint | Primary outcome | Main dependencies | Formalization status |
+|----|-----------|-----------------|-------------------|----------------------|
+| SAFE-CMS-001 | PI 1 / Sprint 1 | Versioned typology and reusable feature catalog with source lineage. | Fresh CMS route/API/component inventory. | Ready for Sprint 1 planning via PI 1 spec. |
+| SAFE-CMS-002 | PI 1 / Sprint 2 | Durable, replayable, observable score-all workflow. | SAFE-CMS-001 feature/version metadata. | Implemented and pushed 2026-08-03 (`41efb7e`). |
+| SAFE-CMS-003 | PI 1 / Sprint 3 | Queryable risk read models for alerts, dashboards, entities, and cohorts. | SAFE-CMS-001, SAFE-CMS-002. | Projection domain/service/API/dashboard slice implemented and pushed 2026-08-03; durable Postgres storage, rebuild source, KB cleanup purge, and live `risk.scored` writer implemented 2026-08-03. |
+| SAFE-CMS-004 | PI 1 / Sprint 4 | Structured evidence provenance across scores, features, records, graph, policy, prompts, and workflows. | SAFE-CMS-001, SAFE-CMS-002, SAFE-CMS-003. | Implemented and pushed 2026-08-03 (`4a220f2`..`dad0b90`). |
+| SAFE-CMS-005 | PI 2 / Sprint 5 | Unified Fraud Investigation Cockpit. | SAFE-CMS-003, SAFE-CMS-004. | Implemented and pushed 2026-08-03 (`dd6bf82`..`fea9f91`). |
+| SAFE-CMS-006 | PI 2 / Sprint 6 | Analyst queue, assignment, triage, and operational filters. | SAFE-CMS-003, SAFE-CMS-005. | Implemented and pushed 2026-08-03 (`cab2cbd`..`642c9d1`). |
+| SAFE-CMS-007 | PI 2 / Sprint 7 | Navigable citations and source drill-through. | SAFE-CMS-004, SAFE-CMS-005. | Implemented and pushed 2026-08-03 (`20d9dfd`..`d1c0005`). |
+| SAFE-CMS-008 | PI 2 / Sprint 8 | Case dossier and export workflow. | SAFE-CMS-004, SAFE-CMS-005, SAFE-CMS-006, SAFE-CMS-007. | Implemented and pushed 2026-08-03 (`5f05bd7`..`13e6e35`). |
+| SAFE-CMS-009 | PI 3 / Sprint 9 | Immutable audit ledger for analyst, system, and agent actions. | SAFE-CMS-004, SAFE-CMS-007. | Implemented and pushed 2026-08-03 (`9b811d8`..`cd083bb`). |
+| SAFE-CMS-010 | PI 3 / Sprint 10 | Contestable explainability and human feedback loop. | SAFE-CMS-004, SAFE-CMS-009. | Implemented and pushed 2026-08-03 (`cb73e56`..`9a79cb1`). |
+| SAFE-CMS-011 | PI 3 / Sprint 11 | Cohort and peer analytics APIs. | SAFE-CMS-003, SAFE-CMS-006. | Implemented 2026-08-03: peer-analysis domain/API, domain-pack cohort definitions, cohort membership/distribution summaries, cockpit peer-comparison UI, and workflow capability adapter. |
+| SAFE-CMS-012 | PI 3 / Sprint 12 | Entity identity resolution and relationship scoring. | SAFE-CMS-001, SAFE-CMS-003. | Implemented 2026-08-03: identity scoring/projection, Postgres identity links, audited review decisions/events, KB-scoped API, generated frontend schema, and cockpit/dossier identity panel with redaction checks. |
+| SAFE-CMS-013 | PI 4 / Sprint 13 | Versioned fraud playbooks. | SAFE-CMS-001, SAFE-CMS-004. | Needs PI 4 workflow/playbook ADR. |
+| SAFE-CMS-014 | PI 4 / Sprint 14 | Permissioned user-authored workflow builder. | SAFE-CMS-002, SAFE-CMS-004, SAFE-CMS-013. | Needs PI 4 workflow architecture ADR. |
+| SAFE-CMS-015 | PI 4 / Sprint 15 | Governed capability registry and agent tool permissions. | SAFE-CMS-013, SAFE-CMS-014. | Needs PI 4 capability registry spec. |
+| SAFE-CMS-016 | PI 4 / Sprint 16 | RAG and explanation contract cleanup for cockpit and workflows. | SAFE-CMS-004, SAFE-CMS-005, SAFE-CMS-014. | Needs PI 4 contract spec. |
+| SAFE-CMS-017 | PI 5 / Sprint 17 | Pull connectors for CMS-adjacent data sources. | SAFE-CMS-004, SAFE-CMS-013. | Needs PI 5 connector ADR. |
+| SAFE-CMS-018 | PI 5 / Sprint 18 | Global KB/domain/readiness controls. | SAFE-CMS-002, SAFE-CMS-003. | Needs PI 5 operations spec. |
+| SAFE-CMS-019 | PI 5 / Sprint 19 | Enterprise visual refinement and accessibility pass. | SAFE-CMS-005, SAFE-CMS-006, SAFE-CMS-007. | Needs PI 5 UX audit/spec. |
+| SAFE-CMS-020 | PI 5 / Sprint 20 | Governance, evals, and release evidence loop. | SAFE-CMS-004, SAFE-CMS-010, SAFE-CMS-014, SAFE-CMS-016. | Needs PI 5 governance/evals spec. |
 
 ---
 

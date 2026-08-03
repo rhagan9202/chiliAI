@@ -7,19 +7,33 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from functools import lru_cache
-from typing import Literal, NoReturn, Protocol, TypeVar, cast
+from typing import Any, Literal, NoReturn, Protocol, TypeVar, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 
 from api.contracts import (
     AnalystFeedbackResponse,
     AnalyticsOverviewResponse,
+    AlertAssignmentRequest,
+    AlertBulkRejection,
+    AlertBulkStatusUpdateRequest,
+    AlertBulkStatusUpdateResponse,
     AlertDetailResponse,
     AlertListItem,
     AlertListResponse,
-    ApiEnvelope,
+    AlertOperationResponse,
+    AlertStatusUpdateRequest,
+    AlertTriageEventResponse,
+    AuditEventListResponse,
+    AuditEventResponse,
+    AuditStatusResponse,
+    AuditWriteFailureResponse,
     CaseCreateRequest,
+    CaseDossierExportMetadataResponse,
+    CaseDossierExportResponse,
+    CaseDossierResponse,
     CaseDetailResponse,
+    CaseExplanationReviewSummaryResponse,
     CaseFeedbackCreateRequest,
     CaseListResponse,
     CaseAttachAlertRequest,
@@ -37,6 +51,12 @@ from api.contracts import (
     EvidenceExportFormat,
     EvidencePackExportResponse,
     EvidencePackResponse,
+    EvidenceProvenanceListResponse,
+    EvidenceProvenanceReferenceResponse,
+    ExplanationReviewCreateRequest,
+    ExplanationReviewListResponse,
+    ExplanationReviewResponse,
+    ExplanationReviewTargetResponse,
     FeatureAttributionResponse,
     GraphEntityDetailResponse,
     NarrativeSectionResponse,
@@ -50,12 +70,25 @@ from api.contracts import (
     RiskFactorResponse,
     RiskScoreResponse,
 )
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.adapters.postgres import PostgresAuditLogRepository
+from auditlog.models import (
+    AuditEvent,
+    AuditEventCreate,
+    AuditEventQuery,
+    AuditOutcome,
+    JsonSummary,
+)
+from auditlog.service import AuditLogService
 from api._analytics_overview import build_analytics_overview
 from api._graph_entity_payload import build_graph_entity_detail
 from api._conversation_payloads import (
     build_assistant_message,
     build_user_message,
     project_conversation,
+)
+from analytics.explainability.adapters.reviews_postgres import (
+    PostgresExplanationReviewRepository,
 )
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
@@ -99,6 +132,30 @@ from config.schema import (
     RecordsConfig,
     VectorStoreConfig,
 )
+from analytics.features.service import (
+    FeatureCatalogService,
+    create_feature_catalog_service,
+)
+from analytics.identity_resolution import (
+    IdentityDecisionService,
+    IdentityLinkRepository,
+    IdentityResolutionService,
+    InMemoryIdentityLinkRepository,
+)
+from analytics.identity_resolution.adapters.postgres import (
+    PostgresIdentityLinkRepository,
+)
+from analytics.explainability.reviews import (
+    ExplanationReviewCreate,
+    ExplanationReviewPage,
+    ExplanationReviewQuery,
+    ExplanationReviewRecord,
+    ExplanationReviewService,
+    ExplanationReviewState,
+    ExplanationReviewTarget,
+    ExplanationReviewTargetType,
+    InMemoryExplanationReviewRepository,
+)
 from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
@@ -113,13 +170,26 @@ from analytics.risk.adapters.in_memory import (
 )
 from analytics.risk.adapters.postgres import (
     PostgresRiskHistoryStore,
+    PostgresRiskProjectionRebuildSource,
+    PostgresRiskProjectionRepository,
     PostgresRiskSignalSource,
 )
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
+from analytics.risk.projection_service import (
+    RiskProjectionRebuildSourceProtocol,
+    RiskProjectionService,
+)
+from analytics.risk.projections import (
+    InMemoryRiskProjectionRepository,
+    RiskProjectionRepositoryProtocol,
+)
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
+from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from analytics.score_runs.service import ScoreRunService, create_score_run_service
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -180,7 +250,8 @@ from monitoring.adapters.protocols import (
     ObservationSourceProtocol,
     ObservationWriter,
 )
-from monitoring.models import AlertHistoryRecord
+from monitoring.exceptions import AlertLifecycleError
+from monitoring.models import AlertHistoryRecord, AlertTriageEvent
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
@@ -195,8 +266,10 @@ from analytics.peerstats.adapters.postgres import (
 )
 from analytics.peerstats.adapters.protocols import (
     DerivedRiskSignalWriterProtocol,
+    PeerSignalReaderProtocol,
     RecordColumnSourceProtocol,
 )
+from analytics.peerstats.peer_analysis import PeerAnalysisService
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
@@ -210,6 +283,10 @@ from analytics.explainability.adapters.evidence_object_store import (
 )
 from analytics.explainability.export import render_evidence_markdown
 from analytics.explainability.repository import EvidencePackRepository
+from analytics.explainability.provenance import (
+    EvidencePackProvenanceRepository,
+    EvidenceProvenanceRepository,
+)
 from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
 from shared.exceptions import ConfigurationError
@@ -236,19 +313,24 @@ __all__ = [
     "CONFIG_CACHE_REGISTRY",
     "_apply_policy_triage",
     "build_api_state",
+    "build_alert_acknowledge_payload",
+    "build_alert_assignment_payload",
+    "build_alert_bulk_status_update_payload",
+    "build_alert_status_update_payload",
     "enforce_production_guardrail",
     "get_config_generation",
     "load_chili_environment",
     "require_kb_scoped_conversation",
     "reset_domain_config_caches",
     "get_api_state",
-    "get_alert_acknowledge_payload",
     "get_alert_detail_payload",
     "get_alert_feed_store",
     "get_alert_list_payload",
     "get_agent_service",
     "get_analytics_overview_payload",
     "get_case_create_payload",
+    "get_case_dossier_export_payload",
+    "get_case_dossier_payload",
     "get_case_detail_payload",
     "get_case_feedback_payload",
     "get_case_list_payload",
@@ -273,16 +355,26 @@ __all__ = [
     "get_evidence_pack_export_payload",
     "get_evidence_pack_payload",
     "get_evidence_pack_repository",
+    "get_evidence_provenance_payload",
+    "get_evidence_provenance_repository",
+    "get_evidence_review_list_payload",
+    "get_explanation_review_service",
     "get_event_bus",
     "get_event_bus_settings",
+    "get_feature_catalog_service",
     "get_graph_entity_detail_payload",
     "get_ingestion_recovery_store",
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
+    "get_identity_decision_service",
+    "get_identity_link_repository",
+    "get_identity_resolution_service",
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
+    "get_score_run_repository",
+    "get_score_run_service",
     "get_scorecard_run_repository",
     "get_scorecard_service",
     "get_source_record_loader",
@@ -294,11 +386,15 @@ __all__ = [
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
+    "get_peer_analysis_service",
     "get_policy_item_detail_payload",
     "get_policy_item_list_payload",
     "get_policy_repository",
     "get_policy_service",
     "get_remote_fetcher",
+    "get_risk_projection_repository",
+    "get_risk_projection_rebuild_source",
+    "get_risk_projection_service",
     "get_risk_score_payload",
     "get_timeseries_payload",
     "get_session_store",
@@ -427,6 +523,34 @@ def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
     )
 
 
+def get_evidence_provenance_repository(
+    request: Request,
+) -> EvidenceProvenanceRepository:
+    """Return the provenance query seam backed by persisted evidence packs."""
+
+    return EvidencePackProvenanceRepository(get_evidence_pack_repository(request))
+
+
+def get_explanation_review_service(request: Request) -> ExplanationReviewService:
+    """Return the per-app explanation review service."""
+
+    def build() -> ExplanationReviewService:
+        provider = get_connection_provider()
+        repository = (
+            InMemoryExplanationReviewRepository()
+            if provider is None
+            else PostgresExplanationReviewRepository(provider)
+        )
+        return ExplanationReviewService(repository)
+
+    return _memoize_config_derived(
+        request.app,
+        "explanation_review_service",
+        build,
+        guard=lambda value: isinstance(value, ExplanationReviewService),
+    )
+
+
 def get_evidence_pack_payload(
     evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
     knowledge_base_id: str = Query(
@@ -439,6 +563,24 @@ def get_evidence_pack_payload(
     if pack is None:
         raise HTTPException(status_code=404, detail="Evidence pack not found.")
     return _evidence_pack_to_response(pack)
+
+
+def get_evidence_provenance_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    repository: EvidenceProvenanceRepository = Depends(
+        get_evidence_provenance_repository
+    ),
+) -> EvidenceProvenanceListResponse:
+    """Return structured provenance references for one evidence pack."""
+
+    return build_evidence_provenance_response(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=repository,
+    )
 
 
 def get_evidence_pack_export_payload(
@@ -468,6 +610,168 @@ def get_evidence_pack_export_payload(
         format=export_format,
         filename=f"evidence-{pack.id}.{suffix}",
         content=content,
+    )
+
+
+def _require_evidence_pack_exists(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    repository: EvidencePackRepository,
+) -> None:
+    if repository.get(knowledge_base_id, evidence_pack_id) is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+
+
+def _explanation_review_to_response(
+    review: ExplanationReviewRecord,
+) -> ExplanationReviewResponse:
+    return ExplanationReviewResponse(
+        id=review.id,
+        knowledge_base_id=review.knowledge_base_id,
+        evidence_pack_id=review.evidence_pack_id,
+        target=ExplanationReviewTargetResponse(
+            target_type=review.target.target_type,
+            target_id=review.target.target_id,
+        ),
+        state=review.state,
+        reasons=list(review.reasons),
+        comment=review.comment,
+        actor_user_id=review.actor_user_id,
+        actor_email=review.actor_email,
+        created_at=review.created_at,
+        updated_at=review.updated_at,
+        update_count=review.update_count,
+    )
+
+
+def _explanation_review_list_to_response(
+    page: ExplanationReviewPage,
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+) -> ExplanationReviewListResponse:
+    return ExplanationReviewListResponse(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        items=[_explanation_review_to_response(review) for review in page.items],
+        page=PageInfo(
+            page=(page.offset // page.limit) + 1,
+            page_size=page.limit,
+            total_items=page.total,
+        ),
+    )
+
+
+def get_evidence_review_list_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    state: ExplanationReviewState | None = Query(default=None),
+    target_type: ExplanationReviewTargetType | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
+) -> ExplanationReviewListResponse:
+    """Return review state for one KB-scoped evidence pack."""
+
+    _require_evidence_pack_exists(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=evidence_repository,
+    )
+    page = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            state=state,
+            target_type=target_type,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    return _explanation_review_list_to_response(
+        page,
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+    )
+
+
+def create_evidence_review_payload(
+    *,
+    evidence_pack_id: str,
+    knowledge_base_id: str,
+    payload: ExplanationReviewCreateRequest,
+    actor_user_id: str,
+    actor_email: str | None,
+    evidence_repository: EvidencePackRepository,
+    review_service: ExplanationReviewService,
+) -> tuple[ExplanationReviewResponse, bool]:
+    """Create or update one review after proving the evidence pack is in scope."""
+
+    _require_evidence_pack_exists(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=evidence_repository,
+    )
+    existing = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            target_type=payload.target.target_type,
+        )
+    )
+    was_update = any(
+        review.target.target_type == payload.target.target_type
+        and review.target.target_id == payload.target.target_id
+        for review in existing.items
+    )
+    review = review_service.record_review(
+        ExplanationReviewCreate(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            target=ExplanationReviewTarget(
+                target_type=payload.target.target_type,
+                target_id=payload.target.target_id,
+            ),
+            state=payload.state,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            reasons=list(payload.reasons),
+            comment=payload.comment,
+        )
+    )
+    return _explanation_review_to_response(review), was_update
+
+
+def build_evidence_provenance_response(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    repository: EvidenceProvenanceRepository,
+) -> EvidenceProvenanceListResponse:
+    refs = repository.list_for_evidence_pack(knowledge_base_id, evidence_pack_id)
+    if refs is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+    return EvidenceProvenanceListResponse(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        items=[
+            EvidenceProvenanceReferenceResponse(
+                reference_type=reference.reference_type,
+                reference_id=reference.reference_id,
+                label=reference.label,
+                source_system=reference.source_system,
+                source_version=reference.source_version,
+                transformation_version=reference.transformation_version,
+                confidence=reference.confidence,
+                route_target=reference.route_target,
+                metadata=dict(reference.metadata),
+            )
+            for reference in refs
+        ],
     )
 
 
@@ -501,6 +805,20 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
             )
             for section in pack.narrative_sections
         ],
+        provenance=[
+            EvidenceProvenanceReferenceResponse(
+                reference_type=reference.reference_type,
+                reference_id=reference.reference_id,
+                label=reference.label,
+                source_system=reference.source_system,
+                source_version=reference.source_version,
+                transformation_version=reference.transformation_version,
+                confidence=reference.confidence,
+                route_target=reference.route_target,
+                metadata=dict(reference.metadata),
+            )
+            for reference in pack.provenance
+        ],
         created_at=pack.created_at,
         source_documents=list(pack.source_documents),
     )
@@ -531,6 +849,110 @@ def get_case_service(
 ) -> CaseService:
     """Return the case service over the configured repository."""
     return create_case_service(repository)
+
+
+def get_audit_log_service(request: Request) -> AuditLogService:
+    """Return the per-app audit ledger service."""
+
+    def build() -> AuditLogService:
+        provider = get_connection_provider()
+        repository = (
+            InMemoryAuditLogRepository()
+            if provider is None
+            else PostgresAuditLogRepository(provider)
+        )
+        return AuditLogService(repository)
+
+    return _memoize_config_derived(
+        request.app,
+        "audit_log_service",
+        build,
+        guard=lambda value: isinstance(value, AuditLogService),
+    )
+
+
+def _audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
+    return AuditEventResponse(
+        event_id=event.event_id,
+        occurred_at=event.occurred_at,
+        tenant_id=event.tenant_id,
+        knowledge_base_id=event.knowledge_base_id,
+        actor_user_id=event.actor_user_id,
+        actor_email=event.actor_email,
+        actor_roles=list(event.actor_roles),
+        action=event.action,
+        resource_type=event.resource_type,
+        resource_id=event.resource_id,
+        before=event.before,
+        after=event.after,
+        correlation_id=event.correlation_id,
+        client_ip=event.client_ip,
+        user_agent=event.user_agent,
+        outcome=event.outcome,
+        failure_reason=event.failure_reason,
+        metadata=dict(event.metadata),
+    )
+
+
+def get_audit_event_list_payload(
+    tenant_id: str = Query(..., min_length=1),
+    knowledge_base_id: str | None = Query(default=None, min_length=1),
+    actor_user_id: str | None = Query(default=None, min_length=1),
+    action_prefix: str | None = Query(default=None, min_length=1),
+    resource_type: str | None = Query(default=None, min_length=1),
+    resource_id: str | None = Query(default=None, min_length=1),
+    outcome: Literal["success", "failure"] | None = Query(default=None),
+    occurred_from: datetime | None = Query(default=None, alias="from"),
+    occurred_to: datetime | None = Query(default=None, alias="to"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: AuditLogService = Depends(get_audit_log_service),
+) -> AuditEventListResponse:
+    """Return a scoped page of audit ledger events."""
+
+    query = AuditEventQuery(
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        actor_user_id=actor_user_id,
+        action_prefix=action_prefix,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        outcome=outcome,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        limit=limit,
+        offset=offset,
+    )
+    page = service.list_events(query)
+    return AuditEventListResponse(
+        items=[_audit_event_to_response(event) for event in page.items],
+        page=PageInfo(
+            page=(page.offset // page.limit) + 1,
+            page_size=page.limit,
+            total_items=page.total_items,
+        ),
+    )
+
+
+def get_audit_status_payload(
+    service: AuditLogService = Depends(get_audit_log_service),
+) -> AuditStatusResponse:
+    """Return operational status for non-blocking audit write failures."""
+
+    return AuditStatusResponse(
+        failed_write_count=service.failed_write_count,
+        recent_write_failures=[
+            AuditWriteFailureResponse(
+                occurred_at=failure.occurred_at,
+                action=failure.action,
+                resource_type=failure.resource_type,
+                resource_id=failure.resource_id,
+                error_class=failure.error_class,
+                error_message=failure.error_message,
+            )
+            for failure in service.write_failures
+        ],
+    )
 
 
 @lru_cache(maxsize=1)
@@ -587,6 +1009,22 @@ def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
         created_at=record.created_at,
         updated_at=record.updated_at,
         tags=list(record.tags),
+        assignee=record.assignee,
+        generation_metadata=dict(record.generation_metadata),
+    )
+
+
+def _alert_triage_event_to_response(
+    event: AlertTriageEvent,
+) -> AlertTriageEventResponse:
+    return AlertTriageEventResponse(
+        event_type=event.event_type,
+        actor=event.actor,
+        occurred_at=event.occurred_at,
+        assignee=event.assignee,
+        from_status=event.from_status,
+        to_status=event.to_status,
+        reason=event.reason,
     )
 
 
@@ -643,6 +1081,193 @@ def _assemble_case_detail(
     )
 
 
+def _case_timeline_to_response(case: Case) -> list[CaseTimelineEventResponse]:
+    return [
+        CaseTimelineEventResponse(
+            occurred_at=event.occurred_at, label=event.label, detail=event.detail
+        )
+        for event in case.timeline
+    ]
+
+
+def _case_evidence_pack_ids(case: Case, alerts: list[AlertListItem]) -> list[str]:
+    evidence_pack_ids: list[str] = []
+    if case.evidence_pack_id:
+        evidence_pack_ids.append(case.evidence_pack_id)
+    evidence_pack_ids.extend(
+        alert.evidence_pack_id
+        for alert in alerts
+        if isinstance(alert.evidence_pack_id, str) and alert.evidence_pack_id
+    )
+    return list(dict.fromkeys(evidence_pack_ids))
+
+
+def _assemble_case_dossier(
+    case: Case,
+    *,
+    evidence_repository: EvidencePackRepository,
+    review_service: ExplanationReviewService,
+    alert_store: AlertFeedStoreProtocol,
+    audit_service: AuditLogService,
+) -> CaseDossierResponse:
+    alerts = _linked_case_alerts(case, alert_store=alert_store)
+    evidence_packs: list[EvidencePackResponse] = []
+    explanation_review_summaries: list[CaseExplanationReviewSummaryResponse] = []
+    for evidence_pack_id in _case_evidence_pack_ids(case, alerts):
+        pack = evidence_repository.get(case.knowledge_base_id, evidence_pack_id)
+        if pack is not None:
+            evidence_packs.append(_evidence_pack_to_response(pack))
+            explanation_review_summaries.extend(
+                _case_explanation_review_summaries(
+                    knowledge_base_id=case.knowledge_base_id,
+                    evidence_pack_id=evidence_pack_id,
+                    review_service=review_service,
+                )
+            )
+    audit_page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id=case.knowledge_base_id,
+            knowledge_base_id=case.knowledge_base_id,
+            resource_type="case",
+            resource_id=case.id,
+            limit=25,
+            offset=0,
+        )
+    )
+    return CaseDossierResponse(
+        case=_case_to_summary(case),
+        alerts=alerts,
+        evidence_packs=evidence_packs,
+        explanation_review_summaries=explanation_review_summaries,
+        entity_timeline=_case_timeline_to_response(case),
+        feedback_history=_case_feedback_to_response(case),
+        audit_events=[_audit_event_to_response(event) for event in audit_page.items],
+        export=CaseDossierExportMetadataResponse(
+            default_filename=f"case-{case.id}.md"
+        ),
+    )
+
+
+def _case_explanation_review_summaries(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    review_service: ExplanationReviewService,
+) -> list[CaseExplanationReviewSummaryResponse]:
+    page = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            limit=200,
+            offset=0,
+        )
+    )
+    return [
+        CaseExplanationReviewSummaryResponse(
+            evidence_pack_id=review.evidence_pack_id,
+            review_id=review.id,
+            target=ExplanationReviewTargetResponse(
+                target_type=review.target.target_type,
+                target_id=review.target.target_id,
+            ),
+            state=review.state,
+            reason_count=len(review.reasons),
+            updated_at=review.updated_at,
+        )
+        for review in page.items
+    ]
+
+
+def _format_case_dossier_provenance(
+    reference: EvidenceProvenanceReferenceResponse,
+) -> str:
+    details = [f"id: {reference.reference_id}"]
+    if reference.route_target:
+        details.append(f"route: {reference.route_target}")
+    if reference.source_system:
+        source = reference.source_system
+        if reference.source_version:
+            source = f"{source}@{reference.source_version}"
+        details.append(f"source: {source}")
+    if reference.transformation_version:
+        details.append(f"transform: {reference.transformation_version}")
+
+    return f"- {reference.label} ({reference.reference_type}; {'; '.join(details)})"
+
+
+def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
+    lines = [
+        f"# {dossier.case.title}",
+        "",
+        f"- Case ID: {dossier.case.id}",
+        f"- Knowledge base: {dossier.case.knowledge_base_id}",
+        f"- Status: {dossier.case.status}",
+        f"- Priority: {dossier.case.priority}",
+    ]
+    if dossier.case.assignee:
+        lines.append(f"- Assignee: {dossier.case.assignee}")
+
+    lines.extend(["", "## Alerts"])
+    if dossier.alerts:
+        for alert in dossier.alerts:
+            lines.append(f"- {alert.title} ({alert.severity})")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Timeline"])
+    if dossier.entity_timeline:
+        for event in dossier.entity_timeline:
+            lines.append(f"- {event.occurred_at.isoformat()} - {event.label}: {event.detail}")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Evidence"])
+    if dossier.evidence_packs:
+        for pack in dossier.evidence_packs:
+            lines.extend([f"### Evidence pack {pack.id}", "", pack.reasoning])
+            if pack.provenance:
+                lines.append("")
+                lines.append("Provenance:")
+                for reference in pack.provenance:
+                    lines.append(_format_case_dossier_provenance(reference))
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Explanation Reviews"])
+    if dossier.explanation_review_summaries:
+        for summary in dossier.explanation_review_summaries:
+            reason_label = "reason" if summary.reason_count == 1 else "reasons"
+            lines.append(
+                f"- {summary.evidence_pack_id} "
+                f"{summary.target.target_type}:{summary.target.target_id} - "
+                f"{summary.state} ({summary.reason_count} {reason_label})"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Feedback"])
+    if dossier.feedback_history:
+        for feedback in dossier.feedback_history:
+            lines.append(
+                f"- {feedback.submitted_at.isoformat()} - {feedback.label}: {feedback.notes}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Audit Trail"])
+    if dossier.audit_events:
+        for event in dossier.audit_events:
+            actor = event.actor_email or event.actor_user_id
+            lines.append(
+                f"- {event.occurred_at.isoformat()} - {event.action} by {actor} "
+                f"({event.outcome})"
+            )
+    else:
+        lines.append("- None")
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def get_case_list_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     status: str | None = Query(default=None, description="Filter by case status."),
@@ -676,6 +1301,258 @@ def get_case_detail_payload(
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_detail(
         case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def get_case_dossier_payload(
+    case_id: str = Path(..., description="Case identifier."),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+) -> CaseDossierResponse:
+    """Return the KB-scoped case dossier projection."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    return _assemble_case_dossier(
+        case,
+        evidence_repository=evidence_repository,
+        review_service=review_service,
+        alert_store=alert_store,
+        audit_service=audit_service,
+    )
+
+
+def record_case_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    case_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+) -> None:
+    """Append a summarized case audit event without exposing raw analyst text."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="case",
+            resource_id=case_id,
+            before=before,
+            after=after,
+            correlation_id=f"cases:{knowledge_base_id}:{action}:{case_id}",
+            metadata={"source": "api.cases", **dict(metadata or {})},
+        )
+    )
+
+
+def record_alert_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    alert_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    alert: AlertListItem | AlertHistoryRecord,
+    metadata: JsonSummary | None = None,
+) -> None:
+    """Append a summarized alert audit event without raw alert reasoning."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="alert",
+            resource_id=alert_id,
+            before=before,
+            after=after,
+            correlation_id=f"alerts:{knowledge_base_id}:{action}:{alert_id}",
+            metadata={
+                "source": "api.alerts",
+                "entity_id": alert.entity_id,
+                "severity": alert.severity,
+                **dict(metadata or {}),
+            },
+        )
+    )
+
+
+def record_explanation_review_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    evidence_pack_id: str,
+    review: ExplanationReviewResponse,
+) -> None:
+    """Append a sanitized explanation-review audit event without raw comments."""
+
+    summary: JsonSummary = {
+        "state": review.state,
+        "target_type": review.target.target_type,
+        "target_id": review.target.target_id,
+        "reason_count": len(review.reasons),
+        "comment_present": review.comment is not None,
+    }
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="evidence_pack",
+            resource_id=evidence_pack_id,
+            before=None,
+            after=summary,
+            correlation_id=f"evidence:{knowledge_base_id}:{action}:{evidence_pack_id}",
+            metadata={
+                "source": "api.evidence",
+                "review_id": review.id,
+                "update_count": review.update_count,
+            },
+        )
+    )
+
+
+def record_knowledge_base_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+    outcome: AuditOutcome = "success",
+    failure_reason: str | None = None,
+) -> None:
+    """Append a summarized knowledge-base audit event without raw document data."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="knowledge_base",
+            resource_id=knowledge_base_id,
+            before=before,
+            after=after,
+            correlation_id=f"knowledgebases:{knowledge_base_id}:{action}",
+            outcome=outcome,
+            failure_reason=failure_reason,
+            metadata={"source": "api.knowledgebases", **dict(metadata or {})},
+        )
+    )
+
+
+def record_auth_audit_event(
+    audit_service: AuditLogService,
+    *,
+    action: str,
+    actor_user_id: str = "anonymous",
+    actor_email: str | None = None,
+    actor_roles: list[str] | None = None,
+    resource_type: str,
+    resource_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+    outcome: AuditOutcome = "success",
+    failure_reason: str | None = None,
+    client_ip: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Append a sanitized auth audit event without tokens or session secrets."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id="platform",
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles or []),
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            before=before,
+            after=after,
+            correlation_id=f"auth:{action}:{resource_type}:{resource_id}",
+            client_ip=client_ip,
+            user_agent=user_agent,
+            outcome=outcome,
+            failure_reason=failure_reason,
+            metadata={"source": "api.auth", **dict(metadata or {})},
+        )
+    )
+
+
+def get_case_dossier_export_payload(
+    case_id: str = Path(..., description="Case identifier."),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    export_format: EvidenceExportFormat = Query(
+        default="markdown",
+        alias="format",
+        description="Rendering to return: machine-readable JSON or readable Markdown.",
+    ),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+) -> CaseDossierExportResponse:
+    """Return a portable case dossier rendering."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    dossier = _assemble_case_dossier(
+        case,
+        evidence_repository=evidence_repository,
+        review_service=review_service,
+        alert_store=alert_store,
+        audit_service=audit_service,
+    )
+    if export_format == "json":
+        content = dossier.model_dump_json(indent=2)
+        suffix = "json"
+    else:
+        content = _render_case_dossier_markdown(dossier)
+        suffix = "md"
+    return CaseDossierExportResponse(
+        case_id=case.id,
+        knowledge_base_id=case.knowledge_base_id,
+        format=export_format,
+        filename=f"case-{case.id}.{suffix}",
+        content=content,
     )
 
 
@@ -1112,6 +1989,14 @@ def get_domain_config_features_payload(
         "enabled_pages": enabled_pages,
         "roles": config.ui.roles if config.ui else {},
     }
+
+
+def get_feature_catalog_service(
+    config: DomainConfig = Depends(get_domain_config),
+) -> FeatureCatalogService:
+    """Return the feature catalog service for the active domain config."""
+
+    return create_feature_catalog_service(config)
 
 
 def get_domain_config_schema_payload(
@@ -1673,6 +2558,56 @@ def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
     return PostgresDerivedRiskSignalWriter(provider)
 
 
+@lru_cache(maxsize=1)
+def get_peer_analysis_service() -> PeerAnalysisService:
+    """Return the peer-analysis read service over derived peer signals."""
+
+    config = get_domain_config()
+    cohorts = list(config.peer_stats.cohorts) if config.peer_stats is not None else []
+    return PeerAnalysisService(
+        cast(PeerSignalReaderProtocol, get_derived_signal_store()),
+        cohort_definitions=cohorts,
+    )
+
+
+def get_identity_link_repository(request: Request) -> IdentityLinkRepository:
+    """Return the identity-link repository selected by database backend."""
+
+    def build() -> IdentityLinkRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryIdentityLinkRepository()
+        return PostgresIdentityLinkRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "identity_link_repository",
+        build,
+        guard=lambda value: isinstance(value, IdentityLinkRepository),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_identity_resolution_service() -> IdentityResolutionService:
+    """Return the domain-neutral identity candidate scoring service."""
+
+    return IdentityResolutionService()
+
+
+def get_identity_decision_service(
+    repository: IdentityLinkRepository = Depends(get_identity_link_repository),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_log_service: AuditLogService = Depends(get_audit_log_service),
+) -> IdentityDecisionService:
+    """Return the steward decision service for identity links."""
+
+    return IdentityDecisionService(
+        repository,
+        event_bus=event_bus,
+        audit_log_service=audit_log_service,
+    )
+
+
 # Analytics/monitoring write stores — used by the KB-delete cascade to purge the
 # per-consumer durable tables (Postgres when a DB is configured, else in-memory).
 
@@ -1730,6 +2665,70 @@ def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
         build,
         guard=lambda value: isinstance(value, ScorecardRunRepository),
     )
+
+
+def get_score_run_repository(request: Request) -> ScoreRunRepositoryProtocol:
+    """Return the score-run repository for score-all workflow state."""
+
+    return _memoize_config_derived(
+        request.app,
+        "score_run_repository",
+        lambda: InMemoryScoreRunRepository(),
+        guard=lambda value: isinstance(value, ScoreRunRepositoryProtocol),
+    )
+
+
+def get_score_run_service(
+    repository: ScoreRunRepositoryProtocol = Depends(get_score_run_repository),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> ScoreRunService:
+    """Return the score-run service for KB-scoped score-all operations."""
+
+    return create_score_run_service(repository, event_bus=event_bus)
+
+
+def get_risk_projection_repository(request: Request) -> RiskProjectionRepositoryProtocol:
+    """Return the configured risk projection repository."""
+
+    def build() -> RiskProjectionRepositoryProtocol:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryRiskProjectionRepository()
+        return PostgresRiskProjectionRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "risk_projection_repository",
+        build,
+        guard=lambda value: isinstance(value, RiskProjectionRepositoryProtocol),
+    )
+
+
+def get_risk_projection_rebuild_source() -> RiskProjectionRebuildSourceProtocol | None:
+    """Return the authoritative source for rebuilding risk projections, if configured."""
+
+    provider = get_connection_provider()
+    if provider is None:
+        return None
+    return PostgresRiskProjectionRebuildSource(
+        provider,
+        feature_typology_index=_feature_typology_index(get_domain_config()),
+    )
+
+
+def _feature_typology_index(config: DomainConfig) -> dict[str, list[str]]:
+    return {
+        feature.id: list(feature.typology_ids)
+        for feature in config.feature_catalog.features
+    }
+
+
+def get_risk_projection_service(
+    repository: RiskProjectionRepositoryProtocol = Depends(get_risk_projection_repository),
+) -> RiskProjectionService:
+    """Return the risk projection writer/rebuild service."""
+
+    return RiskProjectionService(repository)
 
 
 class RecordFeedSourceLoader:
@@ -1999,20 +2998,31 @@ def get_case_promote_payload(
 
 def get_alert_list_payload(
     knowledge_base_id: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    severity_filter: list[str] | None = Query(default=None, alias="severity"),
+    typology_filter: list[str] | None = Query(default=None, alias="typology"),
+    created_from: str | None = Query(default=None, alias="from"),
+    created_to: str | None = Query(default=None, alias="to"),
+    evidence: str | None = Query(default=None),
+    freshness: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> AlertListResponse:
     """Return the paginated alert feed from the durable ``alert_history`` store."""
-    statuses = [status_filter] if status_filter is not None else None
     # The store owns the predicate (UXA-408). This used to fetch a first page
     # to learn the total, re-fetch the *entire* alert_history table, then
     # filter and paginate in Python — so reading one KB's queue cost grew with
     # every other KB's alert volume.
     records, total = store.list_alerts(
         knowledge_base_id=knowledge_base_id,
-        statuses=statuses,
+        statuses=status_filter,
+        severities=severity_filter,
+        tags=typology_filter,
+        created_from=created_from,
+        created_to=created_to,
+        evidence=evidence,
+        freshness=freshness,
         limit=limit,
         offset=offset,
     )
@@ -2067,25 +3077,148 @@ def get_alert_detail_payload(
     )
 
 
-def get_alert_acknowledge_payload(
-    alert_id: str = Path(..., description="Alert identifier."),
-    knowledge_base_id: str = Query(
-        ..., min_length=1, description="Knowledge base identifier."
-    ),
-    store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
-) -> ApiEnvelope:
-    """Acknowledge an alert in the durable store; returns a status receipt."""
-    # Ownership is settled before the mutation: an alert never changes KB, so
-    # the checked record cannot drift out from under the update.
+def build_alert_acknowledge_payload(
+    *,
+    alert_id: str,
+    knowledge_base_id: str,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Acknowledge one scoped alert and return its audit receipt."""
     _require_kb_scoped_alert_record(store, alert_id, knowledge_base_id)
-    updated = store.acknowledge(alert_id)
+    try:
+        updated = store.acknowledge(
+            alert_id,
+            knowledge_base_id=knowledge_base_id,
+            actor=actor,
+        )
+    except AlertLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(
             status_code=404, detail=f"Alert '{alert_id}' was not found."
         )
-    return ApiEnvelope(
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
         status="accepted",
         message=f"Alert '{updated.alert_id}' is now {updated.status}.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
+    )
+
+
+def _latest_alert_triage_event(record: AlertHistoryRecord) -> AlertTriageEvent:
+    if not record.triage_history:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Alert '{record.alert_id}' mutation did not record an audit event.",
+        )
+    return record.triage_history[-1]
+
+
+def build_alert_assignment_payload(
+    *,
+    alert_id: str,
+    payload: AlertAssignmentRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Assign one scoped alert and return its updated row plus audit receipt."""
+    _require_kb_scoped_alert_record(store, alert_id, payload.knowledge_base_id)
+    updated = store.assign(
+        alert_id,
+        knowledge_base_id=payload.knowledge_base_id,
+        assignee=payload.assignee,
+        actor=actor,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
+        status="accepted",
+        message=f"Alert '{updated.alert_id}' is assigned.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
+    )
+
+
+def build_alert_status_update_payload(
+    *,
+    alert_id: str,
+    payload: AlertStatusUpdateRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Transition one scoped alert and return its updated row plus audit receipt."""
+    _require_kb_scoped_alert_record(store, alert_id, payload.knowledge_base_id)
+    try:
+        updated = store.transition_status(
+            alert_id,
+            knowledge_base_id=payload.knowledge_base_id,
+            status=payload.status,
+            actor=actor,
+            reason=payload.reason,
+        )
+    except AlertLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
+        status="accepted",
+        message=f"Alert '{updated.alert_id}' is now {updated.status}.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
+    )
+
+
+def build_alert_bulk_status_update_payload(
+    *,
+    payload: AlertBulkStatusUpdateRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertBulkStatusUpdateResponse:
+    """Transition each selected scoped alert where the lifecycle allows it."""
+    updated_alerts: list[AlertListItem] = []
+    rejected_alerts: list[AlertBulkRejection] = []
+    for alert_id in payload.alert_ids:
+        record = store.get_alert(alert_id)
+        if record is None or record.knowledge_base_id != payload.knowledge_base_id:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="not_found")
+            )
+            continue
+        try:
+            updated = store.transition_status(
+                alert_id,
+                knowledge_base_id=payload.knowledge_base_id,
+                status=payload.status,
+                actor=actor,
+                reason=payload.reason,
+            )
+        except AlertLifecycleError:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="invalid_transition")
+            )
+            continue
+        if updated is None:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="not_found")
+            )
+            continue
+        updated_alerts.append(_alert_record_to_list_item(updated))
+    return AlertBulkStatusUpdateResponse(
+        status="accepted",
+        message=(
+            f"Updated {len(updated_alerts)} alert"
+            f"{'' if len(updated_alerts) == 1 else 's'}."
+        ),
+        updated_alerts=updated_alerts,
+        rejected_alerts=rejected_alerts,
     )
 
 
@@ -2160,6 +3293,8 @@ def get_rag_service() -> RagServiceProtocol:
 class _ClearableCache(Protocol):
     """Structural type for an ``functools.lru_cache`` wrapper we can clear."""
 
+    def cache_info(self) -> Any: ...
+
     def cache_clear(self) -> None: ...
 
 
@@ -2198,6 +3333,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_document_status_store": get_document_status_store,
     "get_dlq_record_store": get_dlq_record_store,
     "get_derived_signal_store": get_derived_signal_store,
+    "get_peer_analysis_service": get_peer_analysis_service,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,
     "get_alert_history_writer": get_alert_history_writer,
@@ -2216,9 +3352,13 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "api_state",
     "evidence_pack_repository",
     "case_repository",
+    "audit_log_service",
+    "explanation_review_service",
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",
+    "score_run_repository",
+    "risk_projection_repository",
 )
 
 _CONFIG_SWAP_LOCK = threading.Lock()

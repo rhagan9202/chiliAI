@@ -49,9 +49,21 @@ def test_write_and_count_round_trip(database_url: str) -> None:
             conn.commit()
 
         assert store.write_alerts([]) == 0
-        assert store.write_alerts([_record("a-1"), _record("a-2")]) == 2
+        metadata_record = _record("a-1").model_copy(
+            update={
+                "generation_metadata": {
+                    "suppression": {"decision": "retained"},
+                    "deduplication": {"window_seconds": 900},
+                }
+            }
+        )
+        assert store.write_alerts([metadata_record, _record("a-2")]) == 2
         # Idempotent on (knowledge_base_id, alert_id).
         assert store.write_alerts([_record("a-1")]) == 0
+        fetched = store.get_alert("a-1")
+        assert fetched is not None
+        assert fetched.generation_metadata["suppression"]["decision"] == "retained"
+        assert fetched.generation_metadata["deduplication"]["window_seconds"] == 900
         assert (
             store.count_open_alerts(
                 knowledge_base_id="kb-alert-test", entity_id="claim:c1"
@@ -92,6 +104,16 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
             entity_label="Dr. Original",
             confidence=0.42,
             tags=["original-tag"],
+            generation_metadata={
+                "suppression": {
+                    "decision": "retained",
+                    "reason": "No active suppression rule matched claim and claim_anomaly.",
+                },
+                "deduplication": {
+                    "decision": "retained",
+                    "window_seconds": 900,
+                },
+            },
         )
         rewritten = original.model_copy(
             update={
@@ -100,6 +122,9 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
                 "entity_label": "Dr. Rewritten",
                 "confidence": 0.99,
                 "tags": ["rewritten-tag"],
+                "generation_metadata": {
+                    "suppression": {"decision": "rewritten"},
+                },
             }
         )
 
@@ -113,6 +138,8 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
         assert fetched.entity_label == "Dr. Original"
         assert fetched.confidence == 0.42
         assert fetched.tags == ["original-tag"]
+        assert fetched.generation_metadata["suppression"]["decision"] == "retained"
+        assert fetched.generation_metadata["deduplication"]["window_seconds"] == 900
     finally:
         with provider.connection() as conn:
             conn.execute(
@@ -250,15 +277,84 @@ def test_get_and_acknowledge_alert(database_url: str) -> None:
 
         assert store.get_alert("missing-alert-id") is None
 
-        updated = store.acknowledge("a-ack-1")
+        updated = store.acknowledge(
+            "a-ack-1",
+            knowledge_base_id=kb_id,
+            actor="analyst@example.com",
+        )
         assert updated is not None
         assert updated.status == "acknowledged"
+        assert updated.triage_history[-1].event_type == "status_changed"
+        assert updated.triage_history[-1].actor == "analyst@example.com"
+        assert updated.triage_history[-1].from_status == "open"
+        assert updated.triage_history[-1].to_status == "acknowledged"
 
         refetched = store.get_alert("a-ack-1")
         assert refetched is not None
         assert refetched.status == "acknowledged"
+        assert refetched.triage_history[-1].to_status == "acknowledged"
 
         assert store.acknowledge("missing-alert-id") is None
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_assign_and_transition_alert_status(database_url: str) -> None:
+    kb_id = "kb-alert-triage-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-triage-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="acknowledged",
+            title="Anomalous claim",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+        )
+        store.write_alerts([record])
+
+        assigned = store.assign(
+            "a-triage-1",
+            knowledge_base_id=kb_id,
+            assignee="maya.patel@example.com",
+            actor="supervisor@example.com",
+        )
+        assert assigned is not None
+        assert assigned.assignee == "maya.patel@example.com"
+        assert assigned.triage_history[-1].event_type == "assigned"
+
+        transitioned = store.transition_status(
+            "a-triage-1",
+            knowledge_base_id=kb_id,
+            status="investigating",
+            actor="analyst@example.com",
+            reason="Confirmed peer deviation.",
+        )
+        assert transitioned is not None
+        assert transitioned.status == "investigating"
+        assert transitioned.assignee == "maya.patel@example.com"
+        assert [event.event_type for event in transitioned.triage_history] == [
+            "assigned",
+            "status_changed",
+        ]
+        assert transitioned.triage_history[-1].from_status == "acknowledged"
+        assert transitioned.triage_history[-1].to_status == "investigating"
     finally:
         with provider.connection() as conn:
             conn.execute(

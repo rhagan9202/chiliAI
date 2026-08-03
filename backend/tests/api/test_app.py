@@ -117,6 +117,10 @@ class TestOpenApiSchema:
             "/knowledgebases/{knowledge_base_id}",
             "/knowledgebases/{knowledge_base_id}/documents",
             "/knowledgebases/{knowledge_base_id}/documents/{document_id}",
+            "/knowledgebases/{knowledge_base_id}/score-runs",
+            "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}",
+            "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/cancel",
+            "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/replay",
             "/alerts",
             "/alerts/{alert_id}",
             "/alerts/{alert_id}/acknowledge",
@@ -125,8 +129,13 @@ class TestOpenApiSchema:
             "/investigation/search",
             "/chat/conversations/{conversation_id}/messages",
             "/analytics/risk-scores",
+            "/analytics/risk-projections",
+            "/analytics/risk-projections/rebuild",
             "/analytics/timeseries",
             "/analytics/gnn/clusters",
+            "/identity/canonical/{entity_id}",
+            "/identity/resolve-candidates",
+            "/identity/links/{link_id}/decision",
         }
 
         missing = expected - set(paths)
@@ -154,6 +163,8 @@ class TestOpenApiSchema:
             "investigation",
             "chat",
             "analytics",
+            "score-runs",
+            "identity",
         }.issubset(tags)
 
     def test_frontend_json_routes_have_response_schemas(self, client: TestClient) -> None:
@@ -166,6 +177,8 @@ class TestOpenApiSchema:
             ("/chat/conversations/{conversation_id}/messages", "post"),
             ("/investigation/search", "get"),
             ("/investigation/entities/{entity_id}/neighborhood", "get"),
+            ("/knowledgebases/{knowledge_base_id}/score-runs", "post"),
+            ("/knowledgebases/{knowledge_base_id}/score-runs/{run_id}", "get"),
         )
 
         missing: list[str] = []

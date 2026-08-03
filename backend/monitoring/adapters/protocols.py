@@ -79,6 +79,12 @@ class AlertFeedStoreProtocol(Protocol):
         *,
         knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
+        severities: list[str] | None = None,
+        tags: list[str] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        evidence: str | None = None,
+        freshness: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
@@ -99,8 +105,37 @@ class AlertFeedStoreProtocol(Protocol):
         """Return one alert by id, or ``None`` when it does not exist."""
         ...
 
-    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None:
-        """Mark an alert acknowledged and return the updated record; ``None`` if unknown."""
+    def acknowledge(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str | None = None,
+        actor: str = "system",
+    ) -> AlertHistoryRecord | None:
+        """Mark an alert acknowledged with an audit event; ``None`` if unknown."""
+        ...
+
+    def assign(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        assignee: str | None,
+        actor: str,
+    ) -> AlertHistoryRecord | None:
+        """Assign an alert within a KB scope; ``None`` when the scoped alert is unknown."""
+        ...
+
+    def transition_status(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        status: str,
+        actor: str,
+        reason: str | None = None,
+    ) -> AlertHistoryRecord | None:
+        """Apply a valid lifecycle transition within a KB scope."""
         ...
 
     def count_by_statuses(self, statuses: set[str]) -> int:

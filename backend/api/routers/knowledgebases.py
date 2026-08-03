@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from datetime import datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
@@ -24,8 +25,10 @@ from api._kb_cleanup import (
 )
 from api.dependencies import (
     get_agent_service,
+    get_audit_log_service,
     get_document_status_store,
     get_event_bus,
+    get_feature_catalog_service,
     get_domain_config,
     get_graph_service,
     get_ingestion_service,
@@ -33,15 +36,33 @@ from api.dependencies import (
     get_object_store,
     get_vector_service,
     get_workflow_tracker,
+    record_knowledge_base_audit_event,
 )
+from api.contracts import (
+    EntityFeatureValueListResponse,
+    EntityFeatureValueResponse,
+    FeatureCatalogResponse,
+    FeatureDefinitionResponse,
+    FeatureSourceMappingResponse,
+    FraudTypologyResponse,
+)
+from api.middleware.auth import User
 from api.middleware.rbac import require_role
 from agent.protocols import AgentServiceProtocol
 from agent.service_models import WorkflowSubmissionRequest
 from agent.workflow_tracking import default_steps_for_trigger
-from config.schema import DomainConfig, ValidationConfig
+from analytics.features.service import FeatureCatalogService
+from config.schema import (
+    DomainConfig,
+    FeatureDefinitionConfig,
+    FeatureSourceMappingConfig,
+    FraudTypologyConfig,
+    ValidationConfig,
+)
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.protocols import GraphServiceProtocol
+from auditlog.service import AuditLogService
 from ingestion.adapters.protocols import SourceDocumentStatusStore
 from ingestion.models import IngestionStatus, SourceDocumentStatusRecord
 from ingestion.protocols import IngestionServiceProtocol
@@ -154,6 +175,16 @@ async def read_upload_file_with_limit(
     return b"".join(chunks)
 
 
+def _knowledge_base_audit_summary(
+    knowledge_base: KnowledgeBase,
+) -> dict[str, object | None]:
+    return {
+        "name": knowledge_base.name,
+        "domain": knowledge_base.domain,
+        "pending_cleanup": knowledge_base.pending_cleanup,
+    }
+
+
 def _cleanup_replaced_document(
     *,
     knowledge_base_id: str,
@@ -193,13 +224,14 @@ def _cleanup_replaced_document(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=KnowledgeBase,
-    dependencies=[Depends(require_role("analyst"))],
 )
 async def create_knowledge_base(
     payload: CreateKbRequest,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     event_bus: EventBus = Depends(get_event_bus),
     config: DomainConfig = Depends(get_domain_config),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+    user: User = Depends(require_role("analyst")),
 ) -> KnowledgeBase:
     """Create a new knowledge base and publish a creation event.
 
@@ -216,6 +248,16 @@ async def create_knowledge_base(
     repository.create(knowledge_base)
     event_bus.publish(
         KnowledgeBaseCreatedEvent(knowledge_base_id=knowledge_base.id)
+    )
+    record_knowledge_base_audit_event(
+        audit_service,
+        knowledge_base_id=knowledge_base.id,
+        actor_user_id=user.user_id,
+        actor_email=user.email,
+        actor_roles=user.roles,
+        action="knowledge_base.create",
+        before=None,
+        after=_knowledge_base_audit_summary(knowledge_base),
     )
     return knowledge_base
 
@@ -240,6 +282,120 @@ async def list_knowledge_bases(
             for item in items
         ],
         total=total,
+    )
+
+
+def _require_knowledge_base(
+    repository: KnowledgeBaseRepository,
+    knowledge_base_id: str,
+) -> KnowledgeBase:
+    knowledge_base = repository.get(knowledge_base_id)
+    if knowledge_base is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+    return knowledge_base
+
+
+def _feature_source_mapping_response(
+    mapping: FeatureSourceMappingConfig,
+) -> FeatureSourceMappingResponse:
+    return FeatureSourceMappingResponse(
+        source_type=mapping.source_type,
+        source_ref=mapping.source_ref,
+        raw_fields=list(mapping.raw_fields),
+    )
+
+
+def _feature_definition_response(
+    feature: FeatureDefinitionConfig,
+) -> FeatureDefinitionResponse:
+    return FeatureDefinitionResponse(
+        id=feature.id,
+        label=feature.label,
+        description=feature.description,
+        value_type=feature.value_type,
+        entity_types=list(feature.entity_types),
+        source_mappings=[
+            _feature_source_mapping_response(mapping)
+            for mapping in feature.source_mappings
+        ],
+        peer_dimensions=list(feature.peer_dimensions),
+        threshold_hints=dict(feature.threshold_hints),
+        transformation_version=feature.transformation_version,
+        typology_ids=list(feature.typology_ids),
+    )
+
+
+def _fraud_typology_response(typology: FraudTypologyConfig) -> FraudTypologyResponse:
+    return FraudTypologyResponse(
+        id=typology.id,
+        label=typology.label,
+        description=typology.description,
+        entity_types=list(typology.entity_types),
+        severity_hint=typology.severity_hint,
+        feature_ids=list(typology.feature_ids),
+        policy_rule_ids=list(typology.policy_rule_ids),
+        playbook_ids=list(typology.playbook_ids),
+    )
+
+
+@router.get(
+    "/{knowledge_base_id}/features/catalog",
+    response_model=FeatureCatalogResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_feature_catalog(
+    knowledge_base_id: str,
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    feature_service: FeatureCatalogService = Depends(get_feature_catalog_service),
+) -> FeatureCatalogResponse:
+    """Return the active domain's feature catalog for an existing knowledge base."""
+
+    _require_knowledge_base(repository, knowledge_base_id)
+    catalog = feature_service.get_catalog()
+    return FeatureCatalogResponse(
+        knowledge_base_id=knowledge_base_id,
+        catalog_version=catalog.version,
+        typologies=[
+            _fraud_typology_response(typology)
+            for typology in feature_service.list_typologies()
+        ],
+        features=[
+            _feature_definition_response(feature)
+            for feature in catalog.features
+        ],
+    )
+
+
+@router.get(
+    "/{knowledge_base_id}/entities/{entity_type}/{entity_id}/features",
+    response_model=EntityFeatureValueListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def list_entity_feature_values(
+    knowledge_base_id: str,
+    entity_type: str,
+    entity_id: str,
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    feature_service: FeatureCatalogService = Depends(get_feature_catalog_service),
+) -> EntityFeatureValueListResponse:
+    """Return normalized feature values for one entity in an existing knowledge base."""
+
+    _require_knowledge_base(repository, knowledge_base_id)
+    return EntityFeatureValueListResponse(
+        knowledge_base_id=knowledge_base_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        items=cast(
+            list[EntityFeatureValueResponse],
+            feature_service.list_entity_values(
+                knowledge_base_id=knowledge_base_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+            ),
+        ),
     )
 
 
@@ -271,7 +427,6 @@ async def read_knowledge_base(
 
 @router.delete(
     "/{knowledge_base_id}",
-    dependencies=[Depends(require_role("admin"))],
 )
 async def delete_knowledge_base(
     knowledge_base_id: str,
@@ -279,6 +434,8 @@ async def delete_knowledge_base(
     stores: KbDeletionStores = Depends(get_kb_deletion_stores),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
     event_bus: EventBus = Depends(get_event_bus),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+    user: User = Depends(require_role("admin")),
 ) -> Response:
     """Cascade-delete a KB across every per-KB durable store + metadata.
 
@@ -290,6 +447,7 @@ async def delete_knowledge_base(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
+    before_summary = _knowledge_base_audit_summary(existing_kb)
 
     try:
         ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
@@ -322,6 +480,25 @@ async def delete_knowledge_base(
                 cleanup_pending=True,
             )
         )
+        record_knowledge_base_audit_event(
+            audit_service,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=user.user_id,
+            actor_email=user.email,
+            actor_roles=user.roles,
+            action="knowledge_base.delete",
+            before=before_summary,
+            after={"pending_cleanup": True},
+            outcome="failure",
+            failure_reason="cleanup_pending",
+            metadata={
+                "cleanup_pending": True,
+                "failed_step_count": sum(
+                    1 for step in steps if step["status"] == "failed"
+                ),
+                "step_count": len(steps),
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_207_MULTI_STATUS,
             content={
@@ -337,6 +514,17 @@ async def delete_knowledge_base(
             knowledge_base_id=knowledge_base_id,
             cleanup_pending=False,
         )
+    )
+    record_knowledge_base_audit_event(
+        audit_service,
+        knowledge_base_id=knowledge_base_id,
+        actor_user_id=user.user_id,
+        actor_email=user.email,
+        actor_roles=user.roles,
+        action="knowledge_base.delete",
+        before=before_summary,
+        after=None,
+        metadata={"cleanup_pending": False, "step_count": len(steps)},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

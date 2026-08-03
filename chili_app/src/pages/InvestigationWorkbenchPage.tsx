@@ -1,20 +1,31 @@
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 
-import type { RuntimeEntity } from '../api/contracts'
+import type {
+  AuditEventResponse,
+  DomainConfig,
+  EntityFeatureValueResponse,
+  FeatureCatalogResponse,
+  RuntimeEntity,
+} from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
-import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
+import { useGnnClusters, usePeerAnalysis, useRiskScore, useTimeseries } from '../api/analytics'
+import { useCase, useCaseDossier } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
+import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
+import { useCanonicalIdentityDetail } from '../api/identity'
 import {
   useEntityLocations,
   useInvestigationEntity,
   useInvestigationEntitySearch,
   useInvestigationNeighborhood,
 } from '../api/investigation'
+import { FeatureList } from '../components/analytics/FeatureList'
+import { PeerComparisonPanel } from '../components/analytics/PeerComparisonPanel'
 import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
@@ -24,6 +35,7 @@ import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowl
 import { EvidencePackActions } from '../components/investigation/EvidencePackActions'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
+import { IdentityPanel } from '../components/investigation/IdentityPanel'
 import { SignalBand } from '../components/investigation/SignalBand'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -58,6 +70,305 @@ function WorkbenchTabPanel({ children, tabId }: { children: ReactNode; tabId: st
   )
 }
 
+function CockpitStateItem({
+  isLoading = false,
+  label,
+  unavailable = false,
+  value,
+}: {
+  isLoading?: boolean
+  label: string
+  unavailable?: boolean
+  value: string
+}) {
+  const resolvedValue = isLoading ? 'Loading...' : value
+  return (
+    <div className="metric-row metric-row--stacked">
+      <span className="metric-row__label">{label}</span>
+      <strong>{resolvedValue}</strong>
+      {unavailable ? (
+        <span className="metric-row__label">Requested context could not be loaded.</span>
+      ) : null}
+    </div>
+  )
+}
+
+function cockpitAlertUrl(knowledgeBaseId: string, alertId: string): string {
+  return `/alerts?${new URLSearchParams({ kb: knowledgeBaseId, alert: alertId }).toString()}`
+}
+
+function cockpitCaseUrl(knowledgeBaseId: string, caseId: string): string {
+  return `/cases?${new URLSearchParams({ kb: knowledgeBaseId, case: caseId }).toString()}`
+}
+
+function CockpitActionRail({
+  alertId,
+  caseId,
+  canViewEvidence,
+  knowledgeBaseId,
+  onViewEvidence,
+}: {
+  alertId: string | null
+  caseId: string | null
+  canViewEvidence: boolean
+  knowledgeBaseId: string | null
+  onViewEvidence: () => void
+}) {
+  if (!knowledgeBaseId || (!alertId && !caseId && !canViewEvidence)) {
+    return null
+  }
+
+  return (
+    <div aria-label="Cockpit actions" className="page-actions-inline" role="group">
+      {alertId ? (
+        <Link
+          className="page-button page-button--sm page-button--secondary"
+          to={cockpitAlertUrl(knowledgeBaseId, alertId)}
+        >
+          Open alert
+        </Link>
+      ) : null}
+      {caseId ? (
+        <Link
+          className="page-button page-button--sm page-button--secondary"
+          to={cockpitCaseUrl(knowledgeBaseId, caseId)}
+        >
+          Open case
+        </Link>
+      ) : null}
+      {canViewEvidence ? (
+        <button
+          className="page-button page-button--sm page-button--secondary"
+          onClick={onViewEvidence}
+          type="button"
+        >
+          View cockpit evidence
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function CockpitOverview({
+  actions,
+  caseTitle,
+  evidencePackId,
+  graphSummary,
+  riskLabel,
+  riskValue,
+}: {
+  actions?: ReactNode
+  caseTitle: string | null
+  evidencePackId: string | null
+  graphSummary: string
+  riskLabel: string
+  riskValue: string
+}) {
+  return (
+    <Card className="cockpit-overview-card" compact>
+      <div className="metric-stack">
+        {actions}
+        <div aria-label="Cockpit overview" className="dashboard-kpis" role="group">
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Risk</span>
+            <strong>{riskValue}</strong>
+            <span className="metric-row__label">{riskLabel}</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Graph</span>
+            <strong>{graphSummary}</strong>
+            <span className="metric-row__label">Loaded neighborhood</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Case</span>
+            <strong>{caseTitle ?? 'No case selected'}</strong>
+            <span className="metric-row__label">Current review state</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Evidence</span>
+            <strong>{evidencePackId ?? 'No evidence selected'}</strong>
+            <span className="metric-row__label">Selected evidence pack</span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function formatAuditAction(action: string): string {
+  return action.replace(/[._]/g, ' ')
+}
+
+function auditActorLabel(event: AuditEventResponse): string {
+  return event.actor_email ?? event.actor_user_id
+}
+
+function CockpitAuditTrail({
+  caseId,
+  events,
+  isError,
+  isLoading,
+}: {
+  caseId: string | null
+  events: AuditEventResponse[]
+  isError: boolean
+  isLoading: boolean
+}) {
+  if (!caseId) {
+    return null
+  }
+
+  return (
+    <Card compact>
+      <div aria-label="Cockpit audit trail" className="metric-stack" role="group">
+        <div className="metric-row">
+          <strong>Audit trail</strong>
+          <span className="metric-row__label">Case ledger</span>
+        </div>
+        {isLoading ? <LoadingState label="Loading case audit trail" /> : null}
+        {isError ? <ErrorState description="The case audit trail could not be loaded." /> : null}
+        {!isLoading && !isError && events.length === 0 ? (
+          <EmptyState description="No case audit events have been recorded yet." title="No audit events" />
+        ) : null}
+        {!isLoading && !isError && events.length > 0 ? (
+          <div className="knowledge-base-documents">
+            {events.slice(0, 5).map((event) => (
+              <div className="metric-row metric-row--stacked" key={event.event_id}>
+                <strong>{formatAuditAction(event.action)}</strong>
+                <span className="metric-row__label">{auditActorLabel(event)}</span>
+                <span className="metric-row__label">{new Date(event.occurred_at).toLocaleString()}</span>
+                <span className="metric-row__label">{event.outcome}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
+type CockpitContextSummary = {
+  featureLabel: string | null
+  normalizedValue: string | null
+  peerDimensions: string[]
+  typologyLabels: string[]
+}
+
+function formatCockpitNormalizedValue(value: number | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  return `${Math.round(value * 100)}%`
+}
+
+function labelFromFeatureId(id: string): string {
+  return id.replace(/_/g, ' ')
+}
+
+function cockpitContextSummary(
+  catalog: FeatureCatalogResponse | null,
+  domainConfig: DomainConfig,
+  entityType: string | null,
+  values: EntityFeatureValueResponse[],
+): CockpitContextSummary {
+  if (values.length === 0) {
+    return {
+      featureLabel: null,
+      normalizedValue: null,
+      peerDimensions: [],
+      typologyLabels: [],
+    }
+  }
+
+  const featureIndex = new Map((catalog?.features ?? []).map((feature) => [feature.id, feature]))
+  const typologyIndex = new Map((catalog?.typologies ?? []).map((typology) => [typology.id, typology]))
+  const leadingValue = [...values].sort(
+    (a, b) => (b.normalized_value ?? -1) - (a.normalized_value ?? -1),
+  )[0]
+  const leadingFeature = featureIndex.get(leadingValue.feature_id)
+  const typologyLabels = (leadingFeature?.typology_ids ?? [])
+    .map((id) => typologyIndex.get(id)?.label)
+    .filter((label): label is string => Boolean(label))
+
+  return {
+    featureLabel: leadingFeature?.label ?? labelFromFeatureId(leadingValue.feature_id),
+    normalizedValue: formatCockpitNormalizedValue(leadingValue.normalized_value),
+    peerDimensions: (leadingFeature?.peer_dimensions ?? []).map((dimension) =>
+      domainPropertyLabel(domainConfig, entityType, dimension),
+    ),
+    typologyLabels,
+  }
+}
+
+function domainPropertyLabel(
+  domainConfig: DomainConfig,
+  entityType: string | null,
+  propertyName: string,
+): string {
+  const entityDefinition = domainConfig.entities.find((item) => item.name === entityType)
+  const display = entityDefinition?.properties[propertyName]?.display
+  if (display) return display
+  return propertyName
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function CockpitContextPanel({ summary }: { summary: CockpitContextSummary }) {
+  return (
+    <Card compact>
+      <div aria-label="Cockpit context" className="dashboard-panels" role="group">
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Typologies</span>
+          <strong>{summary.typologyLabels[0] ?? 'No typology context'}</strong>
+          <span className="metric-row__label">
+            {typologyContextLabel(summary.typologyLabels.length)}
+          </span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Feature signal</span>
+          <strong>{summary.featureLabel ?? 'No scored feature'}</strong>
+          <span className="metric-row__label">{summary.normalizedValue ?? 'No normalized score'}</span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Peer basis</span>
+          <strong>
+            {summary.peerDimensions.length > 0
+              ? summary.peerDimensions.join(', ')
+              : 'No peer dimensions'}
+          </strong>
+          <span className="metric-row__label">Catalog peer grouping</span>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function typologyContextLabel(count: number): string {
+  if (count === 0) return 'No mapped feature typology'
+  if (count === 1) return 'Matched feature typology'
+  return `${count} matched typologies`
+}
+
+function CockpitPeerComparisons({
+  entityId,
+  knowledgeBaseId,
+}: {
+  entityId: string | null
+  knowledgeBaseId: string | null
+}) {
+  const peerAnalysisQuery = usePeerAnalysis(knowledgeBaseId, entityId)
+
+  return (
+    <PeerComparisonPanel
+      analysis={peerAnalysisQuery.data ?? null}
+      isError={peerAnalysisQuery.isError}
+      isLoading={peerAnalysisQuery.isLoading}
+    />
+  )
+}
+
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
@@ -75,19 +386,48 @@ export function InvestigationWorkbenchPage() {
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
   const selectedEntityId = entityId ?? null
   const depth = depthFromSearchParams(searchParams)
+  const requestedAlertId = searchParams.get('alert') || null
+  const requestedCaseId = searchParams.get('case') || null
+  const requestedEvidencePackId = searchParams.get('evidence') || null
 
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
+  const caseQuery = useCase(activeKnowledgeBaseId, requestedCaseId)
+  const caseDossierQuery = useCaseDossier(activeKnowledgeBaseId, requestedCaseId)
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
   const entityQuery = useInvestigationEntity(activeKnowledgeBaseId, selectedEntityId)
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
+  const identityQuery = useCanonicalIdentityDetail(activeKnowledgeBaseId, selectedEntityId)
   const riskQuery = useRiskScore(activeKnowledgeBaseId, selectedEntityId)
   const timeseriesQuery = useTimeseries(activeKnowledgeBaseId, selectedEntityId)
   const gnnClustersQuery = useGnnClusters(activeKnowledgeBaseId)
-
-  const selectedAlert = useMemo(
-    () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
-    [alertsQuery.data?.items, selectedEntityId],
+  const featureCatalogQuery = useFeatureCatalog(activeKnowledgeBaseId)
+  const featureValuesQuery = useEntityFeatureValues(
+    activeKnowledgeBaseId,
+    entityQuery.data?.entity?.type ?? null,
+    selectedEntityId,
   )
+
+  const {
+    fallbackAlert,
+    requestedAlertInvalid,
+    selectedAlert,
+  } = useMemo(() => {
+    const items = alertsQuery.data?.items ?? []
+    const explicitAlert = requestedAlertId
+      ? items.find(
+          (alert) =>
+            alert.id === requestedAlertId &&
+            alert.entity_id === selectedEntityId &&
+            alert.knowledge_base_id === activeKnowledgeBaseId,
+        )
+      : null
+    const nextFallbackAlert = items.find((alert) => alert.entity_id === selectedEntityId) ?? null
+    return {
+      fallbackAlert: nextFallbackAlert,
+      requestedAlertInvalid: Boolean(requestedAlertId) && !explicitAlert,
+      selectedAlert: requestedAlertId ? explicitAlert ?? null : nextFallbackAlert,
+    }
+  }, [activeKnowledgeBaseId, alertsQuery.data?.items, requestedAlertId, selectedEntityId])
   // Stable across renders so the force layout is not rebuilt on every paint.
   const domainConfig = domainConfigQuery.data ?? null
   const labelForNode = useCallback(
@@ -95,7 +435,35 @@ export function InvestigationWorkbenchPage() {
       domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
     [domainConfig],
   )
-  const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
+  const candidateEvidencePackId =
+    requestedEvidencePackId ??
+    selectedAlert?.evidence_pack_id ??
+    caseQuery.data?.case.evidence_pack_id ??
+    caseQuery.data?.evidence_pack?.id ??
+    null
+  const evidenceQuery = useEvidencePack(candidateEvidencePackId, activeKnowledgeBaseId)
+  const requestedCaseInvalid =
+    Boolean(requestedCaseId) &&
+    !caseQuery.isLoading &&
+    (caseQuery.isError ||
+      !caseQuery.data?.case ||
+      caseQuery.data.case.knowledge_base_id !== activeKnowledgeBaseId ||
+      (selectedAlert ? !(caseQuery.data.case.alert_ids ?? []).includes(selectedAlert.id) : false))
+  const requestedEvidenceInvalid =
+    Boolean(candidateEvidencePackId) &&
+    !evidenceQuery.isLoading &&
+    (evidenceQuery.isError ||
+      (requestedEvidencePackId ? !evidenceQuery.data || evidenceQuery.data.id !== requestedEvidencePackId : false) ||
+      (selectedAlert && evidenceQuery.data ? evidenceQuery.data.alert_id !== selectedAlert.id : false))
+  const selectedEvidencePackId = requestedEvidenceInvalid
+    ? null
+    : candidateEvidencePackId
+  const ragCaseId = requestedCaseInvalid ? null : caseQuery.data?.case.id ?? null
+  const ragEvidencePackId = requestedEvidenceInvalid
+    ? null
+    : requestedEvidencePackId
+      ? evidenceQuery.data?.id ?? null
+      : selectedEvidencePackId
   const entityLoadFailed = entityQuery.isError || neighborhoodQuery.isError
   // Asked only once the active KB has already failed to produce the entity.
   const entityLocationsQuery = useEntityLocations(selectedEntityId, entityLoadFailed)
@@ -158,6 +526,21 @@ export function InvestigationWorkbenchPage() {
     ...(capabilities?.explainability ? [{ id: 'policy', label: 'Policy' }, { id: 'evidence', label: 'Evidence' }] : []),
   ]
   const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0].id
+  const cockpitRiskValue = riskScore && !riskAvailability.unavailable
+    ? String(Math.round(riskScore.overall_score * 100))
+    : 'Pending'
+  const cockpitRiskLabel = riskScore && !riskAvailability.unavailable
+    ? `${riskScore.risk_level} risk`
+    : 'Risk score unavailable'
+  const cockpitGraphSummary = neighborhood
+    ? `${pluralize(neighborhood.entities.length, 'entity')} · ${pluralize(neighborhood.relationships.length, 'relationship')}`
+    : 'No graph loaded'
+  const cockpitFeatureContext = cockpitContextSummary(
+    featureCatalogQuery.data ?? null,
+    domainConfigQuery.data,
+    entity?.type ?? null,
+    featureValuesQuery.data?.items ?? [],
+  )
 
   // Distinct subjects the queue has already flagged, newest first, as opening
   // moves for an analyst who does not know the corpus yet.
@@ -173,6 +556,11 @@ export function InvestigationWorkbenchPage() {
     const nextSearch = new URLSearchParams(searchParams)
     if (activeKnowledgeBaseId) {
       nextSearch.set('kb', activeKnowledgeBaseId)
+    }
+    if (!selectedAlert || selectedAlert.entity_id !== nextId) {
+      nextSearch.delete('alert')
+      nextSearch.delete('evidence')
+      nextSearch.delete('case')
     }
     navigate(
       { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
@@ -207,6 +595,9 @@ export function InvestigationWorkbenchPage() {
                   onChange={(event) => {
                     const nextSearch = new URLSearchParams(searchParams)
                     nextSearch.set('kb', event.target.value)
+                    nextSearch.delete('alert')
+                    nextSearch.delete('case')
+                    nextSearch.delete('evidence')
                     navigate({ pathname: '/investigation', search: nextSearch.toString() })
                   }}
                   value={activeKnowledgeBaseId ?? ''}
@@ -285,7 +676,7 @@ export function InvestigationWorkbenchPage() {
           </Card>
         </div>
 
-        <div className="metric-stack">
+        <div className="metric-stack workbench-main">
           {entityQuery.isLoading || neighborhoodQuery.isLoading ? <LoadingState label="Loading selected entity graph" /> : null}
           {/* "It is somewhere else" and "it does not exist" are different
               answers; the old generic frame gave neither (UXA-104). */}
@@ -299,6 +690,34 @@ export function InvestigationWorkbenchPage() {
 
           {entity ? (
             <>
+              <CockpitOverview
+                actions={
+                  <CockpitActionRail
+                    alertId={selectedAlert?.id ?? null}
+                    canViewEvidence={Boolean(
+                      selectedEvidencePackId && tabs.some((tab) => tab.id === 'evidence'),
+                    )}
+                    caseId={ragCaseId}
+                    knowledgeBaseId={activeKnowledgeBaseId}
+                    onViewEvidence={() => setActiveTabId('evidence')}
+                  />
+                }
+                caseTitle={ragCaseId ? caseQuery.data?.case.title ?? ragCaseId : null}
+                evidencePackId={selectedEvidencePackId}
+                graphSummary={cockpitGraphSummary}
+                riskLabel={cockpitRiskLabel}
+                riskValue={cockpitRiskValue}
+              />
+
+              <CockpitContextPanel summary={cockpitFeatureContext} />
+
+              {capabilities?.peer_stats ? (
+                <CockpitPeerComparisons
+                  entityId={selectedEntityId}
+                  knowledgeBaseId={activeKnowledgeBaseId}
+                />
+              ) : null}
+
               <EntityDossierHeader
                 config={domainConfigQuery.data}
                 entity={entity}
@@ -309,7 +728,8 @@ export function InvestigationWorkbenchPage() {
                     source: 'entity',
                     entityId: selectedEntityId,
                     alertId: selectedAlert?.id,
-                    evidencePackId: selectedAlert?.evidence_pack_id,
+                    caseId: ragCaseId,
+                    evidencePackId: ragEvidencePackId,
                     question: DEFAULT_RISK_QUESTION,
                   }))
                 }
@@ -317,7 +737,61 @@ export function InvestigationWorkbenchPage() {
                 riskUnavailableReason={riskAvailability.reason}
               />
 
+              <IdentityPanel
+                detail={identityQuery.data ?? null}
+                isError={identityQuery.isError}
+                isLoading={identityQuery.isLoading}
+              />
+
               <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />
+
+              <Card compact>
+                <div aria-label="Cockpit state" className="metric-stack" role="group">
+                  <div className="metric-row">
+                    <strong>Cockpit state</strong>
+                    <span className="metric-row__label">Shareable investigation URL</span>
+                  </div>
+                  <div className="dashboard-panels">
+                    <CockpitStateItem
+                      label="Knowledge base"
+                      value={activeKnowledgeBaseId ?? 'Not selected'}
+                    />
+                    <CockpitStateItem
+                      label="Entity"
+                      value={selectedEntityId ?? 'No entity selected'}
+                    />
+                    <CockpitStateItem
+                      label="Alert"
+                      value={
+                        selectedAlert?.id ??
+                        requestedAlertId ??
+                        fallbackAlert?.id ??
+                        'No alert selected'
+                      }
+                      unavailable={requestedAlertInvalid}
+                    />
+                    <CockpitStateItem
+                      isLoading={caseQuery.isLoading}
+                      label="Case"
+                      value={caseQuery.data?.case.title ?? requestedCaseId ?? 'No case selected'}
+                      unavailable={requestedCaseInvalid}
+                    />
+                    <CockpitStateItem
+                      isLoading={evidenceQuery.isLoading}
+                      label="Evidence"
+                      value={candidateEvidencePackId ?? 'No evidence selected'}
+                      unavailable={requestedEvidenceInvalid}
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              <CockpitAuditTrail
+                caseId={ragCaseId}
+                events={caseDossierQuery.data?.audit_events ?? []}
+                isError={caseDossierQuery.isError}
+                isLoading={caseDossierQuery.isLoading}
+              />
 
               {tabs.length > 1 ? (
                 <div className="page-toolbar">
@@ -367,6 +841,22 @@ export function InvestigationWorkbenchPage() {
                             }
                             description="Risk factors appear once analytics have scored this entity."
                             title="No risk factors"
+                          />
+                        )}
+                      </div>
+                    </Card>
+
+                    <Card>
+                      <div className="metric-stack">
+                        <strong>Feature values</strong>
+                        {featureValuesQuery.isError || featureCatalogQuery.isError ? (
+                          <ErrorState description="Feature values could not be loaded for this entity." />
+                        ) : featureValuesQuery.isLoading || featureCatalogQuery.isLoading ? (
+                          <LoadingState label="Loading feature values" />
+                        ) : (
+                          <FeatureList
+                            catalog={featureCatalogQuery.data ?? null}
+                            values={featureValuesQuery.data?.items ?? []}
                           />
                         )}
                       </div>
@@ -444,7 +934,7 @@ export function InvestigationWorkbenchPage() {
 
               {resolvedActiveTabId === 'evidence' ? (
                 <WorkbenchTabPanel key="evidence" tabId="evidence">
-                  {evidenceQuery.data ? (
+                  {evidenceQuery.data && !requestedEvidenceInvalid ? (
                     <EvidencePackViewer
                       // Export only: there is no alert in hand here, and
                       // offering to attach one would mean inventing it.
@@ -457,6 +947,7 @@ export function InvestigationWorkbenchPage() {
                         ) : null
                       }
                       entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                      knowledgeBaseId={activeKnowledgeBaseId}
                       labelFor={labelForNode}
                       onSelectNode={navigateToEntity}
                       pack={evidenceQuery.data}

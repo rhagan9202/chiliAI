@@ -10,7 +10,10 @@ import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
+  assign: vi.fn(),
+  bulkStatus: vi.fn(),
   promoteAlertToCase: vi.fn(),
+  updateStatus: vi.fn(),
   attachAlertToCase: vi.fn(),
   useAlerts: vi.fn(),
   useCases: vi.fn(),
@@ -59,7 +62,10 @@ const domainConfig: DomainConfig = {
 
 vi.mock('../../api/alerts', () => ({
   useAcknowledgeAlert: () => ({ isPending: false, mutate: mocks.acknowledge }),
+  useAssignAlert: () => ({ isPending: false, mutate: mocks.assign }),
   useAlerts: mocks.useAlerts,
+  useBulkUpdateAlertStatus: () => ({ isPending: false, mutate: mocks.bulkStatus }),
+  useUpdateAlertStatus: () => ({ isPending: false, mutate: mocks.updateStatus }),
 }))
 
 vi.mock('../../api/cases', () => ({
@@ -116,6 +122,20 @@ vi.mock('../../api/evidence', () => ({
   }),
 }))
 
+vi.mock('../../api/explanationReviews', () => ({
+  useCreateEvidencePackReview: () => ({ isPending: false, mutate: vi.fn() }),
+  useEvidencePackReviews: () => ({
+    data: {
+      evidence_pack_id: '',
+      items: [],
+      knowledge_base_id: '',
+      page: { page: 1, page_size: 50, total_items: 0 },
+    },
+    isError: false,
+    isLoading: false,
+  }),
+}))
+
 const alertResponse = {
   items: [
     {
@@ -131,7 +151,20 @@ const alertResponse = {
       evidence_pack_id: 'evidence-1',
       knowledge_base_id: 'kb-redwood',
       created_at: '2026-05-12T00:00:00Z',
+      updated_at: '2026-08-01T12:00:00Z',
       tags: ['billing', 'peer-deviation'],
+      assignee: null,
+      generation_metadata: {
+        suppression: {
+          decision: 'retained',
+          reason: 'No active suppression rule matched provider and claims_per_week.',
+        },
+        deduplication: {
+          decision: 'retained',
+          reason: 'No existing alert inside the dedup window.',
+          window_seconds: 900,
+        },
+      },
     },
     {
       id: 'alert-2',
@@ -146,7 +179,9 @@ const alertResponse = {
       evidence_pack_id: null,
       knowledge_base_id: 'kb-harbor',
       created_at: '2026-05-12T00:00:00Z',
+      updated_at: '2026-06-01T12:00:00Z',
       tags: ['network'],
+      assignee: null,
     },
   ],
   page: { page: 1, page_size: 2, total_items: 2 },
@@ -174,7 +209,10 @@ function LocationProbe({ onChange }: { onChange: (location: string) => void }) {
 describe('AlertFeedPage', () => {
   beforeEach(() => {
     mocks.acknowledge.mockReset()
+    mocks.assign.mockReset()
+    mocks.bulkStatus.mockReset()
     mocks.promoteAlertToCase.mockReset()
+    mocks.updateStatus.mockReset()
     mocks.useAlerts.mockReset()
     mocks.useCases.mockReset()
     mocks.useAlerts.mockImplementation(
@@ -356,6 +394,152 @@ describe('AlertFeedPage', () => {
     expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
   })
 
+  it('filters the queue by typology, assignee, case state, score freshness, and evidence', () => {
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'case-redwood',
+            knowledge_base_id: 'kb-redwood',
+            title: 'Redwood DME Group escalation',
+            status: 'investigating',
+            priority: 'critical',
+            assignee: 'Maya Patel',
+            alert_ids: ['alert-1'],
+            updated_at: '2026-08-01T12:00:00Z',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed(
+      '/alerts?typology=billing&assignee=Maya+Patel&case=investigating&freshness=fresh&evidence=with_evidence',
+    )
+
+    expect(screen.getByText('Redwood DME Group')).toBeInTheDocument()
+    expect(screen.queryByText('North Harbor Imaging')).not.toBeInTheDocument()
+    expect(screen.getByText('Maya Patel')).toBeInTheDocument()
+    expect(screen.getByText('Case investigating')).toBeInTheDocument()
+    expect(screen.getByText('Fresh score')).toBeInTheDocument()
+  })
+
+  it('prefers durable alert assignee over case-derived assignment', () => {
+    mocks.useAlerts.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        ...alertResponse,
+        items: [
+          {
+            ...alertResponse.items[0],
+            assignee: 'Durable Analyst',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'case-redwood',
+            knowledge_base_id: 'kb-redwood',
+            title: 'Redwood DME Group escalation',
+            status: 'investigating',
+            priority: 'critical',
+            assignee: 'Maya Patel',
+            alert_ids: ['alert-1'],
+            updated_at: '2026-08-01T12:00:00Z',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed()
+
+    expect(screen.getByText('Durable Analyst')).toBeInTheDocument()
+    expect(screen.queryByText('Maya Patel')).not.toBeInTheDocument()
+  })
+
+  it('assigns a row from the persisted queue controls', () => {
+    renderAlertFeed()
+
+    fireEvent.change(screen.getByLabelText('Assignee for Redwood DME Group'), {
+      target: { value: 'maya.patel@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Assign Redwood DME Group' }))
+
+    expect(mocks.assign).toHaveBeenCalledWith({
+      alertId: 'alert-1',
+      knowledgeBaseId: 'kb-redwood',
+      assignee: 'maya.patel@example.com',
+    })
+  })
+
+  it('transitions a row only through a valid next status option', () => {
+    renderAlertFeed()
+
+    const statusSelect = screen.getByLabelText('Status for North Harbor Imaging')
+    expect(within(statusSelect).queryByRole('option', { name: 'Resolved' })).not.toBeInTheDocument()
+
+    fireEvent.change(statusSelect, { target: { value: 'investigating' } })
+
+    expect(mocks.updateStatus).toHaveBeenCalledWith({
+      alertId: 'alert-2',
+      knowledgeBaseId: 'kb-harbor',
+      status: 'investigating',
+      reason: 'Queue status update.',
+    })
+  })
+
+  it('confirms a selected bulk status transition and sends visible alerts by knowledge base', async () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.change(screen.getByLabelText('Bulk status'), { target: { value: 'dismissed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update 1 alert' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Update status' }),
+    )
+
+    expect(mocks.bulkStatus).toHaveBeenCalledWith({
+      knowledgeBaseId: 'kb-redwood',
+      alertIds: ['alert-1'],
+      status: 'dismissed',
+      reason: 'Bulk queue update.',
+    })
+  })
+
+  it('links an evidence preview directly to the cockpit evidence state', () => {
+    renderAlertFeed()
+
+    expect(
+      screen.getByRole('link', { name: 'Preview evidence for Redwood DME Group' }),
+    ).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-redwood&alert=alert-1&evidence=evidence-1',
+    )
+  })
+
+  it('distinguishes an empty queue from filters hiding existing alerts', () => {
+    mocks.useAlerts.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
+    })
+
+    renderAlertFeed()
+
+    expect(screen.getByText('No alerts in queue')).toBeInTheDocument()
+    expect(screen.queryByText('No matching alerts')).not.toBeInTheDocument()
+  })
+
   it('leads each card with what is wrong, not only who it happened to', () => {
     renderAlertFeed()
 
@@ -390,6 +574,19 @@ describe('AlertFeedPage', () => {
     // card also mapped every tag to a chip, so "BILLING" appeared twice.
     expect(screen.queryByText('peer deviation')).not.toBeInTheDocument()
     expect(screen.getAllByText('BILLING · PEER-DEVIATION')).toHaveLength(1)
+  })
+
+  it('shows compact suppression and dedup generation decisions for review', () => {
+    renderAlertFeed()
+
+    expect(screen.getByText('Suppression retained')).toHaveAttribute(
+      'title',
+      'No active suppression rule matched provider and claims_per_week.',
+    )
+    expect(screen.getByText('Dedup retained')).toHaveAttribute(
+      'title',
+      'No existing alert inside the dedup window. Window: 900s.',
+    )
   })
 
   it('makes one action primary and demotes the rest', () => {
@@ -493,14 +690,20 @@ describe('AlertFeedPage', () => {
     expect(mocks.promoteAlertToCase).not.toHaveBeenCalled()
   })
 
-  it('links each alert row to the entity investigation view with unique labels', () => {
+  it('links each alert row to the cockpit with unique alert context', () => {
     renderAlertFeed()
 
     const redwoodLink = screen.getByRole('link', { name: 'Investigate Redwood DME Group' })
     const harborLink = screen.getByRole('link', { name: 'Investigate North Harbor Imaging' })
 
-    expect(redwoodLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-redwood')
-    expect(harborLink).toHaveAttribute('href', '/investigation/provider-118?kb=kb-harbor')
+    expect(redwoodLink).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-redwood&alert=alert-1&evidence=evidence-1',
+    )
+    expect(harborLink).toHaveAttribute(
+      'href',
+      '/investigation/provider-118?kb=kb-harbor&alert=alert-2',
+    )
   })
 
   it('launches Ask AI with the selected alert context', () => {

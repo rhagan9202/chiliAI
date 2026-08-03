@@ -283,6 +283,12 @@ ROAM status at baseline: R2, R3, R5, R7 are unresolved and require sprint-level 
 - API supports pagination, sorting, and filters needed for Sprint 6.
 - Read model includes enough metadata to explain freshness and source versions.
 
+**Implementation status 2026-08-03:** `SAFE-CMS-003` landed in scoped slices:
+projection domain/service/API/dashboard consumer, followed by durable Postgres
+`risk_projections` storage, repository-backed rebuild source, KB cleanup purge, and live
+`risk.scored` projection writes. Later lifecycle fan-in can enrich alert/case/evidence refs,
+but the production read-model storage and rebuild seam are no longer the open DoD gap.
+
 **Verification:** Repository/query tests, migration tests, API pagination/filter tests, frontend hook tests, and performance smoke with demo data.
 
 ### Sprint 4: Persist Full Evidence Provenance (`SAFE-CMS-004`)
@@ -881,9 +887,14 @@ Before implementation starts, create or update:
 
 ## 17. Immediate Next Steps
 
-- [ ] Confirm whether Sprint 1 starts from current branch or a dedicated surge branch/worktree.
-- [ ] Create backlog rows for `SAFE-CMS-001` through `SAFE-CMS-020`.
-- [ ] Draft PI 1 implementation specs for Sprints 1-4.
+- [x] Confirm whether Sprint 1 starts from current branch or a dedicated surge branch/worktree.
+  - Formalization happened on `fix/normalize-kb-query-param` on 2026-08-02. Sprint 1 implementation should
+    start from a dedicated surge branch/worktree after the read-only inventory, for example
+    `feat/safe-cms-pi1-foundation`.
+- [x] Create backlog rows for `SAFE-CMS-001` through `SAFE-CMS-020`.
+  - Added to `docs/project/planning/backlog.md` on 2026-08-02.
+- [x] Draft PI 1 implementation specs for Sprints 1-4.
+  - Added `docs/superpowers/specs/2026-08-02-safe-cms-pi1-analytics-foundation-design.md`.
 - [ ] Run a fresh route/API/component inventory before Sprint 1 implementation.
 - [ ] Select demo KB/data subset and expected CMS fraud scenarios.
 - [ ] Assign owner/reviewer/QA roles for PI 1.

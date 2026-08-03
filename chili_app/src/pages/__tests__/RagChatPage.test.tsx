@@ -556,11 +556,11 @@ describe('RagChatPage', () => {
     expect(link).toHaveAttribute('data-router-link', 'true')
     expect(link).toHaveAttribute(
       'href',
-      '/investigation/provider-204?kb=kb-1',
+      '/investigation/provider-204?kb=kb-1&alert=alert-1',
     )
   })
 
-  it('links citations to the launch alert when no entity target exists', () => {
+  it('links document-only alert citations to document preview context', () => {
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=alert&alert=alert-1')
     mocks.conversation = {
@@ -596,11 +596,11 @@ describe('RagChatPage', () => {
       }),
     ).toHaveAttribute(
       'href',
-      '/alerts?alert=alert-1',
+      '/knowledge-bases?kb=kb-1&document=alerts.csv&chunk=1',
     )
   })
 
-  it('links citations to the launch case when no entity target exists', () => {
+  it('links document-only case citations to document preview context', () => {
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=case&case=case-1')
     mocks.conversation = {
@@ -636,7 +636,7 @@ describe('RagChatPage', () => {
       }),
     ).toHaveAttribute(
       'href',
-      '/cases?kb=kb-1&case=case-1',
+      '/knowledge-bases?kb=kb-1&document=case-notes.md&chunk=2',
     )
   })
 
@@ -654,7 +654,7 @@ describe('RagChatPage', () => {
     expect(screen.getByRole('button', { name: /^send$/i })).toBeDisabled()
   })
 
-  it('keeps duplicate-content citations as distinct link instances without key collisions', () => {
+  it('keeps duplicate-content citations as distinct document links without key collisions', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=alert&alert=alert-1')
@@ -698,12 +698,12 @@ describe('RagChatPage', () => {
         screen.getByRole('link', {
           name: /open citation context.*claims\.csv.*chunk-shared.*record-1.*chunk 1/i,
         }),
-      ).toBeInTheDocument()
+      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=1')
       expect(
         screen.getByRole('link', {
           name: /open citation context.*claims\.csv.*chunk-shared.*record-2.*chunk 2/i,
         }),
-      ).toBeInTheDocument()
+      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=2')
       expect(
         consoleError.mock.calls.some((call) =>
           call.some(
@@ -738,8 +738,6 @@ describe('RagChatPage', () => {
               content_id: 'chunk-20',
               score: 0.64,
               snippet: 'General policy guidance applies.',
-              document_id: 'policy.md',
-              chunk_index: 5,
             },
           ],
         },
@@ -749,10 +747,10 @@ describe('RagChatPage', () => {
     render(<RagChatPage />)
 
     expect(screen.queryByRole('link', { name: /open citation context/i })).not.toBeInTheDocument()
-    expect(screen.getByText('policy.md')).toBeInTheDocument()
+    expect(screen.getByText('record-3')).toBeInTheDocument()
     expect(screen.getByText('64%')).toBeInTheDocument()
     expect(screen.getByText('General policy guidance applies.')).toBeInTheDocument()
-    expect(screen.getByText('chunk-20 · chunk 5')).toBeInTheDocument()
+    expect(screen.getByText('chunk-20')).toBeInTheDocument()
   })
 
   it('keeps manual send on the existing add-message path', async () => {

@@ -751,10 +751,33 @@ class PeerMetricSpec(BaseModel):
     rationale_template: str = "{name}: z={z:.2f} vs {peer_group} peers"
 
 
+class PeerCohortExclusionConfig(BaseModel):
+    """One exclusion rule documented for a cohort definition."""
+
+    field: str = Field(min_length=1)
+    operator: Literal["equals", "not_equals", "in", "not_in", "exists", "missing"]
+    values: list[str] = Field(default_factory=lambda: [])
+    reason: str = ""
+
+
+class PeerCohortDefinitionConfig(BaseModel):
+    """Versioned peer cohort definition for analyst-facing comparisons."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    entity_type: str = Field(min_length=1)
+    peer_metric: str = Field(min_length=1)
+    version: str = "v1"
+    group_by: list[str] = Field(default_factory=lambda: [])
+    exclusions: list[PeerCohortExclusionConfig] = Field(default_factory=lambda: [])
+    min_cohort_size: int = Field(default=5, ge=2)
+
+
 class PeerStatsConfig(BaseModel):
     """Collection of peer-group z-score metric specs for a domain."""
 
     metrics: list[PeerMetricSpec] = Field(default_factory=lambda: [])
+    cohorts: list[PeerCohortDefinitionConfig] = Field(default_factory=lambda: [])
 
 
 class TimeseriesMetricSpec(BaseModel):
@@ -799,6 +822,63 @@ class TimeseriesAnalyticsConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Feature catalog and typology config
+# ---------------------------------------------------------------------------
+
+
+class FeatureSourceMappingConfig(BaseModel):
+    """A source path used to derive a normalized feature value."""
+
+    source_type: str = Field(min_length=1)
+    source_ref: str = Field(min_length=1)
+    raw_fields: list[str] = Field(default_factory=list)
+
+
+class FeatureDefinitionConfig(BaseModel):
+    """A reusable, domain-neutral feature definition."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    description: str = ""
+    value_type: Literal[
+        "boolean", "integer", "decimal", "string", "categorical"
+    ] = "decimal"
+    entity_types: list[str] = Field(default_factory=list)
+    source_mappings: list[FeatureSourceMappingConfig] = Field(default_factory=list)
+    peer_dimensions: list[str] = Field(default_factory=list)
+    threshold_hints: dict[str, float] = Field(default_factory=dict)
+    transformation_version: str = Field(default="v1", min_length=1)
+    typology_ids: list[str] = Field(default_factory=list)
+
+
+class FeatureCatalogConfig(BaseModel):
+    """Versioned collection of feature definitions for a domain."""
+
+    version: str = Field(default="v1", min_length=1)
+    features: list[FeatureDefinitionConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_unique_feature_ids(self) -> FeatureCatalogConfig:
+        ids = [feature.id for feature in self.features]
+        if len(set(ids)) != len(ids):
+            raise ValueError("FeatureCatalogConfig feature ids must be unique.")
+        return self
+
+
+class FraudTypologyConfig(BaseModel):
+    """A versioned fraud-pattern label described by a domain pack."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    description: str = ""
+    entity_types: list[str] = Field(default_factory=list)
+    severity_hint: Literal["low", "medium", "high", "critical"] | None = None
+    feature_ids: list[str] = Field(default_factory=list)
+    policy_rule_ids: list[str] = Field(default_factory=list)
+    playbook_ids: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
 
@@ -833,6 +913,8 @@ class DomainConfig(BaseModel):
     peer_stats: PeerStatsConfig | None = None
     timeseries: TimeseriesAnalyticsConfig | None = None
     scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
+    typologies: list[FraudTypologyConfig] = Field(default_factory=list)
+    feature_catalog: FeatureCatalogConfig = Field(default_factory=FeatureCatalogConfig)
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
@@ -921,6 +1003,51 @@ class DomainConfig(BaseModel):
                     f"Relationship '{rel.name}' target '{rel.target}' "
                     f"does not match any declared entity."
                 )
+
+        # --- feature catalog and typology references ---
+        feature_ids = {feature.id for feature in self.feature_catalog.features}
+        typology_id_values = [typology.id for typology in self.typologies]
+        typology_ids = set(typology_id_values)
+        if len(typology_ids) != len(typology_id_values):
+            errors.append("Typology ids must be unique.")
+        policy_rule_ids = {
+            f"{pack.id}.{rule.id}"
+            for pack in self.policy_rules
+            for rule in pack.rules
+        }
+        for feature in self.feature_catalog.features:
+            for entity_type in feature.entity_types:
+                if entity_type not in entity_name_set:
+                    errors.append(
+                        f"Feature '{feature.id}' references unknown entity_type "
+                        f"'{entity_type}'."
+                    )
+            for typology_id in feature.typology_ids:
+                if typology_id not in typology_ids:
+                    errors.append(
+                        f"Feature '{feature.id}' references unknown typology_id "
+                        f"'{typology_id}'."
+                    )
+
+        for typology in self.typologies:
+            for entity_type in typology.entity_types:
+                if entity_type not in entity_name_set:
+                    errors.append(
+                        f"Typology '{typology.id}' references unknown entity_type "
+                        f"'{entity_type}'."
+                    )
+            for feature_id in typology.feature_ids:
+                if feature_id not in feature_ids:
+                    errors.append(
+                        f"Typology '{typology.id}' references unknown feature_id "
+                        f"'{feature_id}'."
+                    )
+            for policy_rule_id in typology.policy_rule_ids:
+                if policy_rule_id not in policy_rule_ids:
+                    errors.append(
+                        f"Typology '{typology.id}' references unknown policy_rule_id "
+                        f"'{policy_rule_id}'."
+                    )
 
         # --- enum properties must declare enum_values ---
         for entity in self.entities:
@@ -1087,6 +1214,58 @@ class DomainConfig(BaseModel):
                                 f"'{time_def.type.value}'."
                             )
 
+        # --- peerstats cohort references ---
+        if self.peer_stats is not None:
+            feeds_by_record_type: dict[str, list[RecordFeedConfig]] = {}
+            for feed in records_config.feeds:
+                feeds_by_record_type.setdefault(feed.record_type, []).append(feed)
+            peer_metrics = {metric.name: metric for metric in self.peer_stats.metrics}
+            cohort_ids: set[str] = set()
+            for cohort in self.peer_stats.cohorts:
+                if cohort.id in cohort_ids:
+                    errors.append(f"Duplicate peer cohort id: '{cohort.id}'")
+                cohort_ids.add(cohort.id)
+
+                metric = peer_metrics.get(cohort.peer_metric)
+                if metric is None:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' references unknown peer metric "
+                        f"'{cohort.peer_metric}'."
+                    )
+                    continue
+                if cohort.entity_type != metric.entity_type:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' entity_type "
+                        f"'{cohort.entity_type}' does not match peer metric "
+                        f"'{metric.name}' entity_type '{metric.entity_type}'."
+                    )
+                matching = feeds_by_record_type.get(metric.record_type, [])
+                if not matching:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' metric '{metric.name}' "
+                        f"references record_type '{metric.record_type}' not "
+                        f"declared by any records feed."
+                    )
+                    continue
+                for feed in matching:
+                    schema_fields = feed.record_schema
+                    label = (
+                        f"Peer cohort '{cohort.id}' on records feed "
+                        f"'{feed.name}'"
+                    )
+                    for field_name in cohort.group_by:
+                        if field_name not in schema_fields:
+                            errors.append(
+                                f"{label}: group_by field '{field_name}' is not "
+                                f"in record_schema."
+                            )
+                    for exclusion in cohort.exclusions:
+                        if exclusion.field not in schema_fields:
+                            errors.append(
+                                f"{label}: exclusion field '{exclusion.field}' is "
+                                f"not in record_schema."
+                            )
+
         # --- scorecard template references ---
         feed_schemas = {
             feed.name: set(feed.record_schema.keys())
@@ -1173,6 +1352,10 @@ __all__ = [
     "DatabaseConfig",
     "DomainConfig",
     "DomainInfo",
+    "FeatureCatalogConfig",
+    "FeatureDefinitionConfig",
+    "FeatureSourceMappingConfig",
+    "FraudTypologyConfig",
     "GnnConfig",
     "GraphDbConfig",
     "IngestionConfig",
@@ -1187,6 +1370,8 @@ __all__ = [
     "LlmConfig",
     "MonitoringConfig",
     "ObjectStoreConfig",
+    "PeerCohortDefinitionConfig",
+    "PeerCohortExclusionConfig",
     "PolicyCitationRef",
     "PolicyPredicate",
     "PolicyPredicateValue",
