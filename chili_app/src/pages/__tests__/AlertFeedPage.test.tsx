@@ -131,6 +131,7 @@ const alertResponse = {
       evidence_pack_id: 'evidence-1',
       knowledge_base_id: 'kb-redwood',
       created_at: '2026-05-12T00:00:00Z',
+      updated_at: '2026-08-01T12:00:00Z',
       tags: ['billing', 'peer-deviation'],
     },
     {
@@ -146,6 +147,7 @@ const alertResponse = {
       evidence_pack_id: null,
       knowledge_base_id: 'kb-harbor',
       created_at: '2026-05-12T00:00:00Z',
+      updated_at: '2026-06-01T12:00:00Z',
       tags: ['network'],
     },
   ],
@@ -354,6 +356,62 @@ describe('AlertFeedPage', () => {
 
     expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
     expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
+  })
+
+  it('filters the queue by typology, assignee, case state, score freshness, and evidence', () => {
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'case-redwood',
+            knowledge_base_id: 'kb-redwood',
+            title: 'Redwood DME Group escalation',
+            status: 'investigating',
+            priority: 'critical',
+            assignee: 'Maya Patel',
+            alert_ids: ['alert-1'],
+            updated_at: '2026-08-01T12:00:00Z',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed(
+      '/alerts?typology=billing&assignee=Maya+Patel&case=investigating&freshness=fresh&evidence=with_evidence',
+    )
+
+    expect(screen.getByText('Redwood DME Group')).toBeInTheDocument()
+    expect(screen.queryByText('North Harbor Imaging')).not.toBeInTheDocument()
+    expect(screen.getByText('Maya Patel')).toBeInTheDocument()
+    expect(screen.getByText('Case investigating')).toBeInTheDocument()
+    expect(screen.getByText('Fresh score')).toBeInTheDocument()
+  })
+
+  it('links an evidence preview directly to the cockpit evidence state', () => {
+    renderAlertFeed()
+
+    expect(
+      screen.getByRole('link', { name: 'Preview evidence for Redwood DME Group' }),
+    ).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-redwood&alert=alert-1&evidence=evidence-1',
+    )
+  })
+
+  it('distinguishes an empty queue from filters hiding existing alerts', () => {
+    mocks.useAlerts.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
+    })
+
+    renderAlertFeed()
+
+    expect(screen.getByText('No alerts in queue')).toBeInTheDocument()
+    expect(screen.queryByText('No matching alerts')).not.toBeInTheDocument()
   })
 
   it('leads each card with what is wrong, not only who it happened to', () => {

@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
-import type { RuntimeEntity } from '../api/contracts'
+import type { AlertListItem, CaseSummaryResponse, RuntimeEntity } from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
 import { useAttachAlertToCase, useCases, usePromoteAlertToCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
@@ -66,6 +66,33 @@ const STATUS_OPTIONS = [
   { id: 'dismissed', label: 'Dismissed' },
 ]
 
+const SCORE_FRESHNESS_OPTIONS = [
+  { id: 'fresh', label: 'Fresh score' },
+  { id: 'stale', label: 'Stale score' },
+  { id: 'unknown', label: 'Unknown score' },
+]
+
+const EVIDENCE_OPTIONS = [
+  { id: 'with_evidence', label: 'With evidence' },
+  { id: 'without_evidence', label: 'Without evidence' },
+]
+
+type AlertListRow = Omit<AlertListItem, 'tags'> & {
+  tags?: string[]
+}
+
+type CaseListRow = Omit<CaseSummaryResponse, 'alert_ids'> & {
+  alert_ids?: string[]
+}
+
+type QueueAlert = AlertListRow & {
+  tags: string[]
+  assignee: string | null
+  case_id: string | null
+  case_state: string | null
+  score_freshness: 'fresh' | 'stale' | 'unknown'
+}
+
 function investigationCockpitUrl(alert: {
   entity_id: string
   knowledge_base_id: string
@@ -80,6 +107,62 @@ function investigationCockpitUrl(alert: {
     params.set('evidence', alert.evidence_pack_id)
   }
   return `/investigation/${encodeURIComponent(alert.entity_id)}?${params.toString()}`
+}
+
+function queueValueLabel(value: string): string {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function firstCaseByAlertId(cases: readonly CaseListRow[]): Map<string, CaseListRow> {
+  const byAlertId = new Map<string, CaseListRow>()
+  for (const caseItem of cases) {
+    for (const alertId of caseItem.alert_ids ?? []) {
+      if (!byAlertId.has(alertId)) {
+        byAlertId.set(alertId, caseItem)
+      }
+    }
+  }
+  return byAlertId
+}
+
+function scoreFreshness(updatedAt: string | undefined, createdAt: string): QueueAlert['score_freshness'] {
+  const timestamp = Date.parse(updatedAt || createdAt)
+  if (Number.isNaN(timestamp)) return 'unknown'
+  const ageMs = Date.now() - timestamp
+  if (ageMs < 0) return 'fresh'
+  const ageDays = ageMs / (1000 * 60 * 60 * 24)
+  return ageDays <= 14 ? 'fresh' : 'stale'
+}
+
+function slaLabel(createdAt: string): string {
+  const timestamp = Date.parse(createdAt)
+  if (Number.isNaN(timestamp)) return 'SLA unknown'
+  const ageDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24)
+  if (ageDays >= 7) return 'SLA risk'
+  if (ageDays >= 3) return 'SLA watch'
+  return 'SLA current'
+}
+
+function enrichQueueAlerts(
+  alerts: readonly AlertListRow[],
+  cases: readonly CaseListRow[],
+): QueueAlert[] {
+  const casesByAlertId = firstCaseByAlertId(cases)
+  return alerts.map((alert) => {
+    const caseItem = casesByAlertId.get(alert.id)
+    return {
+      ...alert,
+      tags: alert.tags ?? [],
+      assignee: caseItem?.assignee ?? null,
+      case_id: caseItem?.id ?? null,
+      case_state: caseItem?.status ?? null,
+      score_freshness: scoreFreshness(alert.updated_at, alert.created_at),
+    }
+  })
 }
 
 export function AlertFeedPage() {
@@ -101,6 +184,7 @@ export function AlertFeedPage() {
   const featuresQuery = useDomainFeatures()
   const policyItemsQuery = usePolicyItems(selectedKnowledgeBaseId)
   const alertItems = alertsQuery.data?.items ?? []
+  const queueItems = enrichQueueAlerts(alertItems, casesQuery.data?.items ?? [])
   const durablePromotedAlertIds = new Set(
     casesQuery.data?.items.flatMap((caseItem) => caseItem.alert_ids) ?? [],
   )
@@ -125,12 +209,24 @@ export function AlertFeedPage() {
   const filters = parseAlertFilters(searchParams)
   const setFilters = (next: AlertFilterState) => {
     const params = new URLSearchParams(searchParams)
-    for (const key of ['severity', 'status', 'q', 'sort', 'from', 'to']) params.delete(key)
+    for (const key of [
+      'severity',
+      'status',
+      'typology',
+      'assignee',
+      'case',
+      'freshness',
+      'evidence',
+      'q',
+      'sort',
+      'from',
+      'to',
+    ]) params.delete(key)
     for (const [key, value] of serializeAlertFilters(next)) params.append(key, value)
     setSearchParams(params, { preventScrollReset: true })
   }
   const updateFilters = (patch: Partial<AlertFilterState>) => setFilters({ ...filters, ...patch })
-  const toggleFilter = (dimension: 'severities' | 'statuses', optionId: string) => {
+  const toggleFilter = (dimension: 'severities' | 'statuses' | 'typologies', optionId: string) => {
     const current = filters[dimension]
     updateFilters({
       [dimension]: current.includes(optionId)
@@ -138,6 +234,10 @@ export function AlertFeedPage() {
         : [...current, optionId],
     })
   }
+  const setSingleFilter = (
+    dimension: 'assignees' | 'caseStates' | 'scoreFreshnesses' | 'evidenceAvailability',
+    value: string,
+  ) => updateFilters({ [dimension]: value ? [value] : [] })
 
   const domainConfig = domainConfigQuery.data ?? null
   // Stable across renders so the force layout is not rebuilt on every paint.
@@ -171,9 +271,28 @@ export function AlertFeedPage() {
     return <LoadingState label="Waiting for alert feed data" />
   }
 
-  const alerts = applyAlertFilters(alertItems, filters)
-  const severityCounts = countBy(alertItems, (alert) => alert.severity)
-  const statusCounts = countBy(alertItems, (alert) => alert.status)
+  const alerts = applyAlertFilters(queueItems, filters)
+  const severityCounts = countBy(queueItems, (alert) => alert.severity)
+  const statusCounts = countBy(queueItems, (alert) => alert.status)
+  const typologyCounts = queueItems.reduce<Record<string, number>>((counts, alert) => {
+    for (const tag of alert.tags ?? []) {
+      counts[tag] = (counts[tag] ?? 0) + 1
+    }
+    return counts
+  }, {})
+  const assigneeCounts = countBy(queueItems, (alert) => alert.assignee || 'unassigned')
+  const caseStateCounts = countBy(queueItems, (alert) => alert.case_state || 'no_case')
+  const freshnessCounts = countBy(queueItems, (alert) => alert.score_freshness)
+  const evidenceCounts = countBy(queueItems, (alert) =>
+    alert.evidence_pack_id ? 'with_evidence' : 'without_evidence',
+  )
+  const typologyOptions = Object.keys(typologyCounts).sort()
+  const assigneeOptions = Object.keys(assigneeCounts).sort((left, right) =>
+    queueValueLabel(left).localeCompare(queueValueLabel(right)),
+  )
+  const caseStateOptions = Object.keys(caseStateCounts).sort((left, right) =>
+    queueValueLabel(left).localeCompare(queueValueLabel(right)),
+  )
   const visibleIds = alerts.map((alert) => alert.id)
   // A bulk action must never touch an alert the analyst can no longer see, so
   // the selection is pruned to what the current filter shows (UXA-406).
@@ -225,6 +344,18 @@ export function AlertFeedPage() {
           }))}
           selected={filters.statuses}
         />
+        {typologyOptions.length > 0 ? (
+          <FilterGroup
+            label="Typology"
+            onToggle={(id) => toggleFilter('typologies', id)}
+            options={typologyOptions.map((tag) => ({
+              id: tag,
+              label: queueValueLabel(tag),
+              count: typologyCounts[tag] ?? 0,
+            }))}
+            selected={filters.typologies}
+          />
+        ) : null}
         <div className="alert-filter-strip__controls">
           <label className="filter-group__label" htmlFor="alert-search">
             Search
@@ -257,6 +388,70 @@ export function AlertFeedPage() {
             type="date"
             value={filters.to}
           />
+          <label className="filter-group__label" htmlFor="alert-assignee">
+            Assignee
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-assignee"
+            onChange={(event) => setSingleFilter('assignees', event.target.value)}
+            value={filters.assignees[0] ?? ''}
+          >
+            <option value="">All</option>
+            {assigneeOptions.map((assignee) => (
+              <option key={assignee} value={assignee}>
+                {`${queueValueLabel(assignee)} (${assigneeCounts[assignee] ?? 0})`}
+              </option>
+            ))}
+          </select>
+          <label className="filter-group__label" htmlFor="alert-case-state">
+            Case
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-case-state"
+            onChange={(event) => setSingleFilter('caseStates', event.target.value)}
+            value={filters.caseStates[0] ?? ''}
+          >
+            <option value="">All</option>
+            {caseStateOptions.map((caseState) => (
+              <option key={caseState} value={caseState}>
+                {`${queueValueLabel(caseState)} (${caseStateCounts[caseState] ?? 0})`}
+              </option>
+            ))}
+          </select>
+          <label className="filter-group__label" htmlFor="alert-freshness">
+            Freshness
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-freshness"
+            onChange={(event) => setSingleFilter('scoreFreshnesses', event.target.value)}
+            value={filters.scoreFreshnesses[0] ?? ''}
+          >
+            <option value="">All</option>
+            {SCORE_FRESHNESS_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {`${option.label} (${freshnessCounts[option.id] ?? 0})`}
+              </option>
+            ))}
+          </select>
+          <label className="filter-group__label" htmlFor="alert-evidence">
+            Evidence
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-evidence"
+            onChange={(event) => setSingleFilter('evidenceAvailability', event.target.value)}
+            value={filters.evidenceAvailability[0] ?? ''}
+          >
+            <option value="">All</option>
+            {EVIDENCE_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {`${option.label} (${evidenceCounts[option.id] ?? 0})`}
+              </option>
+            ))}
+          </select>
           <label className="filter-group__label" htmlFor="alert-sort">
             Sort
           </label>
@@ -394,6 +589,19 @@ export function AlertFeedPage() {
                       <div className="alert-row-card__meta">
                         <Chip label={alert.severity} tone={severityTone(alert.severity)} />
                         <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
+                        <Chip label={alert.assignee || 'Unassigned'} tone="default" />
+                        <Chip
+                          label={`Case ${alert.case_state ?? 'none'}`}
+                          tone={alert.case_state ? 'info' : 'default'}
+                        />
+                        <Chip
+                          label={
+                            SCORE_FRESHNESS_OPTIONS.find((option) => option.id === alert.score_freshness)
+                              ?.label ?? 'Unknown score'
+                          }
+                          tone={alert.score_freshness === 'fresh' ? 'success' : 'warning'}
+                        />
+                        <Chip label={slaLabel(alert.created_at)} tone="warning" />
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />
                         ) : null}
@@ -489,13 +697,29 @@ export function AlertFeedPage() {
                   >
                     {alert.reasoning}
                   </div>
+                  {showEvidenceAction ? (
+                    <Link
+                      aria-label={`Preview evidence for ${alert.entity_label}`}
+                      className="alert-row-card__evidence-preview"
+                      to={investigationCockpitUrl(alert)}
+                    >
+                      Evidence preview
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </Card>
           )
         })
       ) : (
-        <EmptyState description="No alerts match the current filter." title="No matching alerts" />
+        <EmptyState
+          description={
+            alertItems.length === 0
+              ? 'No alerts are available for this knowledge base yet.'
+              : 'No alerts match the current filter.'
+          }
+          title={alertItems.length === 0 ? 'No alerts in queue' : 'No matching alerts'}
+        />
       )}
 
       {selectedAlert?.evidence_pack_id && capabilities?.explainability ? (

@@ -11,7 +11,15 @@ import {
   summarizeAlertFilters,
 } from '../alertFilters'
 
-function alert(overrides: Partial<AlertListItem> & Pick<AlertListItem, 'id'>): AlertListItem {
+type QueueFilterAlert = AlertListItem & {
+  assignee?: string | null
+  case_state?: string | null
+  score_freshness?: string | null
+}
+
+function alert(
+  overrides: Partial<QueueFilterAlert> & Pick<AlertListItem, 'id'>,
+): QueueFilterAlert {
   return {
     knowledge_base_id: 'kb-1',
     entity_id: 'provider-1',
@@ -24,9 +32,10 @@ function alert(overrides: Partial<AlertListItem> & Pick<AlertListItem, 'id'>): A
     confidence: 0.5,
     evidence_pack_id: null,
     created_at: '2026-07-20T00:00:00Z',
+    updated_at: '2026-07-20T00:00:00Z',
     tags: [],
     ...overrides,
-  } as AlertListItem
+  } as QueueFilterAlert
 }
 
 const ALERTS = [
@@ -34,6 +43,24 @@ const ALERTS = [
   alert({ id: 'a2', severity: 'critical', status: 'acknowledged', confidence: 0.8, created_at: '2026-07-25T00:00:00Z' }),
   alert({ id: 'a3', severity: 'medium', status: 'open', confidence: 0.7, created_at: '2026-07-24T00:00:00Z', entity_label: 'North Harbor Imaging' }),
   alert({ id: 'a4', severity: 'low', status: 'resolved', confidence: 0.2, created_at: '2026-07-01T00:00:00Z', title: 'Referral concentration anomaly' }),
+]
+const QUEUE_ALERTS = [
+  alert({
+    id: 'q1',
+    evidence_pack_id: 'evidence-1',
+    tags: ['billing_spike', 'peer_deviation'],
+    assignee: 'Maya Patel',
+    case_state: 'investigating',
+    score_freshness: 'fresh',
+  }),
+  alert({
+    id: 'q2',
+    entity_label: 'North Harbor Imaging',
+    tags: ['network'],
+    assignee: null,
+    case_state: null,
+    score_freshness: 'stale',
+  }),
 ]
 
 const ids = (items: readonly { id: string }[]) => items.map((item) => item.id)
@@ -86,6 +113,30 @@ describe('applyAlertFilters', () => {
     expect(ids(filtered)).toEqual(['a2', 'a3'])
   })
 
+  it('filters by operational queue dimensions', () => {
+    const filtered = applyAlertFilters(QUEUE_ALERTS, {
+      ...EMPTY_ALERT_FILTERS,
+      typologies: ['billing_spike'],
+      assignees: ['Maya Patel'],
+      caseStates: ['investigating'],
+      scoreFreshnesses: ['fresh'],
+      evidenceAvailability: ['with_evidence'],
+    })
+
+    expect(ids(filtered)).toEqual(['q1'])
+  })
+
+  it('can match unassigned alerts with no case or evidence', () => {
+    const filtered = applyAlertFilters(QUEUE_ALERTS, {
+      ...EMPTY_ALERT_FILTERS,
+      assignees: ['unassigned'],
+      caseStates: ['no_case'],
+      evidenceAvailability: ['without_evidence'],
+    })
+
+    expect(ids(filtered)).toEqual(['q2'])
+  })
+
   it('sorts newest first by default', () => {
     expect(ids(applyAlertFilters(ALERTS, EMPTY_ALERT_FILTERS))).toEqual(['a1', 'a2', 'a3', 'a4'])
   })
@@ -133,6 +184,11 @@ describe('URL round-trip', () => {
     const state = {
       severities: ['critical', 'high'],
       statuses: ['open'],
+      typologies: ['billing_spike'],
+      assignees: ['Maya Patel'],
+      caseStates: ['investigating'],
+      scoreFreshnesses: ['fresh'],
+      evidenceAvailability: ['with_evidence'],
       search: 'redwood',
       sort: 'severity' as const,
       from: '2026-07-01',

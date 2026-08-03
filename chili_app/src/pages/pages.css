@@ -648,6 +648,18 @@
   font-size: 13px;
 }
 
+.alert-row-card__evidence-preview {
+  width: fit-content;
+  color: var(--c-cyan);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.alert-row-card__evidence-preview:hover {
+  text-decoration: underline;
+}
+
 .policy-copy-grid,
 .policy-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
