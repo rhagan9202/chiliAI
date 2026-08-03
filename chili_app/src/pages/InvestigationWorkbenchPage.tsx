@@ -7,6 +7,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
+import { useCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
@@ -60,6 +61,29 @@ function WorkbenchTabPanel({ children, tabId }: { children: ReactNode; tabId: st
   )
 }
 
+function CockpitStateItem({
+  isLoading = false,
+  label,
+  unavailable = false,
+  value,
+}: {
+  isLoading?: boolean
+  label: string
+  unavailable?: boolean
+  value: string
+}) {
+  const resolvedValue = isLoading ? 'Loading...' : value
+  return (
+    <div className="metric-row metric-row--stacked">
+      <span className="metric-row__label">{label}</span>
+      <strong>{resolvedValue}</strong>
+      {unavailable ? (
+        <span className="metric-row__label">Requested context could not be loaded.</span>
+      ) : null}
+    </div>
+  )
+}
+
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
@@ -77,8 +101,12 @@ export function InvestigationWorkbenchPage() {
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
   const selectedEntityId = entityId ?? null
   const depth = depthFromSearchParams(searchParams)
+  const requestedAlertId = searchParams.get('alert') || null
+  const requestedCaseId = searchParams.get('case') || null
+  const requestedEvidencePackId = searchParams.get('evidence') || null
 
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
+  const caseQuery = useCase(activeKnowledgeBaseId, requestedCaseId)
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
   const entityQuery = useInvestigationEntity(activeKnowledgeBaseId, selectedEntityId)
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
@@ -92,10 +120,27 @@ export function InvestigationWorkbenchPage() {
     selectedEntityId,
   )
 
-  const selectedAlert = useMemo(
-    () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
-    [alertsQuery.data?.items, selectedEntityId],
-  )
+  const {
+    fallbackAlert,
+    requestedAlertInvalid,
+    selectedAlert,
+  } = useMemo(() => {
+    const items = alertsQuery.data?.items ?? []
+    const explicitAlert = requestedAlertId
+      ? items.find(
+          (alert) =>
+            alert.id === requestedAlertId &&
+            alert.entity_id === selectedEntityId &&
+            alert.knowledge_base_id === activeKnowledgeBaseId,
+        )
+      : null
+    const nextFallbackAlert = items.find((alert) => alert.entity_id === selectedEntityId) ?? null
+    return {
+      fallbackAlert: nextFallbackAlert,
+      requestedAlertInvalid: Boolean(requestedAlertId) && !explicitAlert,
+      selectedAlert: requestedAlertId ? explicitAlert ?? null : nextFallbackAlert,
+    }
+  }, [activeKnowledgeBaseId, alertsQuery.data?.items, requestedAlertId, selectedEntityId])
   // Stable across renders so the force layout is not rebuilt on every paint.
   const domainConfig = domainConfigQuery.data ?? null
   const labelForNode = useCallback(
@@ -103,7 +148,35 @@ export function InvestigationWorkbenchPage() {
       domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
     [domainConfig],
   )
-  const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
+  const candidateEvidencePackId =
+    requestedEvidencePackId ??
+    selectedAlert?.evidence_pack_id ??
+    caseQuery.data?.case.evidence_pack_id ??
+    caseQuery.data?.evidence_pack?.id ??
+    null
+  const evidenceQuery = useEvidencePack(candidateEvidencePackId, activeKnowledgeBaseId)
+  const requestedCaseInvalid =
+    Boolean(requestedCaseId) &&
+    !caseQuery.isLoading &&
+    (caseQuery.isError ||
+      !caseQuery.data?.case ||
+      caseQuery.data.case.knowledge_base_id !== activeKnowledgeBaseId ||
+      (selectedAlert ? !(caseQuery.data.case.alert_ids ?? []).includes(selectedAlert.id) : false))
+  const requestedEvidenceInvalid =
+    Boolean(candidateEvidencePackId) &&
+    !evidenceQuery.isLoading &&
+    (evidenceQuery.isError ||
+      (requestedEvidencePackId ? !evidenceQuery.data || evidenceQuery.data.id !== requestedEvidencePackId : false) ||
+      (selectedAlert && evidenceQuery.data ? evidenceQuery.data.alert_id !== selectedAlert.id : false))
+  const selectedEvidencePackId = requestedEvidenceInvalid
+    ? null
+    : candidateEvidencePackId
+  const ragCaseId = requestedCaseInvalid ? null : caseQuery.data?.case.id ?? null
+  const ragEvidencePackId = requestedEvidenceInvalid
+    ? null
+    : requestedEvidencePackId
+      ? evidenceQuery.data?.id ?? null
+      : selectedEvidencePackId
   const entityLoadFailed = entityQuery.isError || neighborhoodQuery.isError
   // Asked only once the active KB has already failed to produce the entity.
   const entityLocationsQuery = useEntityLocations(selectedEntityId, entityLoadFailed)
@@ -182,6 +255,11 @@ export function InvestigationWorkbenchPage() {
     if (activeKnowledgeBaseId) {
       nextSearch.set('kb', activeKnowledgeBaseId)
     }
+    if (!selectedAlert || selectedAlert.entity_id !== nextId) {
+      nextSearch.delete('alert')
+      nextSearch.delete('evidence')
+      nextSearch.delete('case')
+    }
     navigate(
       { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
       { preventScrollReset: true },
@@ -212,11 +290,14 @@ export function InvestigationWorkbenchPage() {
                 <select
                   className="page-input"
                   id="investigation-kb-select"
-                  onChange={(event) => {
-                    const nextSearch = new URLSearchParams(searchParams)
-                    nextSearch.set('kb', event.target.value)
-                    navigate({ pathname: '/investigation', search: nextSearch.toString() })
-                  }}
+                onChange={(event) => {
+                  const nextSearch = new URLSearchParams(searchParams)
+                  nextSearch.set('kb', event.target.value)
+                  nextSearch.delete('alert')
+                  nextSearch.delete('case')
+                  nextSearch.delete('evidence')
+                  navigate({ pathname: '/investigation', search: nextSearch.toString() })
+                }}
                   value={activeKnowledgeBaseId ?? ''}
                 >
                   {knowledgeBases.map((knowledgeBase) => (
@@ -317,7 +398,8 @@ export function InvestigationWorkbenchPage() {
                     source: 'entity',
                     entityId: selectedEntityId,
                     alertId: selectedAlert?.id,
-                    evidencePackId: selectedAlert?.evidence_pack_id,
+                    caseId: ragCaseId,
+                    evidencePackId: ragEvidencePackId,
                     question: DEFAULT_RISK_QUESTION,
                   }))
                 }
@@ -326,6 +408,47 @@ export function InvestigationWorkbenchPage() {
               />
 
               <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />
+
+              <Card compact>
+                <div aria-label="Cockpit state" className="metric-stack">
+                  <div className="metric-row">
+                    <strong>Cockpit state</strong>
+                    <span className="metric-row__label">Shareable investigation URL</span>
+                  </div>
+                  <div className="dashboard-panels">
+                    <CockpitStateItem
+                      label="Knowledge base"
+                      value={activeKnowledgeBaseId ?? 'Not selected'}
+                    />
+                    <CockpitStateItem
+                      label="Entity"
+                      value={selectedEntityId ?? 'No entity selected'}
+                    />
+                    <CockpitStateItem
+                      label="Alert"
+                      value={
+                        selectedAlert?.id ??
+                        requestedAlertId ??
+                        fallbackAlert?.id ??
+                        'No alert selected'
+                      }
+                      unavailable={requestedAlertInvalid}
+                    />
+                    <CockpitStateItem
+                      isLoading={caseQuery.isLoading}
+                      label="Case"
+                      value={caseQuery.data?.case.title ?? requestedCaseId ?? 'No case selected'}
+                      unavailable={requestedCaseInvalid}
+                    />
+                    <CockpitStateItem
+                      isLoading={evidenceQuery.isLoading}
+                      label="Evidence"
+                      value={candidateEvidencePackId ?? 'No evidence selected'}
+                      unavailable={requestedEvidenceInvalid}
+                    />
+                  </div>
+                </div>
+              </Card>
 
               {tabs.length > 1 ? (
                 <div className="page-toolbar">
@@ -468,7 +591,7 @@ export function InvestigationWorkbenchPage() {
 
               {resolvedActiveTabId === 'evidence' ? (
                 <WorkbenchTabPanel key="evidence" tabId="evidence">
-                  {evidenceQuery.data ? (
+                  {evidenceQuery.data && !requestedEvidenceInvalid ? (
                     <EvidencePackViewer
                       // Export only: there is no alert in hand here, and
                       // offering to attach one would mean inventing it.

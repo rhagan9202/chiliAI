@@ -66,6 +66,22 @@ const STATUS_OPTIONS = [
   { id: 'dismissed', label: 'Dismissed' },
 ]
 
+function investigationCockpitUrl(alert: {
+  entity_id: string
+  knowledge_base_id: string
+  id: string
+  evidence_pack_id?: string | null
+}) {
+  const params = new URLSearchParams({
+    kb: alert.knowledge_base_id,
+    alert: alert.id,
+  })
+  if (alert.evidence_pack_id) {
+    params.set('evidence', alert.evidence_pack_id)
+  }
+  return `/investigation/${encodeURIComponent(alert.entity_id)}?${params.toString()}`
+}
+
 export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -387,7 +403,7 @@ export function AlertFeedPage() {
                       <Link
                         aria-label={`Investigate ${alert.entity_label}`}
                         className="page-button page-button--sm page-button--primary"
-                        to={`/investigation/${encodeURIComponent(alert.entity_id)}?kb=${encodeURIComponent(alert.knowledge_base_id)}`}
+                        to={investigationCockpitUrl(alert)}
                       >
                         Investigate entity
                       </Link>

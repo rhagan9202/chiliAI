@@ -493,14 +493,20 @@ describe('AlertFeedPage', () => {
     expect(mocks.promoteAlertToCase).not.toHaveBeenCalled()
   })
 
-  it('links each alert row to the entity investigation view with unique labels', () => {
+  it('links each alert row to the cockpit with unique alert context', () => {
     renderAlertFeed()
 
     const redwoodLink = screen.getByRole('link', { name: 'Investigate Redwood DME Group' })
     const harborLink = screen.getByRole('link', { name: 'Investigate North Harbor Imaging' })
 
-    expect(redwoodLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-redwood')
-    expect(harborLink).toHaveAttribute('href', '/investigation/provider-118?kb=kb-harbor')
+    expect(redwoodLink).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-redwood&alert=alert-1&evidence=evidence-1',
+    )
+    expect(harborLink).toHaveAttribute(
+      'href',
+      '/investigation/provider-118?kb=kb-harbor&alert=alert-2',
+    )
   })
 
   it('launches Ask AI with the selected alert context', () => {

@@ -10,6 +10,7 @@ import type {
   DomainCapabilities,
   DomainConfig,
   EntityFeatureValueResponse,
+  EvidencePackResponse,
   FeatureCatalogResponse,
   RiskFactorResponse,
   RuntimeEntity,
@@ -45,6 +46,8 @@ const mocks = vi.hoisted(() => ({
     evidence_pack_id: string | null
   }>,
   useAlerts: vi.fn(),
+  useCase: vi.fn(),
+  evidencePacks: {} as Record<string, EvidencePackResponse>,
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
   navigate: vi.fn(),
@@ -191,6 +194,10 @@ vi.mock('../../api/alerts', () => ({
   useAlerts: mocks.useAlerts,
 }))
 
+vi.mock('../../api/cases', () => ({
+  useCase: mocks.useCase,
+}))
+
 vi.mock('../../api/analytics', () => ({
   useRiskScore: (knowledgeBaseId: string | null, entityId: string | null) => {
     analyticsCalls.risk.push([knowledgeBaseId, entityId])
@@ -257,7 +264,11 @@ vi.mock('../../api/features', () => ({
 }))
 
 vi.mock('../../api/evidence', () => ({
-  useEvidencePack: () => ({ isLoading: false, isError: false, data: undefined }),
+  useEvidencePack: (evidencePackId: string | null) => ({
+    isLoading: false,
+    isError: false,
+    data: evidencePackId ? mocks.evidencePacks[evidencePackId] : undefined,
+  }),
 }))
 
 vi.mock('../../api/policy', () => ({
@@ -308,6 +319,22 @@ function selectLiveProvider(): RuntimeEntity {
   return provider
 }
 
+function evidencePack(id: string, alertId: string, reasoning: string): EvidencePackResponse {
+  return {
+    id,
+    alert_id: alertId,
+    reasoning,
+    confidence: 0.91,
+    created_at: '2026-08-02T12:00:00Z',
+    items: [],
+    policy_citations: [],
+    scores: {},
+    source_documents: [],
+    subgraph_edge_ids: [],
+    subgraph_node_ids: ['provider-204'],
+  }
+}
+
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
     // The active knowledge base is remembered across pages; reset it so one
@@ -317,6 +344,8 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.knowledgeBases = []
     mocks.alerts = []
     mocks.useAlerts.mockReset()
+    mocks.useCase.mockReset()
+    mocks.evidencePacks = {}
     mocks.useAlerts.mockImplementation((filters?: { knowledgeBaseId?: string }) => {
       const items = filters?.knowledgeBaseId
         ? mocks.alerts.filter((alert) => alert.knowledge_base_id === filters.knowledgeBaseId)
@@ -326,6 +355,11 @@ describe('InvestigationWorkbenchPage', () => {
         isError: false,
         data: { items, page: { page: 1, page_size: items.length, total_items: items.length } },
       }
+    })
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: undefined,
     })
     mocks.searchItems = []
     mocks.selectedEntity = null
@@ -630,6 +664,226 @@ describe('InvestigationWorkbenchPage', () => {
     expect(mocks.navigate).toHaveBeenCalledWith(
       '/rag-chat?kb=kb-live&source=entity&alert=alert-1&entity=provider-204&evidence=evidence-1&q=Why+is+this+high+risk%3F',
     )
+  })
+
+  it('honors explicit alert, case, and evidence cockpit state from the URL', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Explicit cockpit evidence.'),
+      'evidence-fallback': evidencePack('evidence-fallback', 'alert-fallback', 'Fallback evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    expect(mocks.useCase).toHaveBeenCalledWith('kb-live', 'case-1')
+    expect(screen.getByText('Cockpit state')).toBeInTheDocument()
+    expect(screen.getByText('alert-live')).toBeInTheDocument()
+    expect(screen.getByText('Case #1')).toBeInTheDocument()
+    expect(screen.getByText('evidence-live')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+
+    expect(screen.getByText('Explicit cockpit evidence.')).toBeInTheDocument()
+    expect(screen.queryByText('Fallback evidence.')).not.toBeInTheDocument()
+  })
+
+  it('launches Ask AI with explicit cockpit state instead of the fallback entity alert', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Explicit cockpit evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&case=case-1&evidence=evidence-live&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('marks an invalid explicit alert and does not silently launch AI against a fallback alert', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-fallback',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-fallback',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live&alert=alert-missing')
+
+    expect(screen.getByText('alert-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('drops an invalid explicit evidence pack from AI handoff', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&evidence=evidence-missing',
+    )
+
+    expect(screen.getByText('evidence-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('drops an invalid case from AI handoff', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: null,
+      },
+    ]
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      data: undefined,
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-missing',
+    )
+
+    expect(screen.getByText('case-missing')).toBeInTheDocument()
+    expect(screen.getByText('Requested context could not be loaded.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-live&entity=provider-204&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('clears alert, case, and evidence context when switching knowledge bases', async () => {
+    selectLiveProvider()
+    mocks.knowledgeBases.push({
+      id: 'kb-other',
+      name: 'Other KB',
+      description: 'Other KB',
+      status: 'ready',
+      document_count: 1,
+      entity_count: 1,
+      relationship_count: 0,
+      created_at: '2026-05-11T00:00:00Z',
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    await userEvent.selectOptions(screen.getByLabelText('Knowledge base'), 'kb-other')
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      pathname: '/investigation',
+      search: 'kb=kb-other',
+    })
   })
 
   it('loads alerts in the active knowledge base scope for entity Ask AI context', () => {
