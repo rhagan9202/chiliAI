@@ -89,6 +89,9 @@ export function citationNavigationTarget(
   if (nonEmpty(citation.entity_id)) {
     const params = new URLSearchParams()
     appendIfPresent(params, 'kb', context.knowledgeBaseId)
+    appendIfPresent(params, 'alert', context.alertId)
+    appendIfPresent(params, 'case', context.caseId)
+    appendIfPresent(params, 'evidence', context.evidencePackId)
 
     return {
       pathname: `/investigation/${encodeURIComponent(citation.entity_id)}`,

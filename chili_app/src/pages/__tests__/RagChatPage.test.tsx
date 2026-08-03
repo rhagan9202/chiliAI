@@ -556,7 +556,7 @@ describe('RagChatPage', () => {
     expect(link).toHaveAttribute('data-router-link', 'true')
     expect(link).toHaveAttribute(
       'href',
-      '/investigation/provider-204?kb=kb-1',
+      '/investigation/provider-204?kb=kb-1&alert=alert-1',
     )
   })
 

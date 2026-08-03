@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
-import type { CaseFeedbackCreateRequest } from '../api/contracts'
+import type { CaseDetailResponse, CaseFeedbackCreateRequest } from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -33,6 +33,40 @@ const STATUS_OPTIONS = [
   { id: 'in_review', label: 'In review' },
   { id: 'closed', label: 'Closed' },
 ]
+
+const appendIfPresent = (params: URLSearchParams, key: string, value: string | null | undefined) => {
+  if (typeof value === 'string' && value.length > 0) {
+    params.set(key, value)
+  }
+}
+
+function buildCaseCockpitUrl(detail: CaseDetailResponse, knowledgeBaseId: string): string | null {
+  const alertsById = new Map(detail.alerts.map((alertItem) => [alertItem.id, alertItem]))
+  const expectedPrimaryAlertId = detail.case.originating_alert_id ?? detail.case.alert_ids[0] ?? null
+  const primaryAlert =
+    detail.case.alert_ids
+      .map((alertId) => alertsById.get(alertId))
+      .find((alertItem) => typeof alertItem?.entity_id === 'string' && alertItem.entity_id.length > 0) ??
+    detail.alerts.find((alertItem) => typeof alertItem.entity_id === 'string' && alertItem.entity_id.length > 0)
+  const entityId = primaryAlert?.entity_id
+
+  if (!entityId) {
+    return null
+  }
+
+  const caseLevelEvidencePackId =
+    primaryAlert.id === expectedPrimaryAlertId ? (detail.case.evidence_pack_id ?? detail.evidence_pack?.id) : null
+  const evidencePackId = caseLevelEvidencePackId ?? primaryAlert.evidence_pack_id
+
+  const params = new URLSearchParams()
+  appendIfPresent(params, 'kb', knowledgeBaseId)
+  appendIfPresent(params, 'alert', primaryAlert.id)
+  appendIfPresent(params, 'case', detail.case.id)
+  appendIfPresent(params, 'evidence', evidencePackId)
+
+  const query = params.toString()
+  return `/investigation/${encodeURIComponent(entityId)}${query ? `?${query}` : ''}`
+}
 
 export function CaseManagementPage() {
   const navigate = useNavigate()
@@ -127,6 +161,7 @@ export function CaseManagementPage() {
   const unpromotedAlerts = alertsQuery.data.items.filter(
     (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
   )
+  const caseCockpitUrl = caseQuery.data ? buildCaseCockpitUrl(caseQuery.data, knowledgeBaseId) : null
 
   const handleUpdate = (status: 'in_review' | 'closed') => {
     updateCaseMutation.mutate(
@@ -282,6 +317,11 @@ export function CaseManagementPage() {
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
               <div className="page-actions-inline">
+                {caseCockpitUrl ? (
+                  <Link className="page-button page-button--secondary" to={caseCockpitUrl}>
+                    Open cockpit
+                  </Link>
+                ) : null}
                 <button
                   aria-label={`Ask AI for ${caseQuery.data.case.title}`}
                   title={`Opens RAG Chat with this case and its evidence attached.`}

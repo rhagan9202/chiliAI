@@ -157,9 +157,30 @@ Task 3 notes:
   links enter the cockpit.
 - Test: Alert Feed, Case Management, RAG navigation tests
 
-- [ ] Preserve cockpit context when an alert is promoted or attached to a case.
-- [ ] Add supervisor-friendly deep links from case and RAG contexts back to the same
+- [x] Preserve cockpit context when an alert is promoted or attached to a case.
+- [x] Add supervisor-friendly deep links from case and RAG contexts back to the same
   investigation state.
+
+Task 4 notes:
+
+- Case detail now exposes an `Open cockpit` action that links supervisors directly to
+  `/investigation/:entityId` with knowledge base, alert, case, and evidence context.
+- The case cockpit link chooses a coherent alert/entity/evidence tuple for multi-alert
+  cases instead of mixing a fallback entity with the first case alert id.
+- RAG citation links that resolve to an entity now preserve the launch alert, case, and
+  evidence parameters so returning to the cockpit keeps the same investigation state.
+- Sidecar review found the multi-alert coherence risk; an explicit regression test now
+  covers the edge case before the helper fix.
+- Focused red/green verification:
+  - `pnpm exec vitest run src/pages/__tests__/CaseManagementPage.test.tsx`: failed on
+    the multi-alert edge case before the helper fix, then passed with 15 tests.
+  - `pnpm exec vitest run src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/lib/__tests__/ragContext.test.ts`: 55 passed.
+- Final verification passed:
+  - `pnpm exec vitest run src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/lib/__tests__/ragContext.test.ts src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 123 passed.
+  - `pnpm exec eslint src/pages/CaseManagementPage.tsx src/lib/ragContext.ts src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/lib/__tests__/ragContext.test.ts`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
 
 ## Task 5: Responsive And Browser Verification
 

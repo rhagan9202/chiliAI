@@ -216,6 +216,48 @@ describe('CaseManagementPage', () => {
     )
   })
 
+  it('links the selected case back to the investigation cockpit with full context', () => {
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Open cockpit' })).toHaveAttribute(
+      'href',
+      '/investigation/provider-204?kb=kb-1&alert=alert-1&case=case-1&evidence=evidence-1',
+    )
+  })
+
+  it('keeps the cockpit link alert, entity, and evidence from one usable case alert', () => {
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          ...caseSummary,
+          alert_ids: ['alert-missing', 'alert-2'],
+          evidence_pack_id: 'case-evidence-for-missing-alert',
+          originating_alert_id: 'alert-missing',
+        },
+        alerts: [
+          {
+            ...unpromotedAlert,
+            id: 'alert-2',
+            entity_id: 'provider-777',
+            evidence_pack_id: 'evidence-2',
+          },
+        ],
+        evidence_pack: null,
+        entity_timeline: [],
+        feedback_history: [],
+      },
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Open cockpit' })).toHaveAttribute(
+      'href',
+      '/investigation/provider-777?kb=kb-1&alert=alert-2&case=case-1&evidence=evidence-2',
+    )
+  })
+
   it('loads alerts for the selected knowledge base and hides out-of-scope promote actions', () => {
     const alerts = [alert, unpromotedAlert, otherKnowledgeBaseAlert]
     mocks.useAlerts.mockImplementation((filters = {}) => ({

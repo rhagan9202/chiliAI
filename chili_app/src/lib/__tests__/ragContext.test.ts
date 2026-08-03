@@ -118,13 +118,31 @@ describe('ragContext', () => {
     })
   })
 
-  it('prefers citation entity navigation with the active knowledge base', () => {
+  it('prefers citation entity navigation with the active knowledge base and alert context', () => {
     expect(
       citationNavigationTarget(
         { entity_id: 'provider-204', content_id: 'chunk-1' },
         { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       ),
-    ).toEqual({ pathname: '/investigation/provider-204', search: 'kb=kb-1' })
+    ).toEqual({ pathname: '/investigation/provider-204', search: 'kb=kb-1&alert=alert-1' })
+  })
+
+  it('keeps case, alert, and evidence context on citation entity navigation', () => {
+    expect(
+      citationNavigationTarget(
+        { entity_id: 'provider-204', content_id: 'chunk-1' },
+        {
+          knowledgeBaseId: 'kb-1',
+          source: 'case',
+          alertId: 'alert-1',
+          caseId: 'case-1',
+          evidencePackId: 'evidence-1',
+        },
+      ),
+    ).toEqual({
+      pathname: '/investigation/provider-204',
+      search: 'kb=kb-1&alert=alert-1&case=case-1&evidence=evidence-1',
+    })
   })
 
   it('falls back to source alert navigation', () => {
