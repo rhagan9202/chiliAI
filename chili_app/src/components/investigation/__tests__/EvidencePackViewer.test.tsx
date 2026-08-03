@@ -1,10 +1,33 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { EvidencePackResponse } from '../../../api/contracts'
+import type { EvidencePackResponse, ExplanationReviewResponse } from '../../../api/contracts'
 import type { Entity, Relationship, SubgraphResult } from '../../../types/api'
 import { EvidencePackViewer } from '../EvidencePackViewer'
+
+const reviewMocks = vi.hoisted(() => ({
+  reviews: [] as ExplanationReviewResponse[],
+  submit: vi.fn(),
+}))
+
+vi.mock('../../../api/explanationReviews', () => ({
+  useCreateEvidencePackReview: () => ({
+    isPending: false,
+    mutate: reviewMocks.submit,
+  }),
+  useEvidencePackReviews: () => ({
+    data: {
+      evidence_pack_id: 'ev-1',
+      items: reviewMocks.reviews,
+      knowledge_base_id: 'kb-1',
+      page: { page: 1, page_size: 50, total_items: reviewMocks.reviews.length },
+    },
+    isError: false,
+    isLoading: false,
+  }),
+}))
 
 vi.mock('../GraphCanvas', () => ({
   GraphCanvas: ({ subgraph, testId }: { subgraph: SubgraphResult; testId?: string }) => (
@@ -66,6 +89,11 @@ function renderViewer(pack: EvidencePackResponse, options?: { entityTypes?: stri
 }
 
 describe('EvidencePackViewer', () => {
+  beforeEach(() => {
+    reviewMocks.reviews = []
+    reviewMocks.submit.mockReset()
+  })
+
   it('renders reasoning, metrics, items, citations, and the pack subgraph', () => {
     renderViewer(basePack)
 
@@ -191,4 +219,107 @@ describe('EvidencePackViewer', () => {
     expect(screen.getByText('2 more metadata fields')).toBeInTheDocument()
     expect(container.querySelector('details')?.hasAttribute('open')).toBe(false)
   })
+
+  it('renders explanation review controls and current review status', () => {
+    reviewMocks.reviews = [
+      explanationReview({
+        id: 'review-narrative',
+        state: 'approved',
+        target: { target_type: 'narrative', target_id: 'narrative' },
+      }),
+      explanationReview({
+        id: 'review-feature',
+        reasons: ['wrong_peer_group'],
+        state: 'misleading',
+        target: { target_type: 'feature_attribution', target_id: 'anomaly_signal' },
+      }),
+    ]
+
+    renderViewer({
+      ...basePack,
+      attribution: [{ feature_name: 'anomaly_signal', contribution: 0.33, rationale: 'Peer outlier.' }],
+    })
+
+    expect(screen.getByRole('group', { name: 'Narrative review' })).toHaveTextContent('Approved')
+    expect(screen.getByRole('group', { name: 'Feature anomaly_signal review' })).toHaveTextContent('Misleading')
+    expect(screen.getByLabelText('Narrative review state')).toBeInTheDocument()
+    expect(screen.getByLabelText('Feature anomaly_signal review state')).toBeInTheDocument()
+  })
+
+  it('updates explanation review form state when current status arrives', () => {
+    const view = renderViewer(basePack)
+    expect(screen.getByLabelText('Narrative review state')).toHaveValue('useful')
+
+    reviewMocks.reviews = [
+      explanationReview({
+        id: 'review-narrative',
+        state: 'approved',
+        target: { target_type: 'narrative', target_id: 'narrative' },
+      }),
+    ]
+    view.rerender(
+      <MemoryRouter>
+        <EvidencePackViewer
+          knowledgeBaseId="kb-1"
+          pack={basePack}
+          subgraph={subgraph}
+          entityTypes={['provider', 'claim', 'beneficiary']}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByLabelText('Narrative review state')).toHaveValue('approved')
+  })
+
+  it('blocks unsupported explanation review feedback without a reason', async () => {
+    const user = userEvent.setup()
+    renderViewer(basePack)
+
+    await user.selectOptions(screen.getByLabelText('Narrative review state'), 'unsupported')
+    await user.click(screen.getByRole('button', { name: 'Save narrative review' }))
+
+    expect(await screen.findByText('Select at least one reason.')).toBeInTheDocument()
+    expect(reviewMocks.submit).not.toHaveBeenCalled()
+  })
+
+  it('submits supported explanation review feedback', async () => {
+    const user = userEvent.setup()
+    renderViewer(basePack)
+
+    await user.selectOptions(screen.getByLabelText('Narrative review state'), 'useful')
+    await user.type(screen.getByLabelText('Narrative review comment'), 'Looks consistent with source evidence.')
+    await user.click(screen.getByRole('button', { name: 'Save narrative review' }))
+
+    await waitFor(() => expect(reviewMocks.submit).toHaveBeenCalledTimes(1))
+    expect(reviewMocks.submit).toHaveBeenCalledWith({
+      evidencePackId: 'ev-1',
+      knowledgeBaseId: 'kb-1',
+      payload: {
+        comment: 'Looks consistent with source evidence.',
+        reasons: [],
+        state: 'useful',
+        target: { target_id: 'narrative', target_type: 'narrative' },
+      },
+    })
+  })
 })
+
+function explanationReview(
+  overrides: Partial<ExplanationReviewResponse>,
+): ExplanationReviewResponse {
+  return {
+    actor_email: 'analyst@example.test',
+    actor_user_id: 'analyst-1',
+    comment: null,
+    created_at: '2026-08-03T18:00:00Z',
+    evidence_pack_id: 'ev-1',
+    id: 'review-1',
+    knowledge_base_id: 'kb-1',
+    reasons: [],
+    state: 'useful',
+    target: { target_type: 'narrative', target_id: 'narrative' },
+    update_count: 0,
+    updated_at: '2026-08-03T18:00:00Z',
+    ...overrides,
+  }
+}

@@ -155,10 +155,10 @@
 - Modify: `chili_app/src/pages/AlertFeedPage.tsx`
 - Modify: `chili_app/src/pages/InvestigationWorkbenchPage.tsx`
 
-- [ ] Add React Query hooks for listing and submitting explanation reviews.
-- [ ] Render compact review controls for narrative and feature attribution targets.
-- [ ] Require reason categories when an analyst selects `incomplete`, `misleading`, or `unsupported`.
-- [ ] Show current review status without duplicating the generated explanation text.
+- [x] Add React Query hooks for listing and submitting explanation reviews.
+- [x] Render compact review controls for narrative and feature attribution targets.
+- [x] Require reason categories when an analyst selects `incomplete`, `misleading`, or `unsupported`.
+- [x] Show current review status without duplicating the generated explanation text.
 
 **Steps:**
 
@@ -169,6 +169,19 @@
    - `cd chili_app && npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`
    - `cd chili_app && pnpm build`
 5. Commit: `git commit -m "Add SAFE-CMS-010 explanation review controls"`.
+
+**Notes:**
+- Added `api/explanationReviews.ts` with React Query list/create hooks and cache invalidation for evidence-pack review state.
+- `EvidencePackViewer` now renders compact review controls for the root narrative target and each feature-attribution target, shows current review state, requires a reason before submitting negative/challenge states, and syncs form state when persisted review data arrives after first render.
+- Alert Feed and Investigation Workbench already pass `knowledgeBaseId`/`pack.id`; their tests now mock the new review hooks like other API dependencies.
+- RED:
+  - `npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx -t "explanation review"` failed on missing review controls and labels.
+  - `npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx -t "updates explanation review form state"` failed because persisted status arriving after first render did not update the select value.
+- GREEN:
+  - `npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx -t "explanation review"`: 3 passed, 6 skipped.
+  - `npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx -t "updates explanation review form state"`: 1 passed, 9 skipped.
+  - `npx vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 86 passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Task 5: Dossier/Cockpit Review Status And Browser Flow
 

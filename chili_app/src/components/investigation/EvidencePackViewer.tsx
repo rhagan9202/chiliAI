@@ -1,7 +1,15 @@
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import type { EvidencePackResponse } from '../../api/contracts'
+import type {
+  EvidencePackResponse,
+  ExplanationReviewCreateRequest,
+  ExplanationReviewResponse,
+} from '../../api/contracts'
+import {
+  useCreateEvidencePackReview,
+  useEvidencePackReviews,
+} from '../../api/explanationReviews'
 import { resolveEvidenceCitationTarget } from '../../lib/citationTargets'
 import type { Entity, SubgraphResult } from '../../types/api'
 import { absoluteTime, relativeAge } from '../../utils/relativeTime'
@@ -29,9 +37,37 @@ export interface EvidencePackViewerProps {
 }
 
 type EvidenceProvenanceReference = NonNullable<EvidencePackResponse['provenance']>[number]
+type ExplanationReviewState = ExplanationReviewCreateRequest['state']
+type ExplanationReviewReason = NonNullable<ExplanationReviewCreateRequest['reasons']>[number]
+type ReviewTarget = ExplanationReviewCreateRequest['target']
 
 const PROVENANCE_METADATA_PREVIEW_LIMIT = 4
 const PROVENANCE_METADATA_VALUE_MAX_CHARS = 120
+const NEGATIVE_REVIEW_STATES = new Set<ExplanationReviewState>([
+  'incomplete',
+  'misleading',
+  'unsupported',
+  'rejected',
+  'regeneration_requested',
+])
+const REVIEW_STATES: Array<{ value: ExplanationReviewState; label: string }> = [
+  { value: 'useful', label: 'Useful' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'incomplete', label: 'Incomplete' },
+  { value: 'misleading', label: 'Misleading' },
+  { value: 'unsupported', label: 'Unsupported' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'regeneration_requested', label: 'Regeneration requested' },
+]
+const REVIEW_REASONS: Array<{ value: ExplanationReviewReason; label: string }> = [
+  { value: 'missing_source', label: 'Missing source' },
+  { value: 'wrong_peer_group', label: 'Wrong peer group' },
+  { value: 'stale_data', label: 'Stale data' },
+  { value: 'unsupported_claim', label: 'Unsupported claim' },
+  { value: 'contradicts_evidence', label: 'Contradicts evidence' },
+  { value: 'unclear_rationale', label: 'Unclear rationale' },
+  { value: 'other', label: 'Other' },
+]
 
 /** `peer_deviation` -> `Peer deviation`: score keys are data, not copy. */
 function humanizeScoreName(name: string): string {
@@ -59,8 +95,163 @@ function formatMetadataValue(value: unknown): string {
   return truncateMetadataValue(stringifyMetadataValue(value))
 }
 
+function labelize(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 function provenanceLabel(reference: EvidenceProvenanceReference): string {
   return reference.label || reference.reference_id
+}
+
+function reviewForTarget(
+  reviews: ExplanationReviewResponse[],
+  target: ReviewTarget,
+): ExplanationReviewResponse | null {
+  return reviews.find(
+    (review) =>
+      review.target.target_type === target.target_type
+      && review.target.target_id === target.target_id,
+  ) ?? null
+}
+
+function ExplanationReviewControl({
+  currentReview,
+  disabled,
+  evidencePackId,
+  knowledgeBaseId,
+  label,
+  submitLabel,
+  target,
+}: {
+  currentReview: ExplanationReviewResponse | null
+  disabled: boolean
+  evidencePackId: string
+  knowledgeBaseId: string | null
+  label: string
+  submitLabel: string
+  target: ReviewTarget
+}) {
+  const createReview = useCreateEvidencePackReview()
+  const [state, setState] = useState<ExplanationReviewState>(currentReview?.state ?? 'useful')
+  const [reason, setReason] = useState<ExplanationReviewReason | ''>(
+    currentReview?.reasons?.[0] ?? '',
+  )
+  const [comment, setComment] = useState(currentReview?.comment ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const requiresReason = NEGATIVE_REVIEW_STATES.has(state)
+  const controlDisabled = disabled || !knowledgeBaseId || createReview.isPending
+
+  useEffect(() => {
+    if (!currentReview) return
+    setState(currentReview.state)
+    setReason(currentReview.reasons?.[0] ?? '')
+    setComment(currentReview.comment ?? '')
+    setError(null)
+  }, [
+    currentReview?.id,
+    currentReview?.state,
+    currentReview?.comment,
+    currentReview?.reasons,
+  ])
+
+  const submitReview = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!knowledgeBaseId) return
+    if (requiresReason && !reason) {
+      setError('Select at least one reason.')
+      return
+    }
+    setError(null)
+    createReview.mutate({
+      evidencePackId,
+      knowledgeBaseId,
+      payload: {
+        comment: comment.trim() || null,
+        reasons: reason ? [reason] : [],
+        state,
+        target,
+      },
+    })
+  }
+
+  return (
+    <form
+      aria-label={label}
+      className="metric-row metric-row--stacked"
+      onSubmit={submitReview}
+      role="group"
+    >
+      <div className="metric-row">
+        <strong>{label}</strong>
+        <span className="flag-label">
+          {currentReview ? labelize(currentReview.state) : 'Unreviewed'}
+        </span>
+      </div>
+      <label className="metric-row__label">
+        {label} state
+        <select
+          className="page-input page-input--inline"
+          disabled={controlDisabled}
+          onChange={(event) => {
+            setState(event.target.value as ExplanationReviewState)
+            setError(null)
+          }}
+          value={state}
+        >
+          {REVIEW_STATES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {requiresReason ? (
+        <label className="metric-row__label">
+          {label} reason
+          <select
+            className="page-input page-input--inline"
+            disabled={controlDisabled}
+            onChange={(event) => {
+              setReason(event.target.value as ExplanationReviewReason | '')
+              setError(null)
+            }}
+            value={reason}
+          >
+            <option value="">Select reason</option>
+            {REVIEW_REASONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <label className="metric-row__label">
+        {label} comment
+        <input
+          className="page-input"
+          disabled={controlDisabled}
+          maxLength={1000}
+          onChange={(event) => setComment(event.target.value)}
+          type="text"
+          value={comment}
+        />
+      </label>
+      {error ? <span className="metric-row__label" role="alert">{error}</span> : null}
+      <button
+        className="page-button page-button--sm page-button--secondary"
+        disabled={controlDisabled}
+        type="submit"
+      >
+        {submitLabel}
+      </button>
+    </form>
+  )
 }
 
 function ProvenancePanel({
@@ -210,6 +401,9 @@ export function EvidencePackViewer({
   const sourceDocuments = pack.source_documents ?? []
   const attribution = pack.attribution ?? []
   const provenance = pack.provenance ?? []
+  const reviewsQuery = useEvidencePackReviews(pack.id, knowledgeBaseId)
+  const reviews = reviewsQuery.data?.items ?? []
+  const canReview = Boolean(knowledgeBaseId)
 
   return (
     <Card>
@@ -240,6 +434,18 @@ export function EvidencePackViewer({
           <p className="page-copy-block" style={{ fontSize: '14px' }}>
             {pack.reasoning}
           </p>
+          <ExplanationReviewControl
+            currentReview={reviewForTarget(reviews, {
+              target_type: 'narrative',
+              target_id: 'narrative',
+            })}
+            disabled={!canReview}
+            evidencePackId={pack.id}
+            knowledgeBaseId={knowledgeBaseId}
+            label="Narrative review"
+            submitLabel="Save narrative review"
+            target={{ target_type: 'narrative', target_id: 'narrative' }}
+          />
           {narrativeSections.map((section) => (
             <div className="metric-row metric-row--stacked" key={section.heading + section.body}>
               <strong>{section.heading}</strong>
@@ -277,6 +483,29 @@ export function EvidencePackViewer({
         ) : null}
 
         {attribution.length > 0 ? <AttributionBars attribution={attribution} /> : null}
+
+        {attribution.length > 0 ? (
+          <div className="metric-stack">
+            {attribution.map((item) => {
+              const target: ReviewTarget = {
+                target_type: 'feature_attribution',
+                target_id: item.feature_name,
+              }
+              return (
+                <ExplanationReviewControl
+                  currentReview={reviewForTarget(reviews, target)}
+                  disabled={!canReview}
+                  evidencePackId={pack.id}
+                  key={item.feature_name}
+                  knowledgeBaseId={knowledgeBaseId}
+                  label={`Feature ${item.feature_name} review`}
+                  submitLabel={`Save feature ${item.feature_name} review`}
+                  target={target}
+                />
+              )
+            })}
+          </div>
+        ) : null}
 
         <ProvenancePanel knowledgeBaseId={knowledgeBaseId} references={provenance} />
 

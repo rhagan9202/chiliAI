@@ -122,6 +122,20 @@ vi.mock('../../api/evidence', () => ({
   }),
 }))
 
+vi.mock('../../api/explanationReviews', () => ({
+  useCreateEvidencePackReview: () => ({ isPending: false, mutate: vi.fn() }),
+  useEvidencePackReviews: () => ({
+    data: {
+      evidence_pack_id: '',
+      items: [],
+      knowledge_base_id: '',
+      page: { page: 1, page_size: 50, total_items: 0 },
+    },
+    isError: false,
+    isLoading: false,
+  }),
+}))
+
 const alertResponse = {
   items: [
     {
