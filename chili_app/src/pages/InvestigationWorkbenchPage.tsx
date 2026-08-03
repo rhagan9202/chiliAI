@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 
-import type { RuntimeEntity } from '../api/contracts'
+import type {
+  DomainConfig,
+  EntityFeatureValueResponse,
+  FeatureCatalogResponse,
+  RuntimeEntity,
+} from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
@@ -185,6 +190,106 @@ function CockpitOverview({
   )
 }
 
+type CockpitContextSummary = {
+  featureLabel: string | null
+  normalizedValue: string | null
+  peerDimensions: string[]
+  typologyLabels: string[]
+}
+
+function formatCockpitNormalizedValue(value: number | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  return `${Math.round(value * 100)}%`
+}
+
+function labelFromFeatureId(id: string): string {
+  return id.replace(/_/g, ' ')
+}
+
+function cockpitContextSummary(
+  catalog: FeatureCatalogResponse | null,
+  domainConfig: DomainConfig,
+  entityType: string | null,
+  values: EntityFeatureValueResponse[],
+): CockpitContextSummary {
+  if (values.length === 0) {
+    return {
+      featureLabel: null,
+      normalizedValue: null,
+      peerDimensions: [],
+      typologyLabels: [],
+    }
+  }
+
+  const featureIndex = new Map((catalog?.features ?? []).map((feature) => [feature.id, feature]))
+  const typologyIndex = new Map((catalog?.typologies ?? []).map((typology) => [typology.id, typology]))
+  const leadingValue = [...values].sort(
+    (a, b) => (b.normalized_value ?? -1) - (a.normalized_value ?? -1),
+  )[0]
+  const leadingFeature = featureIndex.get(leadingValue.feature_id)
+  const typologyLabels = (leadingFeature?.typology_ids ?? [])
+    .map((id) => typologyIndex.get(id)?.label)
+    .filter((label): label is string => Boolean(label))
+
+  return {
+    featureLabel: leadingFeature?.label ?? labelFromFeatureId(leadingValue.feature_id),
+    normalizedValue: formatCockpitNormalizedValue(leadingValue.normalized_value),
+    peerDimensions: (leadingFeature?.peer_dimensions ?? []).map((dimension) =>
+      domainPropertyLabel(domainConfig, entityType, dimension),
+    ),
+    typologyLabels,
+  }
+}
+
+function domainPropertyLabel(
+  domainConfig: DomainConfig,
+  entityType: string | null,
+  propertyName: string,
+): string {
+  const entityDefinition = domainConfig.entities.find((item) => item.name === entityType)
+  const display = entityDefinition?.properties[propertyName]?.display
+  if (display) return display
+  return propertyName
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function CockpitContextPanel({ summary }: { summary: CockpitContextSummary }) {
+  return (
+    <Card compact>
+      <div aria-label="Cockpit context" className="dashboard-panels" role="group">
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Typologies</span>
+          <strong>{summary.typologyLabels[0] ?? 'No typology context'}</strong>
+          <span className="metric-row__label">
+            {typologyContextLabel(summary.typologyLabels.length)}
+          </span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Feature signal</span>
+          <strong>{summary.featureLabel ?? 'No scored feature'}</strong>
+          <span className="metric-row__label">{summary.normalizedValue ?? 'No normalized score'}</span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Peer basis</span>
+          <strong>
+            {summary.peerDimensions.length > 0
+              ? summary.peerDimensions.join(', ')
+              : 'No peer dimensions'}
+          </strong>
+          <span className="metric-row__label">Catalog peer grouping</span>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function typologyContextLabel(count: number): string {
+  if (count === 0) return 'No mapped feature typology'
+  if (count === 1) return 'Matched feature typology'
+  return `${count} matched typologies`
+}
+
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
@@ -349,6 +454,12 @@ export function InvestigationWorkbenchPage() {
   const cockpitGraphSummary = neighborhood
     ? `${pluralize(neighborhood.entities.length, 'entity')} · ${pluralize(neighborhood.relationships.length, 'relationship')}`
     : 'No graph loaded'
+  const cockpitFeatureContext = cockpitContextSummary(
+    featureCatalogQuery.data ?? null,
+    domainConfigQuery.data,
+    entity?.type ?? null,
+    featureValuesQuery.data?.items ?? [],
+  )
 
   // Distinct subjects the queue has already flagged, newest first, as opening
   // moves for an analyst who does not know the corpus yet.
@@ -526,6 +637,8 @@ export function InvestigationWorkbenchPage() {
                 riskLabel={cockpitRiskLabel}
                 riskValue={cockpitRiskValue}
               />
+
+              <CockpitContextPanel summary={cockpitFeatureContext} />
 
               <Card compact>
                 <div aria-label="Cockpit state" className="metric-stack" role="group">

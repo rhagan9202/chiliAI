@@ -1134,10 +1134,79 @@ describe('InvestigationWorkbenchPage', () => {
     expect(analyticsCalls.featureCatalog.at(-1)).toEqual(['kb-live'])
     expect(analyticsCalls.featureValues.at(-1)).toEqual(['kb-live', 'provider', 'provider-204'])
     expect(screen.getByText('Feature values')).toBeInTheDocument()
-    expect(screen.getByText('Weekly provider billing z-score')).toBeInTheDocument()
-    expect(screen.getByText('Billing spike')).toBeInTheDocument()
-    expect(screen.getByText('84%')).toBeInTheDocument()
-    expect(screen.getByText('entity_derived_signals.weekly_provider_billing')).toBeInTheDocument()
+    const featureList = screen.getByTestId('feature-list')
+    expect(within(featureList).getByText('Weekly provider billing z-score')).toBeInTheDocument()
+    expect(within(featureList).getByText('Billing spike')).toBeInTheDocument()
+    expect(within(featureList).getByText('84%')).toBeInTheDocument()
+    expect(within(featureList).getByText('entity_derived_signals.weekly_provider_billing')).toBeInTheDocument()
+  })
+
+  it('surfaces typology, feature, and peer context in the cockpit before tab review', () => {
+    selectLiveProvider()
+    mocks.featureCatalog = {
+      knowledge_base_id: 'kb-live',
+      catalog_version: 'cms-fraud-features-v1',
+      typologies: [
+        {
+          id: 'billing_spike',
+          label: 'Billing spike',
+          description: 'Unexpected billing acceleration.',
+          entity_types: ['provider'],
+          feature_ids: ['weekly_provider_billing_zscore'],
+          policy_rule_ids: [],
+          playbook_ids: [],
+          severity_hint: 'high',
+        },
+      ],
+      features: [
+        {
+          id: 'weekly_provider_billing_zscore',
+          label: 'Weekly provider billing z-score',
+          description: 'Provider billing deviation from baseline.',
+          entity_types: ['provider'],
+          typology_ids: ['billing_spike'],
+          value_type: 'decimal',
+          transformation_version: 'peerstats-zscore-v1',
+          source_mappings: [],
+          peer_dimensions: ['specialty'],
+          threshold_hints: { high: 0.8 },
+        },
+      ],
+    }
+    mocks.featureValues = [
+      {
+        entity_type: 'provider',
+        entity_id: 'provider-204',
+        feature_id: 'weekly_provider_billing_zscore',
+        value: 4.2,
+        normalized_value: 0.84,
+        catalog_version: 'cms-fraud-features-v1',
+        transformation_version: 'peerstats-zscore-v1',
+        source_refs: ['entity_derived_signals.weekly_provider_billing'],
+        observed_at: '2026-08-02T12:00:00Z',
+        score_run_id: 'score-run-1',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const context = screen.getByRole('group', { name: 'Cockpit context' })
+    expect(within(context).getByText('Billing spike')).toBeInTheDocument()
+    expect(within(context).getByText('Weekly provider billing z-score')).toBeInTheDocument()
+    expect(within(context).getByText('84%')).toBeInTheDocument()
+    expect(within(context).getByText('Specialty')).toBeInTheDocument()
+  })
+
+  it('shows domain-neutral cockpit context empty states when feature values are missing', () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const context = screen.getByRole('group', { name: 'Cockpit context' })
+    expect(within(context).getByText('No typology context')).toBeInTheDocument()
+    expect(within(context).getByText('No mapped feature typology')).toBeInTheDocument()
+    expect(within(context).getByText('No scored feature')).toBeInTheDocument()
+    expect(within(context).getByText('No peer dimensions')).toBeInTheDocument()
   })
 
   it('hides the signal band when risk is unavailable, even with factors on the raw payload', () => {

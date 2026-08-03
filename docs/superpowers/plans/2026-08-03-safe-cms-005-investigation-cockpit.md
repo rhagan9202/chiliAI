@@ -130,6 +130,26 @@ Task 2 notes:
 - [ ] Surface peer-context availability with domain-neutral labels.
 - [ ] Keep non-CMS domains using `DomainConfig` labels and empty states.
 
+Task 3 notes:
+
+- Added a first-viewport cockpit context panel that summarizes the leading scored
+  feature, matched typology, normalized value, and peer dimensions from the existing
+  feature catalog/value queries.
+- Kept the detailed `FeatureList` in the Signals tab and scoped tests so cockpit context
+  and tab detail can intentionally show the same feature labels without brittle duplicates.
+- Review hardening: peer dimensions now resolve through `DomainConfig` property display
+  labels when available, typology empty-state copy no longer implies a match, and missing
+  feature values have explicit cockpit empty-state coverage.
+- Focused red/green verification:
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 34 passed.
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 35 passed after review fixes.
+- Final verification passed:
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 67 passed.
+  - `pnpm exec eslint src/pages/InvestigationWorkbenchPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+
 ## Task 4: Alert-To-Case Cockpit Continuity
 
 **Files:**
