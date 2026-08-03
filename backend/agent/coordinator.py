@@ -2843,6 +2843,7 @@ def handle_alerts_created_for_graph(
                 entity_label=alert.entity_label,
                 confidence=alert.confidence,
                 tags=alert.tags,
+                generation_metadata=dict(alert.generation_metadata),
             )
         )
         severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity

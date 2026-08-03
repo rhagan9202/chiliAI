@@ -49,9 +49,21 @@ def test_write_and_count_round_trip(database_url: str) -> None:
             conn.commit()
 
         assert store.write_alerts([]) == 0
-        assert store.write_alerts([_record("a-1"), _record("a-2")]) == 2
+        metadata_record = _record("a-1").model_copy(
+            update={
+                "generation_metadata": {
+                    "suppression": {"decision": "retained"},
+                    "deduplication": {"window_seconds": 900},
+                }
+            }
+        )
+        assert store.write_alerts([metadata_record, _record("a-2")]) == 2
         # Idempotent on (knowledge_base_id, alert_id).
         assert store.write_alerts([_record("a-1")]) == 0
+        fetched = store.get_alert("a-1")
+        assert fetched is not None
+        assert fetched.generation_metadata["suppression"]["decision"] == "retained"
+        assert fetched.generation_metadata["deduplication"]["window_seconds"] == 900
         assert (
             store.count_open_alerts(
                 knowledge_base_id="kb-alert-test", entity_id="claim:c1"
@@ -92,6 +104,16 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
             entity_label="Dr. Original",
             confidence=0.42,
             tags=["original-tag"],
+            generation_metadata={
+                "suppression": {
+                    "decision": "retained",
+                    "reason": "No active suppression rule matched claim and claim_anomaly.",
+                },
+                "deduplication": {
+                    "decision": "retained",
+                    "window_seconds": 900,
+                },
+            },
         )
         rewritten = original.model_copy(
             update={
@@ -100,6 +122,9 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
                 "entity_label": "Dr. Rewritten",
                 "confidence": 0.99,
                 "tags": ["rewritten-tag"],
+                "generation_metadata": {
+                    "suppression": {"decision": "rewritten"},
+                },
             }
         )
 
@@ -113,6 +138,8 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) 
         assert fetched.entity_label == "Dr. Original"
         assert fetched.confidence == 0.42
         assert fetched.tags == ["original-tag"]
+        assert fetched.generation_metadata["suppression"]["decision"] == "retained"
+        assert fetched.generation_metadata["deduplication"]["window_seconds"] == 900
     finally:
         with provider.connection() as conn:
             conn.execute(

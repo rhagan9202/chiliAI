@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,7 @@ class AlertListItem(BaseModel):
     updated_at: datetime
     tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
     assignee: str | None = None
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertListResponse(BaseModel):

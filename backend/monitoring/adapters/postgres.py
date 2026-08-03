@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 from database.protocols import ConnectionProvider, Row
 from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
@@ -41,8 +41,8 @@ _ALERT_INSERT_SQL = """
     INSERT INTO alert_history (
         knowledge_base_id, alert_id, entity_id, entity_type, severity, status,
         title, reasoning, metric_name, evidence_pack_id, created_at, updated_at,
-        entity_label, confidence, tags, assignee, triage_history
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
+        entity_label, confidence, tags, assignee, generation_metadata, triage_history
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s::jsonb)
     ON CONFLICT (knowledge_base_id, alert_id) DO NOTHING
 """
 
@@ -54,7 +54,7 @@ _ALERT_COUNT_OPEN_SQL = """
 _ALERT_COLUMNS = (
     "knowledge_base_id, alert_id, entity_id, entity_type, severity, status, "
     "title, reasoning, metric_name, evidence_pack_id, created_at, updated_at, "
-    "entity_label, confidence, tags, assignee, triage_history"
+    "entity_label, confidence, tags, assignee, generation_metadata, triage_history"
 )
 
 
@@ -227,6 +227,7 @@ class PostgresAlertHistoryStore:
                             record.confidence,
                             json.dumps(record.tags),
                             record.assignee,
+                            _encode_generation_metadata(record.generation_metadata),
                             _encode_triage_history(record.triage_history),
                         ),
                     )
@@ -480,7 +481,8 @@ def _row_to_alert_record(row: Row) -> AlertHistoryRecord:
         confidence=float(cast(float, row[13])),
         tags=_decode_tags(row[14]),
         assignee=None if row[15] is None else cast(str, row[15]),
-        triage_history=_decode_triage_history(row[16]),
+        generation_metadata=_decode_generation_metadata(row[16]),
+        triage_history=_decode_triage_history(row[17]),
     )
 
 
@@ -491,6 +493,15 @@ def _decode_tags(value: object) -> list[str]:
 
 def _encode_triage_history(events: list[AlertTriageEvent]) -> str:
     return json.dumps([event.model_dump(mode="json") for event in events])
+
+
+def _encode_generation_metadata(metadata: dict[str, Any]) -> str:
+    return json.dumps(metadata)
+
+
+def _decode_generation_metadata(value: object) -> dict[str, Any]:
+    decoded = json.loads(value) if isinstance(value, (str, bytes)) else value
+    return cast(dict[str, Any], decoded or {})
 
 
 def _decode_triage_history(value: object) -> list[AlertTriageEvent]:

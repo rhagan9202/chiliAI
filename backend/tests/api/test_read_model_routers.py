@@ -64,6 +64,17 @@ def _seed_alert_store() -> AlertFeedStoreProtocol:
                 entity_label="Redwood DME Group",
                 confidence=0.96,
                 tags=["billing", "peer-deviation"],
+                generation_metadata={
+                    "suppression": {
+                        "decision": "retained",
+                        "reason": "No active suppression rule matched provider and claims_per_week.",
+                    },
+                    "deduplication": {
+                        "decision": "retained",
+                        "reason": "No existing alert inside the dedup window.",
+                        "window_seconds": 900,
+                    },
+                },
             ),
             AlertHistoryRecord(
                 knowledge_base_id="kb-2",
@@ -142,6 +153,11 @@ def test_get_alerts_returns_paginated_feed() -> None:
     payload = response.json()
     assert payload["page"]["total_items"] >= 1
     assert payload["items"][0]["entity_type"] == "provider"
+    assert payload["items"][0]["generation_metadata"]["suppression"]["decision"] == "retained"
+    assert (
+        payload["items"][0]["generation_metadata"]["deduplication"]["window_seconds"]
+        == 900
+    )
 
 
 def test_list_alerts_route_passes_status_and_pagination() -> None:

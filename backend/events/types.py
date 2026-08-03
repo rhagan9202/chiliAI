@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -391,6 +391,7 @@ class AlertCreatedReference(BaseModel):
     entity_label: str = ""
     confidence: float = 0.0
     tags: list[str] = Field(default_factory=list)
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertsCreatedEvent(EventBase):

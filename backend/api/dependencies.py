@@ -698,6 +698,7 @@ def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
         updated_at=record.updated_at,
         tags=list(record.tags),
         assignee=record.assignee,
+        generation_metadata=dict(record.generation_metadata),
     )
 
 

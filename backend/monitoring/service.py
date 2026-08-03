@@ -148,13 +148,19 @@ class MonitoringService:
                 continue
             # Use the highest-scoring observation as the candidate's source.
             top = max(exceeders, key=lambda observation: observation.score)
-            candidates.append(
-                _to_alert_candidate(
-                    top,
-                    medium_threshold=effective_medium,
-                    high_threshold=effective_high,
-                )
+            candidate = _to_alert_candidate(
+                top,
+                medium_threshold=effective_medium,
+                high_threshold=effective_high,
             )
+            candidate.generation_metadata["suppression"] = {
+                "decision": "retained",
+                "reason": (
+                    "No active suppression rule matched "
+                    f"{candidate.entity_type} and {candidate.metric_name}."
+                ),
+            }
+            candidates.append(candidate)
 
         # E8-S02: apply deduplication.
         deduped: list[AlertCandidate] = []
@@ -167,6 +173,15 @@ class MonitoringService:
                 suppressed_count += 1
                 continue
             self._dedup_index[key] = now
+            candidate.generation_metadata["deduplication"] = {
+                "decision": "retained",
+                "reason": (
+                    f"No existing alert for {candidate.entity_id} and "
+                    f"{candidate.metric_name} inside the "
+                    f"{self._dedup_window_seconds} second dedup window."
+                ),
+                "window_seconds": self._dedup_window_seconds,
+            }
             deduped.append(candidate)
 
         # E8-S04: apply rate limiting after dedup.
@@ -212,6 +227,7 @@ class MonitoringService:
                             # the coordinator's factor-name slug convention.
                             confidence=candidate.score,
                             tags=[candidate.metric_name.replace("_", "-")],
+                            generation_metadata=dict(candidate.generation_metadata),
                         )
                         for candidate, alert in zip(deduped, alerts, strict=True)
                     ]
@@ -404,6 +420,7 @@ def _to_alert(candidate: AlertCandidate, *, created_at: datetime) -> Alert:
         reasoning=candidate.reasoning,
         evidence_pack_id=candidate.evidence_pack_id,
         created_at=created_at,
+        generation_metadata=dict(candidate.generation_metadata),
     )
 
 

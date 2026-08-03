@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -42,6 +42,7 @@ class AlertCandidate(BaseModel):
     score: float = Field(ge=0.0, le=1.0)
     metric_name: str
     evidence_pack_id: str | None = None
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SuppressionRule(BaseModel):
@@ -121,6 +122,7 @@ class AlertHistoryRecord(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=lambda: list[str]())
     assignee: str | None = None
+    generation_metadata: dict[str, Any] = Field(default_factory=dict)
     triage_history: list[AlertTriageEvent] = Field(
         default_factory=lambda: list[AlertTriageEvent]()
     )

@@ -79,6 +79,32 @@ def test_write_alerts_keeps_first_row_on_conflicting_rewrite() -> None:
     assert fetched.tags == ["original-tag"]
 
 
+def test_write_alerts_preserves_generation_metadata() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    record = _record("a-1").model_copy(
+        update={
+            "generation_metadata": {
+                "suppression": {
+                    "decision": "retained",
+                    "reason": "No active suppression rule matched claim and claim_anomaly.",
+                },
+                "deduplication": {
+                    "decision": "retained",
+                    "reason": "No existing alert inside the dedup window.",
+                    "window_seconds": 900,
+                },
+            }
+        }
+    )
+
+    writer.write_alerts([record])
+
+    fetched = writer.get_alert("a-1")
+    assert fetched is not None
+    assert fetched.generation_metadata["suppression"]["decision"] == "retained"
+    assert fetched.generation_metadata["deduplication"]["window_seconds"] == 900
+
+
 def test_count_open_alerts_filters_by_entity_and_status() -> None:
     writer = InMemoryAlertHistoryWriter()
     writer.write_alerts([

@@ -17,7 +17,8 @@ CREATE TABLE public.alert_history (
     confidence double precision DEFAULT 0 NOT NULL,
     tags jsonb DEFAULT '[]'::jsonb NOT NULL,
     assignee text,
-    triage_history jsonb DEFAULT '[]'::jsonb NOT NULL
+    triage_history jsonb DEFAULT '[]'::jsonb NOT NULL,
+    generation_metadata jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 CREATE TABLE public.cases (
     knowledge_base_id text NOT NULL,
