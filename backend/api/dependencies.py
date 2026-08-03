@@ -25,6 +25,9 @@ from api.contracts import (
     AlertStatusUpdateRequest,
     AlertTriageEventResponse,
     CaseCreateRequest,
+    CaseDossierExportMetadataResponse,
+    CaseDossierExportResponse,
+    CaseDossierResponse,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
     CaseListResponse,
@@ -282,6 +285,8 @@ __all__ = [
     "get_agent_service",
     "get_analytics_overview_payload",
     "get_case_create_payload",
+    "get_case_dossier_export_payload",
+    "get_case_dossier_payload",
     "get_case_detail_payload",
     "get_case_feedback_payload",
     "get_case_list_payload",
@@ -769,6 +774,101 @@ def _assemble_case_detail(
     )
 
 
+def _case_timeline_to_response(case: Case) -> list[CaseTimelineEventResponse]:
+    return [
+        CaseTimelineEventResponse(
+            occurred_at=event.occurred_at, label=event.label, detail=event.detail
+        )
+        for event in case.timeline
+    ]
+
+
+def _case_evidence_pack_ids(case: Case, alerts: list[AlertListItem]) -> list[str]:
+    evidence_pack_ids: list[str] = []
+    if case.evidence_pack_id:
+        evidence_pack_ids.append(case.evidence_pack_id)
+    evidence_pack_ids.extend(
+        alert.evidence_pack_id
+        for alert in alerts
+        if isinstance(alert.evidence_pack_id, str) and alert.evidence_pack_id
+    )
+    return list(dict.fromkeys(evidence_pack_ids))
+
+
+def _assemble_case_dossier(
+    case: Case,
+    *,
+    evidence_repository: EvidencePackRepository,
+    alert_store: AlertFeedStoreProtocol,
+) -> CaseDossierResponse:
+    alerts = _linked_case_alerts(case, alert_store=alert_store)
+    evidence_packs: list[EvidencePackResponse] = []
+    for evidence_pack_id in _case_evidence_pack_ids(case, alerts):
+        pack = evidence_repository.get(case.knowledge_base_id, evidence_pack_id)
+        if pack is not None:
+            evidence_packs.append(_evidence_pack_to_response(pack))
+    return CaseDossierResponse(
+        case=_case_to_summary(case),
+        alerts=alerts,
+        evidence_packs=evidence_packs,
+        entity_timeline=_case_timeline_to_response(case),
+        feedback_history=_case_feedback_to_response(case),
+        export=CaseDossierExportMetadataResponse(
+            default_filename=f"case-{case.id}.md"
+        ),
+    )
+
+
+def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
+    lines = [
+        f"# {dossier.case.title}",
+        "",
+        f"- Case ID: {dossier.case.id}",
+        f"- Knowledge base: {dossier.case.knowledge_base_id}",
+        f"- Status: {dossier.case.status}",
+        f"- Priority: {dossier.case.priority}",
+    ]
+    if dossier.case.assignee:
+        lines.append(f"- Assignee: {dossier.case.assignee}")
+
+    lines.extend(["", "## Alerts"])
+    if dossier.alerts:
+        for alert in dossier.alerts:
+            lines.append(f"- {alert.title} ({alert.severity})")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Timeline"])
+    if dossier.entity_timeline:
+        for event in dossier.entity_timeline:
+            lines.append(f"- {event.occurred_at.isoformat()} - {event.label}: {event.detail}")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Evidence"])
+    if dossier.evidence_packs:
+        for pack in dossier.evidence_packs:
+            lines.extend([f"### Evidence pack {pack.id}", "", pack.reasoning])
+            if pack.provenance:
+                lines.append("")
+                lines.append("Provenance:")
+                for reference in pack.provenance:
+                    lines.append(f"- {reference.label} ({reference.reference_type})")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Feedback"])
+    if dossier.feedback_history:
+        for feedback in dossier.feedback_history:
+            lines.append(
+                f"- {feedback.submitted_at.isoformat()} - {feedback.label}: {feedback.notes}"
+            )
+    else:
+        lines.append("- None")
+
+    return "\n".join(lines).strip() + "\n"
+
+
 def get_case_list_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     status: str | None = Query(default=None, description="Filter by case status."),
@@ -802,6 +902,56 @@ def get_case_detail_payload(
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_detail(
         case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def get_case_dossier_payload(
+    case_id: str = Path(..., description="Case identifier."),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+) -> CaseDossierResponse:
+    """Return the KB-scoped case dossier projection."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    return _assemble_case_dossier(
+        case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def get_case_dossier_export_payload(
+    case_id: str = Path(..., description="Case identifier."),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    export_format: EvidenceExportFormat = Query(
+        default="markdown",
+        alias="format",
+        description="Rendering to return: machine-readable JSON or readable Markdown.",
+    ),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+) -> CaseDossierExportResponse:
+    """Return a portable case dossier rendering."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    dossier = _assemble_case_dossier(
+        case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+    if export_format == "json":
+        content = dossier.model_dump_json(indent=2)
+        suffix = "json"
+    else:
+        content = _render_case_dossier_markdown(dossier)
+        suffix = "md"
+    return CaseDossierExportResponse(
+        case_id=case.id,
+        knowledge_base_id=case.knowledge_base_id,
+        format=export_format,
+        filename=f"case-{case.id}.{suffix}",
+        content=content,
     )
 
 

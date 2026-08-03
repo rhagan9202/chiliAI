@@ -5,12 +5,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from api.contracts import (
+    CaseDossierExportResponse,
+    CaseDossierResponse,
     CaseDetailResponse,
     CaseListResponse,
 )
 from api.dependencies import (
     get_case_attach_alert_payload,
     get_case_create_payload,
+    get_case_dossier_export_payload,
+    get_case_dossier_payload,
     get_case_detail_payload,
     get_case_feedback_payload,
     get_case_list_payload,
@@ -30,6 +34,30 @@ async def list_cases(
 ) -> CaseListResponse:
     """Return the case management queue."""
     return cases
+
+
+@router.get(
+    "/{case_id}/dossier",
+    response_model=CaseDossierResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_case_dossier(
+    dossier: CaseDossierResponse = Depends(get_case_dossier_payload),
+) -> CaseDossierResponse:
+    """Return the case dossier projection."""
+    return dossier
+
+
+@router.get(
+    "/{case_id}/dossier/export",
+    response_model=CaseDossierExportResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def export_case_dossier(
+    export: CaseDossierExportResponse = Depends(get_case_dossier_export_payload),
+) -> CaseDossierExportResponse:
+    """Return a portable case dossier export."""
+    return export
 
 
 @router.get(

@@ -480,6 +480,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cases/{case_id}/dossier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case Dossier
+         * @description Return the case dossier projection.
+         */
+        get: operations["get_case_dossier_cases__case_id__dossier_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cases/{case_id}/dossier/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Case Dossier
+         * @description Return a portable case dossier export.
+         */
+        get: operations["export_case_dossier_cases__case_id__dossier_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cases/{case_id}/feedback": {
         parameters: {
             query?: never;
@@ -2064,6 +2104,51 @@ export interface components {
             /** Entity Timeline */
             entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];
             evidence_pack?: components["schemas"]["EvidencePackResponse"] | null;
+            /** Feedback History */
+            feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
+        };
+        /**
+         * CaseDossierExportMetadataResponse
+         * @description Export affordances advertised with a case dossier.
+         */
+        CaseDossierExportMetadataResponse: {
+            /** Default Filename */
+            default_filename: string;
+            /** Formats */
+            formats?: ("json" | "markdown")[];
+        };
+        /**
+         * CaseDossierExportResponse
+         * @description Portable case dossier rendering for reviewer handoff.
+         */
+        CaseDossierExportResponse: {
+            /** Case Id */
+            case_id: string;
+            /** Content */
+            content: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "markdown";
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * CaseDossierResponse
+         * @description Case-level dossier preserving alerts, evidence, chronology, and decisions.
+         */
+        CaseDossierResponse: {
+            /** Alerts */
+            alerts?: components["schemas"]["AlertListItem"][];
+            case: components["schemas"]["CaseSummaryResponse"];
+            /** Entity Timeline */
+            entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];
+            /** Evidence Packs */
+            evidence_packs?: components["schemas"]["EvidencePackResponse"][];
+            export: components["schemas"]["CaseDossierExportMetadataResponse"];
             /** Feedback History */
             feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
         };
@@ -6459,6 +6544,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_dossier_cases__case_id__dossier_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Case identifier. */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDossierResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_case_dossier_cases__case_id__dossier_export_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+                /** @description Rendering to return: machine-readable JSON or readable Markdown. */
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                /** @description Case identifier. */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDossierExportResponse"];
                 };
             };
             /** @description Validation Error */

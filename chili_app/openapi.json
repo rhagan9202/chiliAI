@@ -1019,6 +1019,114 @@
         "title": "CaseDetailResponse",
         "type": "object"
       },
+      "CaseDossierExportMetadataResponse": {
+        "description": "Export affordances advertised with a case dossier.",
+        "properties": {
+          "default_filename": {
+            "title": "Default Filename",
+            "type": "string"
+          },
+          "formats": {
+            "items": {
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "type": "string"
+            },
+            "title": "Formats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "default_filename"
+        ],
+        "title": "CaseDossierExportMetadataResponse",
+        "type": "object"
+      },
+      "CaseDossierExportResponse": {
+        "description": "Portable case dossier rendering for reviewer handoff.",
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "markdown"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "knowledge_base_id",
+          "format",
+          "filename",
+          "content"
+        ],
+        "title": "CaseDossierExportResponse",
+        "type": "object"
+      },
+      "CaseDossierResponse": {
+        "description": "Case-level dossier preserving alerts, evidence, chronology, and decisions.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertListItem"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "case": {
+            "$ref": "#/components/schemas/CaseSummaryResponse"
+          },
+          "entity_timeline": {
+            "items": {
+              "$ref": "#/components/schemas/CaseTimelineEventResponse"
+            },
+            "title": "Entity Timeline",
+            "type": "array"
+          },
+          "evidence_packs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidencePackResponse"
+            },
+            "title": "Evidence Packs",
+            "type": "array"
+          },
+          "export": {
+            "$ref": "#/components/schemas/CaseDossierExportMetadataResponse"
+          },
+          "feedback_history": {
+            "items": {
+              "$ref": "#/components/schemas/AnalystFeedbackResponse"
+            },
+            "title": "Feedback History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case",
+          "export"
+        ],
+        "title": "CaseDossierResponse",
+        "type": "object"
+      },
       "CaseFeedbackCreateRequest": {
         "description": "Payload for storing analyst feedback on a case.",
         "properties": {
@@ -10176,6 +10284,136 @@
           }
         },
         "summary": "Attach Alert To Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/cases/{case_id}/dossier": {
+      "get": {
+        "description": "Return the case dossier projection.",
+        "operationId": "get_case_dossier_cases__case_id__dossier_get",
+        "parameters": [
+          {
+            "description": "Case identifier.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case identifier.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDossierResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case Dossier",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/cases/{case_id}/dossier/export": {
+      "get": {
+        "description": "Return a portable case dossier export.",
+        "operationId": "export_case_dossier_cases__case_id__dossier_export_get",
+        "parameters": [
+          {
+            "description": "Case identifier.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case identifier.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rendering to return: machine-readable JSON or readable Markdown.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "description": "Rendering to return: machine-readable JSON or readable Markdown.",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDossierExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Case Dossier",
         "tags": [
           "cases"
         ]

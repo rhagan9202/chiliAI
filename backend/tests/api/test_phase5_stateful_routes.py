@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from analytics.explainability.adapters.evidence_in_memory import (
+    InMemoryEvidencePackRepository,
+)
 from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
@@ -20,6 +24,7 @@ from api.app import create_app
 from api.dependencies import (
     get_alert_feed_store,
     get_entity_series_source,
+    get_evidence_pack_repository,
     get_graph_service,
     get_knowledge_base_repository,
     get_risk_service,
@@ -34,7 +39,7 @@ from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.protocols import KnowledgeBaseRepository
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
-from shared.types import Entity, KnowledgeBase
+from shared.types import Entity, EvidencePack, EvidenceProvenanceReference, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
 
@@ -63,6 +68,7 @@ def _second_alert_record() -> AlertHistoryRecord:
 
 def _client_with_alert_history(
     extra: list[AlertHistoryRecord] | None = None,
+    evidence_repository: InMemoryEvidencePackRepository | None = None,
 ) -> TestClient:
     """Create a test client with a deterministic durable alert row."""
     app = create_app()
@@ -92,7 +98,40 @@ def _client_with_alert_history(
     if extra:
         store.write_alerts(extra)
     app.dependency_overrides[get_alert_feed_store] = lambda: store
+    if evidence_repository is not None:
+        app.dependency_overrides[get_evidence_pack_repository] = lambda: evidence_repository
     return TestClient(app)
+
+
+def _evidence_pack(
+    evidence_pack_id: str,
+    *,
+    alert_id: str,
+    reasoning: str,
+    provenance_label: str,
+) -> EvidencePack:
+    return EvidencePack(
+        id=evidence_pack_id,
+        alert_id=alert_id,
+        reasoning=reasoning,
+        subgraph_nodes=["provider-204"],
+        subgraph_edges=[],
+        confidence=0.91,
+        provenance=[
+            EvidenceProvenanceReference(
+                reference_type="document",
+                reference_id=f"{evidence_pack_id}#source:0",
+                label=provenance_label,
+                source_system="cms-claims",
+                source_version="2026-08-demo",
+                transformation_version="safe-cms-008-test",
+                confidence=0.91,
+                route_target="/knowledgebases/kb-1/documents/source-doc/preview",
+                metadata={"document_id": "source-doc"},
+            )
+        ],
+        source_documents=["source-doc"],
+    )
 
 
 def test_alert_acknowledgement_changes_status() -> None:
@@ -219,6 +258,134 @@ def test_promote_alert_from_different_knowledge_base_returns_404_without_case() 
     listed = client.get("/cases", params={"knowledge_base_id": "kb-2"})
     assert listed.status_code == 200
     assert listed.json()["items"] == []
+
+
+def test_case_dossier_includes_evidence_feedback_and_export_metadata() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-002",
+            alert_id="alert-002",
+            reasoning="Attached alert evidence.",
+            provenance_label="Attached claim source",
+        ),
+    )
+    client = _client_with_alert_history(
+        extra=[_second_alert_record()],
+        evidence_repository=evidence_repository,
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    attached = client.post(
+        f"/cases/{case_id}/alerts",
+        params=kb,
+        json={"alert_id": "alert-002", "notes": "Same provider, later spike"},
+    )
+    assert attached.status_code == 200
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "insufficient_evidence",
+            "evidence_adequacy": "medium",
+            "missing_evidence": ["supplier invoice"],
+            "notes": "Need invoice before referral.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    dossier = client.get(f"/cases/{case_id}/dossier", params=kb)
+
+    assert dossier.status_code == 200
+    payload = dossier.json()
+    assert payload["case"]["id"] == case_id
+    assert [alert["id"] for alert in payload["alerts"]] == ["alert-001", "alert-002"]
+    assert [pack["id"] for pack in payload["evidence_packs"]] == [
+        "evidence-001",
+        "evidence-002",
+    ]
+    assert payload["evidence_packs"][0]["provenance"][0]["label"] == "Origin claim source"
+    assert payload["entity_timeline"][0]["label"] == "alert_raised"
+    assert payload["entity_timeline"][-1]["label"] == "Alert attached"
+    assert payload["feedback_history"][0]["notes"] == "Need invoice before referral."
+    assert payload["export"]["formats"] == ["markdown", "json"]
+    assert payload["export"]["default_filename"] == f"case-{case_id}.md"
+
+    wrong_kb = client.get(
+        f"/cases/{case_id}/dossier", params={"knowledge_base_id": "kb-2"}
+    )
+    assert wrong_kb.status_code == 404
+
+
+def test_case_dossier_export_renders_markdown_and_json() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    client = _client_with_alert_history(evidence_repository=evidence_repository)
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "suspicious",
+            "evidence_adequacy": "high",
+            "missing_evidence": [],
+            "notes": "Evidence is ready for supervisor review.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    markdown = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "markdown"},
+    )
+    assert markdown.status_code == 200
+    markdown_payload = markdown.json()
+    assert markdown_payload["case_id"] == case_id
+    assert markdown_payload["knowledge_base_id"] == "kb-1"
+    assert markdown_payload["format"] == "markdown"
+    assert markdown_payload["filename"] == f"case-{case_id}.md"
+    assert "Investigation: Outlier billing concentration" in markdown_payload["content"]
+    assert "Status: open" in markdown_payload["content"]
+    assert "Outlier billing concentration" in markdown_payload["content"]
+    assert "Originating alert evidence." in markdown_payload["content"]
+    assert "Origin claim source" in markdown_payload["content"]
+    assert "Evidence is ready for supervisor review." in markdown_payload["content"]
+
+    exported_json = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "json"},
+    )
+    assert exported_json.status_code == 200
+    json_payload = exported_json.json()
+    assert json_payload["filename"] == f"case-{case_id}.json"
+    exported_content = json.loads(json_payload["content"])
+    assert exported_content["case"]["id"] == case_id
+    assert exported_content["evidence_packs"][0]["provenance"][0]["label"] == (
+        "Origin claim source"
+    )
 
 
 def test_create_conversation_and_add_message() -> None:

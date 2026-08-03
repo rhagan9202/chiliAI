@@ -578,6 +578,40 @@ class CaseDetailResponse(BaseModel):
     feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
 
 
+class CaseDossierExportMetadataResponse(BaseModel):
+    """Export affordances advertised with a case dossier."""
+
+    formats: list[EvidenceExportFormat] = Field(
+        default_factory=lambda: cast(list[EvidenceExportFormat], ["markdown", "json"])
+    )
+    default_filename: str
+
+
+class CaseDossierResponse(BaseModel):
+    """Case-level dossier preserving alerts, evidence, chronology, and decisions."""
+
+    case: CaseSummaryResponse
+    alerts: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
+    evidence_packs: list[EvidencePackResponse] = Field(
+        default_factory=lambda: cast(list[EvidencePackResponse], [])
+    )
+    entity_timeline: list[CaseTimelineEventResponse] = Field(
+        default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
+    )
+    feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
+    export: CaseDossierExportMetadataResponse
+
+
+class CaseDossierExportResponse(BaseModel):
+    """Portable case dossier rendering for reviewer handoff."""
+
+    case_id: str
+    knowledge_base_id: str
+    format: EvidenceExportFormat
+    filename: str
+    content: str
+
+
 class ChatCitationResponse(BaseModel):
     """Rich citation payload returned alongside an assistant chat message.
 
@@ -1193,6 +1227,9 @@ __all__ = [
     "AnalystFeedbackResponse",
     "AnalyticsOverviewResponse",
     "CaseCreateRequest",
+    "CaseDossierExportMetadataResponse",
+    "CaseDossierExportResponse",
+    "CaseDossierResponse",
     "CaseDetailResponse",
     "CaseFeedbackCreateRequest",
     "CaseListResponse",
