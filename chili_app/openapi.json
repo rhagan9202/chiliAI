@@ -1369,6 +1369,13 @@
             "title": "Evidence Packs",
             "type": "array"
           },
+          "explanation_review_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/CaseExplanationReviewSummaryResponse"
+            },
+            "title": "Explanation Review Summaries",
+            "type": "array"
+          },
           "export": {
             "$ref": "#/components/schemas/CaseDossierExportMetadataResponse"
           },
@@ -1385,6 +1392,55 @@
           "export"
         ],
         "title": "CaseDossierResponse",
+        "type": "object"
+      },
+      "CaseExplanationReviewSummaryResponse": {
+        "description": "Sanitized case-dossier summary for one explanation review.",
+        "properties": {
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "reason_count": {
+            "minimum": 0.0,
+            "title": "Reason Count",
+            "type": "integer"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "useful",
+              "incomplete",
+              "misleading",
+              "unsupported",
+              "approved",
+              "rejected",
+              "regeneration_requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExplanationReviewTargetResponse"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_pack_id",
+          "review_id",
+          "target",
+          "state",
+          "reason_count",
+          "updated_at"
+        ],
+        "title": "CaseExplanationReviewSummaryResponse",
         "type": "object"
       },
       "CaseFeedbackCreateRequest": {

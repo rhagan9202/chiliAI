@@ -33,6 +33,7 @@ from api.contracts import (
     CaseDossierExportResponse,
     CaseDossierResponse,
     CaseDetailResponse,
+    CaseExplanationReviewSummaryResponse,
     CaseFeedbackCreateRequest,
     CaseListResponse,
     CaseAttachAlertRequest,
@@ -1090,15 +1091,24 @@ def _assemble_case_dossier(
     case: Case,
     *,
     evidence_repository: EvidencePackRepository,
+    review_service: ExplanationReviewService,
     alert_store: AlertFeedStoreProtocol,
     audit_service: AuditLogService,
 ) -> CaseDossierResponse:
     alerts = _linked_case_alerts(case, alert_store=alert_store)
     evidence_packs: list[EvidencePackResponse] = []
+    explanation_review_summaries: list[CaseExplanationReviewSummaryResponse] = []
     for evidence_pack_id in _case_evidence_pack_ids(case, alerts):
         pack = evidence_repository.get(case.knowledge_base_id, evidence_pack_id)
         if pack is not None:
             evidence_packs.append(_evidence_pack_to_response(pack))
+            explanation_review_summaries.extend(
+                _case_explanation_review_summaries(
+                    knowledge_base_id=case.knowledge_base_id,
+                    evidence_pack_id=evidence_pack_id,
+                    review_service=review_service,
+                )
+            )
     audit_page = audit_service.list_events(
         AuditEventQuery(
             tenant_id=case.knowledge_base_id,
@@ -1113,6 +1123,7 @@ def _assemble_case_dossier(
         case=_case_to_summary(case),
         alerts=alerts,
         evidence_packs=evidence_packs,
+        explanation_review_summaries=explanation_review_summaries,
         entity_timeline=_case_timeline_to_response(case),
         feedback_history=_case_feedback_to_response(case),
         audit_events=[_audit_event_to_response(event) for event in audit_page.items],
@@ -1120,6 +1131,36 @@ def _assemble_case_dossier(
             default_filename=f"case-{case.id}.md"
         ),
     )
+
+
+def _case_explanation_review_summaries(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    review_service: ExplanationReviewService,
+) -> list[CaseExplanationReviewSummaryResponse]:
+    page = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            limit=200,
+            offset=0,
+        )
+    )
+    return [
+        CaseExplanationReviewSummaryResponse(
+            evidence_pack_id=review.evidence_pack_id,
+            review_id=review.id,
+            target=ExplanationReviewTargetResponse(
+                target_type=review.target.target_type,
+                target_id=review.target.target_id,
+            ),
+            state=review.state,
+            reason_count=len(review.reasons),
+            updated_at=review.updated_at,
+        )
+        for review in page.items
+    ]
 
 
 def _format_case_dossier_provenance(
@@ -1174,6 +1215,18 @@ def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
                 lines.append("Provenance:")
                 for reference in pack.provenance:
                     lines.append(_format_case_dossier_provenance(reference))
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Explanation Reviews"])
+    if dossier.explanation_review_summaries:
+        for summary in dossier.explanation_review_summaries:
+            reason_label = "reason" if summary.reason_count == 1 else "reasons"
+            lines.append(
+                f"- {summary.evidence_pack_id} "
+                f"{summary.target.target_type}:{summary.target.target_id} - "
+                f"{summary.state} ({summary.reason_count} {reason_label})"
+            )
     else:
         lines.append("- None")
 
@@ -1241,6 +1294,7 @@ def get_case_dossier_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> CaseDossierResponse:
@@ -1251,6 +1305,7 @@ def get_case_dossier_payload(
     return _assemble_case_dossier(
         case,
         evidence_repository=evidence_repository,
+        review_service=review_service,
         alert_store=alert_store,
         audit_service=audit_service,
     )
@@ -1456,6 +1511,7 @@ def get_case_dossier_export_payload(
     ),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> CaseDossierExportResponse:
@@ -1466,6 +1522,7 @@ def get_case_dossier_export_payload(
     dossier = _assemble_case_dossier(
         case,
         evidence_repository=evidence_repository,
+        review_service=review_service,
         alert_store=alert_store,
         audit_service=audit_service,
     )

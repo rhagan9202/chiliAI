@@ -2308,9 +2308,34 @@ export interface components {
             entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];
             /** Evidence Packs */
             evidence_packs?: components["schemas"]["EvidencePackResponse"][];
+            /** Explanation Review Summaries */
+            explanation_review_summaries?: components["schemas"]["CaseExplanationReviewSummaryResponse"][];
             export: components["schemas"]["CaseDossierExportMetadataResponse"];
             /** Feedback History */
             feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
+        };
+        /**
+         * CaseExplanationReviewSummaryResponse
+         * @description Sanitized case-dossier summary for one explanation review.
+         */
+        CaseExplanationReviewSummaryResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Reason Count */
+            reason_count: number;
+            /** Review Id */
+            review_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * CaseFeedbackCreateRequest

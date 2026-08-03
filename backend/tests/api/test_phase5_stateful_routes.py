@@ -25,6 +25,7 @@ from api.dependencies import (
     get_alert_feed_store,
     get_entity_series_source,
     get_evidence_pack_repository,
+    get_explanation_review_service,
     get_graph_service,
     get_knowledge_base_repository,
     get_risk_service,
@@ -34,6 +35,12 @@ from api.middleware.auth import User, get_current_user
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.models import AuditEvent, AuditEventQuery
 from auditlog.service import AuditLogService
+from analytics.explainability.reviews import (
+    ExplanationReviewCreate,
+    ExplanationReviewService,
+    ExplanationReviewTarget,
+    InMemoryExplanationReviewRepository,
+)
 from config.schema import TimeseriesMetricSpec
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
@@ -78,6 +85,7 @@ def _second_alert_record() -> AlertHistoryRecord:
 def _client_with_alert_history(
     extra: list[AlertHistoryRecord] | None = None,
     evidence_repository: InMemoryEvidencePackRepository | None = None,
+    review_service: ExplanationReviewService | None = None,
 ) -> TestClient:
     """Create a test client with a deterministic durable alert row."""
     app = create_app()
@@ -109,6 +117,8 @@ def _client_with_alert_history(
     app.dependency_overrides[get_alert_feed_store] = lambda: store
     if evidence_repository is not None:
         app.dependency_overrides[get_evidence_pack_repository] = lambda: evidence_repository
+    if review_service is not None:
+        app.dependency_overrides[get_explanation_review_service] = lambda: review_service
     return TestClient(app)
 
 
@@ -567,6 +577,69 @@ def test_case_dossier_export_renders_markdown_and_json() -> None:
     assert "Evidence is ready for supervisor review." not in json.dumps(
         exported_content["audit_events"]
     )
+
+
+def test_case_dossier_includes_explanation_review_status_without_raw_comments() -> None:
+    evidence_repository = InMemoryEvidencePackRepository()
+    evidence_repository.put(
+        "kb-1",
+        _evidence_pack(
+            "evidence-001",
+            alert_id="alert-001",
+            reasoning="Originating alert evidence.",
+            provenance_label="Origin claim source",
+        ),
+    )
+    review_service = ExplanationReviewService(InMemoryExplanationReviewRepository())
+    review_service.record_review(
+        ExplanationReviewCreate(
+            knowledge_base_id="kb-1",
+            evidence_pack_id="evidence-001",
+            target=ExplanationReviewTarget(
+                target_type="narrative",
+                target_id="narrative",
+            ),
+            state="unsupported",
+            reasons=["missing_source"],
+            actor_user_id="analyst-42",
+            actor_email="analyst42@example.test",
+            comment="SECRET beneficiary note 123-45-6789",
+        )
+    )
+    client = _client_with_alert_history(
+        evidence_repository=evidence_repository,
+        review_service=review_service,
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+
+    dossier = client.get(f"/cases/{case_id}/dossier", params=kb)
+
+    assert dossier.status_code == 200
+    payload = dossier.json()
+    assert payload["explanation_review_summaries"] == [
+        {
+            "evidence_pack_id": "evidence-001",
+            "review_id": payload["explanation_review_summaries"][0]["review_id"],
+            "target": {"target_type": "narrative", "target_id": "narrative"},
+            "state": "unsupported",
+            "reason_count": 1,
+            "updated_at": payload["explanation_review_summaries"][0]["updated_at"],
+        }
+    ]
+    assert "SECRET beneficiary note" not in json.dumps(payload)
+
+    markdown = client.get(
+        f"/cases/{case_id}/dossier/export",
+        params={**kb, "format": "markdown"},
+    )
+    assert markdown.status_code == 200
+    markdown_content = markdown.json()["content"]
+    assert "## Explanation Reviews" in markdown_content
+    assert "evidence-001 narrative:narrative - unsupported (1 reason)" in markdown_content
+    assert "SECRET beneficiary note" not in markdown_content
 
 
 def test_create_conversation_and_add_message() -> None:

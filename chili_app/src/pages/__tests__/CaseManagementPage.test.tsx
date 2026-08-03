@@ -210,6 +210,7 @@ describe('CaseManagementPage', () => {
             source_documents: ['source-doc'],
           },
         ],
+        explanation_review_summaries: [],
         entity_timeline: [
           { occurred_at: '2026-05-12T00:00:00Z', label: 'alert_raised', detail: 'Outlier billing concentration' },
         ],
@@ -430,6 +431,42 @@ describe('CaseManagementPage', () => {
     expect(within(dossier).getAllByText('analyst42@example.test')).toHaveLength(2)
     expect(within(dossier).getByRole('button', { name: 'Export dossier Markdown' })).toBeInTheDocument()
     expect(within(dossier).getByRole('button', { name: 'Export dossier JSON' })).toBeInTheDocument()
+  })
+
+  it('surfaces explanation review status summaries in the case dossier', () => {
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: caseSummary,
+        alerts: [alert],
+        evidence_packs: [],
+        explanation_review_summaries: [
+          {
+            evidence_pack_id: 'evidence-1',
+            review_id: 'review-1',
+            target: { target_type: 'narrative', target_id: 'narrative' },
+            state: 'unsupported',
+            reason_count: 1,
+            updated_at: '2026-08-03T18:00:00Z',
+          },
+        ],
+        entity_timeline: [],
+        feedback_history: [],
+        audit_events: [],
+        export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
+      },
+    })
+
+    renderPage()
+
+    const dossier = screen.getByRole('region', { name: 'Case dossier' })
+    expect(within(dossier).getByText('Explanation reviews')).toBeInTheDocument()
+    expect(within(dossier).getByText('evidence-1')).toBeInTheDocument()
+    expect(within(dossier).getByText('narrative:narrative')).toBeInTheDocument()
+    expect(within(dossier).getByText('unsupported')).toBeInTheDocument()
+    expect(within(dossier).getByText('1 reason')).toBeInTheDocument()
+    expect(within(dossier).queryByText(/SECRET beneficiary note/i)).not.toBeInTheDocument()
   })
 
   it('downloads case dossier exports through the case export endpoint', async () => {

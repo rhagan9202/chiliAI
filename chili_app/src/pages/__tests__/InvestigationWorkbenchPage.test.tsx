@@ -369,6 +369,7 @@ function cockpitCaseDossier(): CaseDossierResponse {
     entity_timeline: [],
     feedback_history: [],
     evidence_packs: [],
+    explanation_review_summaries: [],
     audit_events: [
       {
         event_id: 'audit-feedback',

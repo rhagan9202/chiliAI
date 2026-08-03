@@ -92,6 +92,10 @@ function humanizeCaseLabel(label: string): string {
   return label.replace(/[._]/g, ' ')
 }
 
+function reasonLabel(count: number): string {
+  return `${count} ${count === 1 ? 'reason' : 'reasons'}`
+}
+
 function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
   return (
     <>
@@ -115,6 +119,27 @@ function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
           ))
         ) : (
           <EmptyState description="No evidence packs are attached to this case." title="No evidence" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Explanation reviews</strong>
+        {dossier.explanation_review_summaries.length > 0 ? (
+          dossier.explanation_review_summaries.map((summary) => (
+            <div className="metric-row metric-row--stacked" key={summary.review_id}>
+              <strong>{summary.evidence_pack_id}</strong>
+              <span className="metric-row__label">
+                {summary.target.target_type}:{summary.target.target_id}
+              </span>
+              <span className="metric-row__label">{summary.state}</span>
+              <span className="metric-row__label">{reasonLabel(summary.reason_count)}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            description="No explanation review status has been attached to this dossier."
+            title="No explanation reviews"
+          />
         )}
       </div>
 

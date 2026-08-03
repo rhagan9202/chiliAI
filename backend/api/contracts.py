@@ -650,6 +650,17 @@ class ExplanationReviewListResponse(BaseModel):
     page: PageInfo
 
 
+class CaseExplanationReviewSummaryResponse(BaseModel):
+    """Sanitized case-dossier summary for one explanation review."""
+
+    evidence_pack_id: str
+    review_id: str
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reason_count: int = Field(ge=0)
+    updated_at: datetime
+
+
 class EntityLocationResponse(BaseModel):
     """One knowledge base that holds a given entity (UXA-104)."""
 
@@ -734,6 +745,9 @@ class CaseDossierResponse(BaseModel):
     alerts: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
     evidence_packs: list[EvidencePackResponse] = Field(
         default_factory=lambda: cast(list[EvidencePackResponse], [])
+    )
+    explanation_review_summaries: list[CaseExplanationReviewSummaryResponse] = Field(
+        default_factory=lambda: cast(list[CaseExplanationReviewSummaryResponse], [])
     )
     entity_timeline: list[CaseTimelineEventResponse] = Field(
         default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
@@ -1377,6 +1391,7 @@ __all__ = [
     "CaseDossierExportMetadataResponse",
     "CaseDossierExportResponse",
     "CaseDossierResponse",
+    "CaseExplanationReviewSummaryResponse",
     "CaseDetailResponse",
     "CaseFeedbackCreateRequest",
     "CaseListResponse",

@@ -192,9 +192,9 @@
 - Modify: `chili_app/src/pages/__tests__/CaseManagementPage.test.tsx`
 - Create/modify: `chili_app/e2e/explanation-review.spec.ts`
 
-- [ ] Include explanation-review status summaries in case dossier read/export projections.
-- [ ] Surface challenged explanation status in Case Management and the Workbench evidence flow.
-- [ ] Verify an analyst can challenge an explanation, reopen the case/workbench path, and see the status persist.
+- [x] Include explanation-review status summaries in case dossier read/export projections.
+- [x] Surface challenged explanation status in Case Management and the Workbench evidence flow.
+- [x] Verify an analyst can challenge an explanation, reopen the case/workbench path, and see the status persist.
 
 **Steps:**
 
@@ -206,6 +206,25 @@
    - `cd chili_app && npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx src/components/investigation/__tests__/EvidencePackViewer.test.tsx`
    - Start the dev stack with `CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud.yaml CHILI_DEV_ANONYMOUS_ROLE=analyst docker compose -f docker-compose.dev.yaml up -d --build`, then run `cd chili_app && pnpm exec playwright test e2e/explanation-review.spec.ts`, then tear down with `docker compose -f docker-compose.dev.yaml down -v`.
 5. Commit: `git commit -m "Surface SAFE-CMS-010 review status in dossiers"`.
+
+**Notes:**
+- Added sanitized `CaseExplanationReviewSummaryResponse` and `CaseDossierResponse.explanation_review_summaries`; summaries include review id, evidence pack id, target, state, reason count, and update time, but never raw comments.
+- Case dossier JSON and Markdown exports now include an `Explanation Reviews` section sourced from `ExplanationReviewService`.
+- Case Management renders explanation review summaries in the dossier; Workbench continues to surface persisted challenge status through `EvidencePackViewer`.
+- Added full-stack Playwright coverage for challenging a narrative, reopening Case Management, and returning to the Workbench evidence flow.
+- RED:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_explanation_review_status_without_raw_comments -q` failed with missing `explanation_review_summaries`.
+  - `npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx -t "explanation review status"` failed with missing Case Management section.
+  - First Playwright attempt exposed sandbox localhost `EPERM`; rerun with elevated localhost access.
+  - E2E initially exposed a bad test setup assumption: seeded `case_id` was not guaranteed to carry the seeded alert/evidence, so the spec now creates its own linked case before asserting dossier persistence.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_explanation_review_status_without_raw_comments -q`: 1 passed.
+  - `npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx -t "explanation review status"`: 1 passed, 17 skipped.
+  - `npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx src/components/investigation/__tests__/EvidencePackViewer.test.tsx`: 28 passed.
+  - `pnpm exec playwright test e2e/explanation-review.spec.ts`: 1 passed.
+  - `uv run --project backend ruff check backend/api/contracts.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: passed.
+  - `uv run --project backend pyright backend/api/contracts.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: 0 errors.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Review Gates
 
