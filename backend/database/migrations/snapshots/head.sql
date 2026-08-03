@@ -109,6 +109,24 @@ CREATE TABLE public.event_dlq (
     replayed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.explanation_reviews (
+    id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    evidence_pack_id text NOT NULL,
+    target_type text NOT NULL,
+    target_id text NOT NULL,
+    state text NOT NULL,
+    reasons jsonb DEFAULT '[]'::jsonb NOT NULL,
+    comment text,
+    actor_user_id text NOT NULL,
+    actor_email text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    update_count integer DEFAULT 0 NOT NULL,
+    CONSTRAINT ck_explanation_reviews_state CHECK ((state = ANY (ARRAY['useful'::text, 'incomplete'::text, 'misleading'::text, 'unsupported'::text, 'approved'::text, 'rejected'::text, 'regeneration_requested'::text]))),
+    CONSTRAINT ck_explanation_reviews_target_type CHECK ((target_type = ANY (ARRAY['narrative'::text, 'narrative_section'::text, 'feature_attribution'::text, 'evidence_item'::text, 'provenance_reference'::text]))),
+    CONSTRAINT ck_explanation_reviews_update_count CHECK ((update_count >= 0))
+);
 CREATE TABLE public.observations (
     knowledge_base_id text NOT NULL,
     entity_id text NOT NULL,
@@ -238,6 +256,8 @@ ALTER TABLE ONLY public.entity_metrics_current
     ADD CONSTRAINT entity_metrics_current_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name);
 ALTER TABLE ONLY public.event_dlq
     ADD CONSTRAINT event_dlq_pkey PRIMARY KEY (dlq_id);
+ALTER TABLE ONLY public.explanation_reviews
+    ADD CONSTRAINT explanation_reviews_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.policy_items
@@ -258,6 +278,8 @@ ALTER TABLE ONLY public.source_document_status
     ADD CONSTRAINT source_document_status_pkey PRIMARY KEY (knowledge_base_id, source_document_id);
 ALTER TABLE ONLY public.timeseries_anomalies
     ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.explanation_reviews
+    ADD CONSTRAINT uq_explanation_reviews_target UNIQUE (knowledge_base_id, evidence_pack_id, target_type, target_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
@@ -269,6 +291,8 @@ CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);
 CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_history USING btree (knowledge_base_id, metric_name, observed_at);
 CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
+CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);
+CREATE INDEX ix_explanation_reviews_kb_state_updated ON public.explanation_reviews USING btree (knowledge_base_id, state, updated_at DESC);
 CREATE INDEX ix_observations_batch ON public.observations USING btree (knowledge_base_id, batch_id);
 CREATE INDEX ix_policy_items_status ON public.policy_items USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_raw_records_correlation ON public.raw_records USING btree (knowledge_base_id, correlation_id);

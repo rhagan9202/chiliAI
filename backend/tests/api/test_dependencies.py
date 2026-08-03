@@ -14,6 +14,13 @@ import api.dependencies as dependencies
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.adapters.postgres import PostgresAuditLogRepository
 from auditlog.service import AuditLogService
+from analytics.explainability.adapters.reviews_postgres import (
+    PostgresExplanationReviewRepository,
+)
+from analytics.explainability.reviews import (
+    ExplanationReviewService,
+    InMemoryExplanationReviewRepository,
+)
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
 from config.loader import load_config
 from config.schema import (
@@ -1083,6 +1090,37 @@ def test_get_audit_log_service_returns_in_memory_when_provider_is_none(
 
     assert isinstance(service, AuditLogService)
     assert isinstance(service._repository, InMemoryAuditLogRepository)
+
+
+def test_get_explanation_review_service_uses_postgres_when_provider_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+    request = MagicMock()
+    request.app = FastAPI()
+
+    service = dependencies.get_explanation_review_service(request)
+
+    assert isinstance(service, ExplanationReviewService)
+    assert isinstance(service._repository, PostgresExplanationReviewRepository)
+
+
+def test_get_explanation_review_service_returns_in_memory_when_provider_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+    request = MagicMock()
+    request.app = FastAPI()
+
+    service = dependencies.get_explanation_review_service(request)
+
+    assert isinstance(service, ExplanationReviewService)
+    assert isinstance(service._repository, InMemoryExplanationReviewRepository)
 
 
 # ---------------------------------------------------------------------------

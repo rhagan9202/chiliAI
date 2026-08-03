@@ -114,10 +114,10 @@
 - Modify: `backend/api/dependencies.py`
 - Create/modify: `backend/tests/analytics/explainability/test_reviews_postgres.py`
 
-- [ ] Add `explanation_reviews` table with indexes on `(knowledge_base_id, evidence_pack_id, updated_at DESC)` and `(knowledge_base_id, state, updated_at DESC)`.
-- [ ] Persist target type/id, state, reasons, comment snippet, actor, timestamps, and update count.
-- [ ] Use Postgres when the app has a connection provider; otherwise use in-memory for tests/dev without Postgres.
-- [ ] Verify migrations and repository parity.
+- [x] Add `explanation_reviews` table with indexes on `(knowledge_base_id, evidence_pack_id, updated_at DESC)` and `(knowledge_base_id, state, updated_at DESC)`.
+- [x] Persist target type/id, state, reasons, comment snippet, actor, timestamps, and update count.
+- [x] Use Postgres when the app has a connection provider; otherwise use in-memory for tests/dev without Postgres.
+- [x] Verify migrations and repository parity.
 
 **Steps:**
 
@@ -131,6 +131,19 @@
    - `uv run --project backend ruff check backend/analytics/explainability/reviews.py backend/analytics/explainability/adapters/reviews_postgres.py backend/api/dependencies.py backend/database/migrations/versions/<migration>.py backend/tests/analytics/explainability/test_reviews_postgres.py`
    - `uv run --project backend pyright backend/analytics/explainability/reviews.py backend/analytics/explainability/adapters/reviews_postgres.py backend/api/dependencies.py backend/tests/analytics/explainability/test_reviews_postgres.py`
 5. Commit: `git commit -m "Persist SAFE-CMS-010 explanation reviews"`.
+
+**Notes:**
+- Added `analytics.explainability.adapters.reviews_postgres.PostgresExplanationReviewRepository` backed by `explanation_reviews`.
+- Added migration `0017_explanation_reviews` with KB/evidence/target uniqueness, state/target check constraints, durable review fields, and the required KB-pack/state updated-at indexes.
+- `get_explanation_review_service` now chooses Postgres when `get_connection_provider()` is available and falls back to in-memory otherwise; dependency regression tests cover both branches.
+- RED: `uv run --project backend pytest backend/tests/analytics/explainability/test_reviews_postgres.py -q` failed during collection with `ModuleNotFoundError: No module named 'analytics.explainability.adapters.reviews_postgres'`.
+- GREEN:
+  - `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili uv run --project backend pytest backend/tests/analytics/explainability/test_reviews.py backend/tests/analytics/explainability/test_reviews_postgres.py backend/tests/api/test_evidence_reviews.py -q`: 13 passed.
+  - `scripts/ci_migration_check.sh --update-snapshot`: passed and regenerated `backend/database/migrations/snapshots/head.sql`.
+  - `scripts/ci_migration_check.sh`: passed.
+  - `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili uv run --project backend pytest backend/tests/analytics/explainability/test_reviews.py backend/tests/analytics/explainability/test_reviews_postgres.py backend/tests/api/test_evidence_reviews.py backend/tests/api/test_dependencies.py -q -k "reviews or explanation_review_service"`: 15 passed, 60 deselected.
+  - `uv run --project backend ruff check backend/analytics/explainability/reviews.py backend/analytics/explainability/adapters/reviews_postgres.py backend/api/dependencies.py backend/database/migrations/versions/0017_explanation_reviews.py backend/tests/analytics/explainability/test_reviews_postgres.py backend/tests/api/test_dependencies.py`: passed.
+  - `uv run --project backend pyright backend/analytics/explainability/reviews.py backend/analytics/explainability/adapters/reviews_postgres.py backend/api/dependencies.py backend/tests/analytics/explainability/test_reviews_postgres.py backend/tests/api/test_dependencies.py`: 0 errors.
 
 ## Task 4: Evidence Viewer Review Controls
 

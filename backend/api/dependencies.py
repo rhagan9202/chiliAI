@@ -86,6 +86,9 @@ from api._conversation_payloads import (
     build_user_message,
     project_conversation,
 )
+from analytics.explainability.adapters.reviews_postgres import (
+    PostgresExplanationReviewRepository,
+)
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
 from cases.adapters.protocols import CaseRepository
@@ -513,16 +516,21 @@ def get_evidence_provenance_repository(
 
 
 def get_explanation_review_service(request: Request) -> ExplanationReviewService:
-    """Return the per-app explanation review service.
+    """Return the per-app explanation review service."""
 
-    Task 2 uses the in-memory repository. Task 3 replaces this build function
-    with the Postgres-backed adapter when a connection provider is configured.
-    """
+    def build() -> ExplanationReviewService:
+        provider = get_connection_provider()
+        repository = (
+            InMemoryExplanationReviewRepository()
+            if provider is None
+            else PostgresExplanationReviewRepository(provider)
+        )
+        return ExplanationReviewService(repository)
 
     return _memoize_config_derived(
         request.app,
         "explanation_review_service",
-        lambda: ExplanationReviewService(InMemoryExplanationReviewRepository()),
+        build,
         guard=lambda value: isinstance(value, ExplanationReviewService),
     )
 
