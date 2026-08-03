@@ -216,6 +216,33 @@ describe('citationTargets', () => {
     })
   })
 
+  it('prefers RAG citation entity navigation over document metadata', () => {
+    expect(
+      resolveRagCitationTarget({
+        citation: {
+          record_id: 'record-1',
+          content_id: 'chunk-1',
+          document_id: 'doc-1',
+          chunk_index: 3,
+          entity_id: 'provider-204',
+        },
+        context: {
+          knowledgeBaseId: 'kb-1',
+          source: 'case',
+          alertId: 'alert-1',
+          caseId: 'case-1',
+          evidencePackId: 'evidence-1',
+        },
+      }),
+    ).toEqual({
+      kind: 'link',
+      label: 'provider-204',
+      sourceType: 'entity',
+      to: '/investigation/provider-204?kb=kb-1&alert=alert-1&case=case-1&evidence=evidence-1',
+      preview: 'Investigation cockpit',
+    })
+  })
+
   it('keeps document RAG citations inert until document preview selection is routable', () => {
     expect(
       resolveRagCitationTarget({
@@ -225,7 +252,7 @@ describe('citationTargets', () => {
           document_id: 'doc-1',
           chunk_index: 3,
         },
-        context: { knowledgeBaseId: 'kb-1', source: 'entity' },
+        context: { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       }),
     ).toEqual({
       kind: 'unsupported',

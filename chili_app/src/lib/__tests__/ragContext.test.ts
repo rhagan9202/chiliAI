@@ -145,31 +145,31 @@ describe('ragContext', () => {
     })
   })
 
-  it('falls back to source alert navigation', () => {
+  it('keeps document-only alert citations inert instead of falling back to alert context', () => {
     expect(
       citationNavigationTarget(
-        { entity_id: null, content_id: 'chunk-1' },
+        { entity_id: null, content_id: 'chunk-1', document_id: 'claims.csv', chunk_index: 1 },
         { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       ),
-    ).toEqual({ pathname: '/alerts', search: 'alert=alert-1' })
+    ).toBeNull()
   })
 
-  it('falls back to source case navigation with knowledge base context', () => {
+  it('keeps document-only case citations inert instead of falling back to case context', () => {
     expect(
       citationNavigationTarget(
-        { content_id: 'chunk-1' },
+        { content_id: 'chunk-1', document_id: 'case-notes.md', chunk_index: 2 },
         { knowledgeBaseId: 'kb-1', source: 'case', caseId: 'case-1' },
       ),
-    ).toEqual({ pathname: '/cases', search: 'kb=kb-1&case=case-1' })
+    ).toBeNull()
   })
 
-  it('falls back to source housing navigation', () => {
+  it('keeps document-only housing citations inert instead of falling back to housing context', () => {
     expect(
       citationNavigationTarget(
-        { content_id: 'chunk-1' },
+        { content_id: 'chunk-1', document_id: 'housing.pdf', chunk_index: 3 },
         { knowledgeBaseId: 'kb-1', source: 'housing', installationId: 'edwards' },
       ),
-    ).toEqual({ pathname: '/housing', search: 'installation=edwards' })
+    ).toBeNull()
   })
 
   it('returns null when no citation or context navigation target exists', () => {

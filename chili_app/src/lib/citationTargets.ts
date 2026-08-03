@@ -188,13 +188,6 @@ export function resolveRagCitationTarget({
 }: RagCitationTargetInput): CitationTarget {
   const knowledgeBaseId = context.knowledgeBaseId
 
-  if (citation.document_id) {
-    if (!knowledgeBaseId) {
-      return unsupported(citation.document_id, 'document', 'Citation target requires an active knowledge base.')
-    }
-    return unsupported(citation.document_id, 'document', 'Document preview selection is not routable yet.')
-  }
-
   if (citation.entity_id) {
     if (!knowledgeBaseId) {
       return unsupported(citation.entity_id, 'entity', 'Citation target requires an active knowledge base.')
@@ -211,6 +204,13 @@ export function resolveRagCitationTarget({
       ])}`,
       preview: 'Investigation cockpit',
     }
+  }
+
+  if (citation.document_id) {
+    if (!knowledgeBaseId) {
+      return unsupported(citation.document_id, 'document', 'Citation target requires an active knowledge base.')
+    }
+    return unsupported(citation.document_id, 'document', 'Document preview selection is not routable yet.')
   }
 
   return unsupported(

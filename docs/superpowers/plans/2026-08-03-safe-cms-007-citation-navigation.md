@@ -201,11 +201,11 @@ Task 2 notes:
 - Test: `chili_app/src/pages/__tests__/RagChatPage.test.tsx`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-007-citation-navigation.md`
 
-- [ ] **Step 1: Write failing RAG navigation tests**
+- [x] **Step 1: Write failing RAG navigation tests**
 
-Add tests proving document/chunk RAG citations resolve to the document preview surface with KB scope, entity citations preserve alert/case/evidence context, and unsupported citations remain inert.
+Add tests proving entity-backed RAG citations preserve alert/case/evidence context, document/chunk RAG citations remain inert until the document preview surface consumes exact selection params, and unsupported citations render a reason instead of fallback links.
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -214,13 +214,13 @@ cd chili_app
 pnpm exec vitest run src/lib/__tests__/ragContext.test.ts src/pages/__tests__/RagChatPage.test.tsx
 ```
 
-Expected: fail on missing document citation target behavior.
+Expected: fail on stale fallback links, missing unsupported reason copy, or resolver ordering that treats document metadata as more specific than entity metadata.
 
-- [ ] **Step 3: Reuse the shared resolver**
+- [x] **Step 3: Reuse the shared resolver**
 
 Update `citationNavigationTarget` or replace it with `resolveRagCitationTarget` so RAG links share the same source-type support matrix and KB-scope rules as evidence provenance.
 
-- [ ] **Step 4: Run tests to verify GREEN**
+- [x] **Step 4: Run tests to verify GREEN**
 
 Run:
 
@@ -231,9 +231,27 @@ pnpm exec vitest run src/lib/__tests__/citationTargets.test.ts src/lib/__tests__
 
 Expected: citation resolver and RAG tests pass.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 Run focused lint/build and commit only Task 3 files.
+
+Task 3 notes:
+
+- Updated `resolveRagCitationTarget` to prefer entity metadata before document metadata,
+  so entity-backed citations still open the cockpit while document selection remains inert.
+- Changed `citationNavigationTarget` to delegate to the shared resolver instead of
+  maintaining alert/case/housing fallbacks that could masquerade as exact citation targets.
+- RAG citation cards now render resolver unsupported reasons instead of wrapping
+  document-only citations in fallback alert/case links.
+- Red verification failed on document-first resolver ordering, stale fallback links, and
+  missing unsupported reason copy.
+- Green verification passed:
+  - `pnpm exec vitest run src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/pages/__tests__/RagChatPage.test.tsx`: 54 passed.
+- Final Task 3 verification passed:
+  - `pnpm exec eslint src/lib/citationTargets.ts src/lib/ragContext.ts src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/pages/RagChatPage.tsx src/pages/__tests__/RagChatPage.test.tsx`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
 
 ## Task 4: Browser Click-Through Verification
 

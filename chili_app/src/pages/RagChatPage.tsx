@@ -18,11 +18,8 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
-import {
-  buildRagMessageFilters,
-  citationNavigationTarget,
-  parseRagLaunchContext,
-} from '../lib/ragContext'
+import { resolveRagCitationTarget } from '../lib/citationTargets'
+import { buildRagMessageFilters, parseRagLaunchContext } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
 import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { relativeAge } from '../utils/relativeTime'
@@ -302,7 +299,7 @@ export function RagChatPage() {
                 {(message.citations ?? []).length > 0 ? (
                   <ul className="chat-citations" aria-label="Citations">
                     {(message.citations ?? []).map((citation, citationIndex) => {
-                      const target = citationNavigationTarget(citation, launchContext)
+                      const target = resolveRagCitationTarget({ citation, context: launchContext })
                       const citationContent = (
                         <>
                           <div className="chat-citation__header">
@@ -316,15 +313,18 @@ export function RagChatPage() {
                             {citation.content_id}
                             {citation.chunk_index != null ? ` · chunk ${citation.chunk_index}` : ''}
                           </span>
+                          {target.kind === 'unsupported' ? (
+                            <span className="metric-row__label">{target.reason}</span>
+                          ) : null}
                         </>
                       )
 
                       return (
                         <li className="chat-citation" key={citationKey(message.id, citation, citationIndex)}>
-                          {target ? (
+                          {target.kind === 'link' ? (
                             <Link
                               aria-label={citationAccessibleName(citation)}
-                              to={`${target.pathname}${target.search ? `?${target.search}` : ''}`}
+                              to={target.to}
                             >
                               {citationContent}
                             </Link>
