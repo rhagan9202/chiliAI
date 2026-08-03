@@ -851,6 +851,7 @@ export function InvestigationWorkbenchPage() {
                         ) : null
                       }
                       entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                      knowledgeBaseId={activeKnowledgeBaseId}
                       labelFor={labelForNode}
                       onSelectNode={navigateToEntity}
                       pack={evidenceQuery.data}

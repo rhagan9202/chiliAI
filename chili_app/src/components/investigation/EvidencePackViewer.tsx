@@ -1,6 +1,8 @@
 import { useMemo, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import type { EvidencePackResponse } from '../../api/contracts'
+import { resolveEvidenceCitationTarget } from '../../lib/citationTargets'
 import type { Entity, SubgraphResult } from '../../types/api'
 import { absoluteTime, relativeAge } from '../../utils/relativeTime'
 import { AttributionBars } from '../charts/AttributionBars'
@@ -11,6 +13,7 @@ import { GraphCanvas } from './GraphCanvas'
 
 export interface EvidencePackViewerProps {
   pack: EvidencePackResponse
+  knowledgeBaseId?: string | null
   /** Neighborhood subgraph to draw the pack's nodes from (re-uses GraphCanvas). */
   subgraph: SubgraphResult
   entityTypes: string[]
@@ -60,7 +63,13 @@ function provenanceLabel(reference: EvidenceProvenanceReference): string {
   return reference.label || reference.reference_id
 }
 
-function ProvenancePanel({ references }: { references: EvidenceProvenanceReference[] }) {
+function ProvenancePanel({
+  knowledgeBaseId,
+  references,
+}: {
+  knowledgeBaseId: string | null
+  references: EvidenceProvenanceReference[]
+}) {
   if (references.length === 0) {
     return null
   }
@@ -86,6 +95,7 @@ function ProvenancePanel({ references }: { references: EvidenceProvenanceReferen
       <div className="evidence-pack__provenance-list">
         {references.map((reference) => {
           const label = provenanceLabel(reference)
+          const target = resolveEvidenceCitationTarget({ knowledgeBaseId, reference })
           const metadataEntries = Object.entries(reference.metadata ?? {})
           const previewMetadata = metadataEntries.slice(0, PROVENANCE_METADATA_PREVIEW_LIMIT)
           const hiddenMetadataCount = metadataEntries.length - previewMetadata.length
@@ -108,6 +118,20 @@ function ProvenancePanel({ references }: { references: EvidenceProvenanceReferen
                 )}
               </summary>
               <div className="config-count__items evidence-pack__provenance-detail">
+                {target.kind === 'link' ? (
+                  <Link
+                    aria-label={`Open citation source ${target.label}`}
+                    className="evidence-pack__citation-link"
+                    title={target.preview}
+                    to={target.to}
+                  >
+                    Open source
+                  </Link>
+                ) : (
+                  <span className="metric-row__label">
+                    <strong>Unsupported</strong> {target.reason}
+                  </span>
+                )}
                 {reference.route_target ? (
                   <span className="evidence-pack__route-target">
                     <strong>route_target</strong> {reference.route_target}
@@ -155,6 +179,7 @@ function ProvenancePanel({ references }: { references: EvidenceProvenanceReferen
  */
 export function EvidencePackViewer({
   pack,
+  knowledgeBaseId = null,
   subgraph,
   entityTypes,
   selectedEntityId = null,
@@ -253,7 +278,7 @@ export function EvidencePackViewer({
 
         {attribution.length > 0 ? <AttributionBars attribution={attribution} /> : null}
 
-        <ProvenancePanel references={provenance} />
+        <ProvenancePanel knowledgeBaseId={knowledgeBaseId} references={provenance} />
 
         {packSubgraph.nodes.length > 0 ? (
           <div className="investigation-graph-canvas">

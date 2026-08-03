@@ -139,11 +139,11 @@ Task 1 notes:
 - Modify: `chili_app/src/pages/pages.css`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-007-citation-navigation.md`
 
-- [ ] **Step 1: Write failing evidence viewer tests**
+- [x] **Step 1: Write failing evidence viewer tests**
 
 Extend `EvidencePackViewer.test.tsx` so resolver-supported entity/graph provenance renders as links with source-type text, while document, policy-item, workflow, model/prompt, correlation, and legacy references render as non-clickable rows with reason text until their destination pages consume exact selection params.
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -154,11 +154,11 @@ pnpm exec vitest run src/components/investigation/__tests__/EvidencePackViewer.t
 
 Expected: fail because provenance rows do not link through the resolver.
 
-- [ ] **Step 3: Wire `EvidencePackViewer` to the resolver**
+- [x] **Step 3: Wire `EvidencePackViewer` to the resolver**
 
 Pass `knowledgeBaseId` into the viewer from callers that have it. Render supported provenance as compact React Router links with source labels and preview text. Render unsupported references as disabled text with the resolver reason.
 
-- [ ] **Step 4: Run tests to verify GREEN**
+- [x] **Step 4: Run tests to verify GREEN**
 
 Run:
 
@@ -169,9 +169,28 @@ pnpm exec vitest run src/components/investigation/__tests__/EvidencePackViewer.t
 
 Expected: evidence viewer and calling page tests pass.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 Run focused lint/build and commit only Task 2 files.
+
+Task 2 notes:
+
+- Added `knowledgeBaseId` to `EvidencePackViewer` and threaded the selected KB from
+  Alert Feed and Investigation Workbench.
+- Evidence provenance now renders resolver-supported entity/investigation references
+  as React Router links and all unsupported references with explicit reason text.
+- Kept document/policy/workflow route targets non-clickable until destination pages
+  consume exact selection params, matching the Task 1 review finding.
+- Red verification failed on the missing `Open citation source Provider risk profile`
+  link.
+- Green verification passed:
+  - `pnpm exec vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx`: 6 passed.
+  - `pnpm exec vitest run src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 81 passed.
+- Final Task 2 verification passed:
+  - `pnpm exec eslint src/lib/citationTargets.ts src/lib/__tests__/citationTargets.test.ts src/components/investigation/EvidencePackViewer.tsx src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/InvestigationWorkbenchPage.tsx src/pages/AlertFeedPage.tsx`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
 
 ## Task 3: RAG Citation Resolver Unification
 

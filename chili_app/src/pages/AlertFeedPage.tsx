@@ -960,6 +960,7 @@ export function AlertFeedPage() {
               ) : null
             }
             pack={evidenceQuery.data}
+            knowledgeBaseId={selectedKnowledgeBaseId}
             subgraph={
               neighborhoodQuery.data
                 ? toSubgraphResult(neighborhoodQuery.data.entities, neighborhoodQuery.data.relationships)

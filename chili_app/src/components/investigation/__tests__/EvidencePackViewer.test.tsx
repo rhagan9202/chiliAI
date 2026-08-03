@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { EvidencePackResponse } from '../../../api/contracts'
@@ -53,11 +54,14 @@ const basePack: EvidencePackResponse = {
 
 function renderViewer(pack: EvidencePackResponse, options?: { entityTypes?: string[] }) {
   return render(
-    <EvidencePackViewer
-      pack={pack}
-      subgraph={subgraph}
-      entityTypes={options?.entityTypes ?? ['provider', 'claim', 'beneficiary']}
-    />,
+    <MemoryRouter>
+      <EvidencePackViewer
+        knowledgeBaseId="kb-1"
+        pack={pack}
+        subgraph={subgraph}
+        entityTypes={options?.entityTypes ?? ['provider', 'claim', 'beneficiary']}
+      />
+    </MemoryRouter>,
   )
 }
 
@@ -150,17 +154,31 @@ describe('EvidencePackViewer', () => {
           route_target: '/knowledgebases/kb-1/documents/doc-1/preview',
           metadata: { rationale_snippet: 'High-volume support', rationale_length: 19 },
         },
+        {
+          reference_type: 'risk_factor',
+          reference_id: 'provider-1',
+          label: 'Provider risk profile',
+          route_target: '/investigation/entities/provider-1?knowledge_base_id=kb-1',
+          metadata: {},
+        },
       ],
     })
 
     expect(screen.getByText('Provenance')).toBeInTheDocument()
     expect(screen.getByText('risk score')).toBeInTheDocument()
     expect(screen.getByText('document')).toBeInTheDocument()
-    expect(screen.getByText('2 references')).toBeInTheDocument()
+    expect(screen.getByText('risk factor')).toBeInTheDocument()
+    expect(screen.getByText('3 references')).toBeInTheDocument()
     expect(screen.getByText('Claim volume spike')).toBeInTheDocument()
+    expect(screen.getByText('Provider risk profile')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open citation source provider risk profile/i })).toHaveAttribute(
+      'href',
+      '/investigation/provider-1?kb=kb-1',
+    )
     expect(screen.getByText('Confidence 82%')).toBeInTheDocument()
     expect(container.querySelector('a[href="/knowledgebases/kb-1/documents/doc-1/preview"]')).toBeNull()
     expect(screen.getByText('/knowledgebases/kb-1/documents/doc-1/preview')).toBeInTheDocument()
+    expect(screen.getByText('Document preview selection is not routable yet.')).toBeInTheDocument()
     expect(screen.getByText('rationale_snippet')).toBeInTheDocument()
     expect(screen.getByText('High-volume support')).toBeInTheDocument()
     expect(screen.getByText('evidence_refs')).toBeInTheDocument()
