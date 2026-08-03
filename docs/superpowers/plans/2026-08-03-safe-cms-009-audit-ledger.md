@@ -104,6 +104,15 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - [ ] Preserve primary response behavior when audit recording fails; expose failure counters/buffer status.
 
 **Notes:**
+- Partial auth-outcome slice complete: login start, callback success/failure, and logout now emit sanitized `auth.*` audit events under tenant `platform`; events capture actor when known and omit OIDC code/state, tokens, and raw session ids.
+- Auth audit failures remain non-blocking through `AuditLogService.record()` failure capture.
+- RED: `uv run --project backend pytest backend/tests/api/test_auth_router.py::test_login_records_audit_event backend/tests/api/test_auth_router.py::test_auth_login_still_redirects_when_audit_sink_fails backend/tests/api/test_auth_router.py::test_callback_exchanges_code_and_creates_session_cookie backend/tests/api/test_auth_router.py::test_callback_rejects_unknown_state backend/tests/api/test_auth_router.py::test_logout_clears_cookie_and_session` failed with empty audit event pages and zero failed-write count.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_auth_router.py::test_login_records_audit_event backend/tests/api/test_auth_router.py::test_auth_login_still_redirects_when_audit_sink_fails backend/tests/api/test_auth_router.py::test_callback_exchanges_code_and_creates_session_cookie backend/tests/api/test_auth_router.py::test_callback_rejects_unknown_state backend/tests/api/test_auth_router.py::test_logout_clears_cookie_and_session`: 5 passed.
+  - `uv run --project backend pytest backend/tests/api/test_auth_router.py backend/tests/api/test_audit_router.py backend/tests/api/test_dependencies.py::test_get_audit_log_service_returns_in_memory_when_provider_is_none backend/tests/api/test_policy_registry.py`: 32 passed.
+  - `uv run --project backend ruff check backend/api/dependencies.py backend/api/routers/auth.py backend/tests/api/test_auth_router.py`: passed.
+  - `uv run --project backend pyright backend/api/dependencies.py backend/api/routers/auth.py backend/tests/api/test_auth_router.py`: 0 errors.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed with no tracked OpenAPI diff.
 - Partial KB-mutation slice complete: knowledge base create and delete routes now emit summarized `knowledge_base.*` audit events with actor, tenant/KB scope, before/after summaries, and cleanup status metadata. A 207 partial cleanup records a failure outcome with `failure_reason="cleanup_pending"` while omitting raw cascade error text from metadata.
 - Evidence router currently exposes read-only GET endpoints only, so no evidence mutation hooks were added in this slice.
 - RED: `uv run --project backend pytest backend/tests/api/test_knowledgebases_router.py::test_create_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_delete_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_knowledge_base_mutation_still_succeeds_when_audit_sink_fails` failed with empty audit event pages and zero failed-write count.

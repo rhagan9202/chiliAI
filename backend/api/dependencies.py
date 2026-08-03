@@ -1141,6 +1141,46 @@ def record_knowledge_base_audit_event(
     )
 
 
+def record_auth_audit_event(
+    audit_service: AuditLogService,
+    *,
+    action: str,
+    actor_user_id: str = "anonymous",
+    actor_email: str | None = None,
+    actor_roles: list[str] | None = None,
+    resource_type: str,
+    resource_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+    outcome: AuditOutcome = "success",
+    failure_reason: str | None = None,
+    client_ip: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Append a sanitized auth audit event without tokens or session secrets."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id="platform",
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles or []),
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            before=before,
+            after=after,
+            correlation_id=f"auth:{action}:{resource_type}:{resource_id}",
+            client_ip=client_ip,
+            user_agent=user_agent,
+            outcome=outcome,
+            failure_reason=failure_reason,
+            metadata={"source": "api.auth", **dict(metadata or {})},
+        )
+    )
+
+
 def get_case_dossier_export_payload(
     case_id: str = Path(..., description="Case identifier."),
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
