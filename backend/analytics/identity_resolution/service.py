@@ -11,11 +11,12 @@ from analytics.identity_resolution.models import (
     IdentityCandidateScore,
     IdentityMatchConfidence,
     IdentityMatchReason,
+    IdentityRelationshipProjectionRequest,
     IdentityResolutionRequest,
     IdentityResolutionResult,
     IdentityReviewState,
 )
-from shared.types import Entity
+from shared.types import Entity, Relationship
 
 type Normalizer = Callable[[Any], str]
 
@@ -62,6 +63,48 @@ class IdentityResolutionService:
             excluded_candidate_ids=sorted(excluded_candidate_ids),
         )
 
+    def project_identity_relationships(
+        self, request: IdentityRelationshipProjectionRequest
+    ) -> list[Relationship]:
+        """Project scored candidates into graph-storable identity links."""
+
+        relationships: list[Relationship] = []
+        for candidate in request.candidates:
+            relationships.append(
+                Relationship(
+                    id=_identity_relationship_id(
+                        request.knowledge_base_id,
+                        candidate.entity_id,
+                        request.source_entity.id,
+                    ),
+                    type=request.relationship_type,
+                    source_id=candidate.entity_id,
+                    target_id=request.source_entity.id,
+                    properties={
+                        "confidence": candidate.confidence,
+                        "score": candidate.score,
+                        "review_state": candidate.review_state,
+                        "decision_source": request.decision_source,
+                    },
+                    metadata={
+                        "knowledge_base_id": request.knowledge_base_id,
+                        "source_entity_type": request.source_entity.type,
+                        "candidate_entity_type": candidate.entity_type,
+                        "source_refs": list(request.source_refs),
+                        "match_reasons": [
+                            {
+                                "field": reason.field,
+                                "reason": reason.reason,
+                                "score_contribution": reason.score_contribution,
+                            }
+                            for reason in candidate.match_reasons
+                        ],
+                    },
+                    weight=candidate.score,
+                )
+            )
+        return relationships
+
     def _score_candidate(
         self,
         source_entity: Entity,
@@ -106,7 +149,7 @@ class IdentityResolutionService:
                 reasons.append(reason)
                 score += reason.score_contribution
 
-        bounded_score = min(score, 1.0)
+        bounded_score = _bounded_score(score)
         review_state = _review_state(bounded_score)
         return IdentityCandidateScore(
             knowledge_base_id=candidate.knowledge_base_id,
@@ -163,6 +206,25 @@ def _normalized_property_match_reason(
 
 def _has_value(value: object) -> bool:
     return value is not None and str(value).strip() != ""
+
+
+def _bounded_score(score: float) -> float:
+    return round(min(score, 1.0), 6)
+
+
+def _identity_relationship_id(
+    knowledge_base_id: str, canonical_entity_id: str, source_entity_id: str
+) -> str:
+    return (
+        "identity_link:"
+        f"{_relationship_id_part(knowledge_base_id)}:"
+        f"{_relationship_id_part(canonical_entity_id)}:"
+        f"{_relationship_id_part(source_entity_id)}"
+    )
+
+
+def _relationship_id_part(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "-", value).strip("-")
 
 
 def _normalize_identifier(value: Any) -> str:

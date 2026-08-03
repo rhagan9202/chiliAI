@@ -74,11 +74,32 @@ class IdentityResolutionResult(BaseModel):
     excluded_candidate_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
+class IdentityRelationshipProjectionRequest(BaseModel):
+    """Request to project identity candidates into graph relationships."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    source_entity: Entity
+    candidates: list[IdentityCandidateScore] = Field(
+        default_factory=lambda: cast(list[IdentityCandidateScore], [])
+    )
+    relationship_type: str = Field(min_length=1)
+    decision_source: str = Field(min_length=1)
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+    @field_validator("relationship_type", "decision_source")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        """Normalize required projection strings at the service boundary."""
+
+        return value.strip()
+
+
 __all__ = [
     "IdentityCandidateEntity",
     "IdentityCandidateScore",
     "IdentityMatchConfidence",
     "IdentityMatchReason",
+    "IdentityRelationshipProjectionRequest",
     "IdentityResolutionRequest",
     "IdentityResolutionResult",
     "IdentityReviewState",

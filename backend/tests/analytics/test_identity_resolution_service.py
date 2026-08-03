@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from analytics.identity_resolution import (
     IdentityCandidateEntity,
+    IdentityRelationshipProjectionRequest,
     IdentityResolutionRequest,
     IdentityResolutionService,
 )
@@ -96,3 +97,71 @@ def test_identity_resolution_excludes_candidates_outside_request_kb() -> None:
         "canonical:same-kb"
     ]
     assert result.excluded_candidate_ids == ["canonical:other-kb"]
+
+
+def test_identity_resolution_projects_graph_relationships_with_confidence_metadata() -> None:
+    service = IdentityResolutionService()
+    source_entity = _entity(
+        "source:1",
+        source_provider_id="SRC-001",
+        npi="123-45-6789",
+    )
+    result = service.score_candidates(
+        IdentityResolutionRequest(
+            knowledge_base_id="kb1",
+            source_entity=source_entity,
+            candidates=[
+                IdentityCandidateEntity(
+                    knowledge_base_id="kb1",
+                    entity=_entity(
+                        "canonical:strong",
+                        source_provider_id="SRC-001",
+                        npi="123456789",
+                    ),
+                )
+            ],
+            natural_key_fields=["source_provider_id"],
+            identifier_fields=["npi"],
+        )
+    )
+
+    relationships = service.project_identity_relationships(
+        IdentityRelationshipProjectionRequest(
+            knowledge_base_id="kb1",
+            source_entity=source_entity,
+            candidates=result.candidates,
+            relationship_type="resolved_identity",
+            decision_source="identity_resolution.candidate_scoring",
+            source_refs=["source-system:a"],
+        )
+    )
+
+    assert len(relationships) == 1
+    relationship = relationships[0]
+    assert relationship.id == "identity_link:kb1:canonical-strong:source-1"
+    assert relationship.type == "resolved_identity"
+    assert relationship.source_id == "canonical:strong"
+    assert relationship.target_id == "source:1"
+    assert relationship.weight == result.candidates[0].score
+    assert relationship.properties == {
+        "confidence": "high",
+        "score": 0.85,
+        "review_state": "auto_linkable",
+        "decision_source": "identity_resolution.candidate_scoring",
+    }
+    assert relationship.metadata["knowledge_base_id"] == "kb1"
+    assert relationship.metadata["source_entity_type"] == "provider"
+    assert relationship.metadata["candidate_entity_type"] == "provider"
+    assert relationship.metadata["source_refs"] == ["source-system:a"]
+    assert relationship.metadata["match_reasons"] == [
+        {
+            "field": "source_provider_id",
+            "reason": "natural_key_match",
+            "score_contribution": 0.55,
+        },
+        {
+            "field": "npi",
+            "reason": "identifier_match",
+            "score_contribution": 0.3,
+        },
+    ]

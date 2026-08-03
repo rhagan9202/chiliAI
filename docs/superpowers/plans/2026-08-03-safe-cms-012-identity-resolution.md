@@ -42,9 +42,21 @@ Resolve fragmented source identities into canonical graph entities with explaina
 - Extend identity service with relationship conversion helpers.
 - Add graph-facing tests.
 
-- [ ] Emit relationship payloads that can be stored as normal `Relationship` objects.
-- [ ] Preserve confidence, decision source, and source identity metadata on each relationship.
-- [ ] Avoid hardcoded CMS relationship/entity names.
+- [x] Emit relationship payloads that can be stored as normal `Relationship` objects.
+- [x] Preserve confidence, decision source, and source identity metadata on each relationship.
+- [x] Avoid hardcoded CMS relationship/entity names.
+
+**Notes:**
+- Added `IdentityRelationshipProjectionRequest` and `IdentityResolutionService.project_identity_relationships(...)`.
+- Projection emits normal `Relationship` models from canonical candidate entity to source entity.
+- Callers provide the domain-pack relationship type and decision source; no CMS relationship/entity names are hardcoded.
+- Relationship properties carry confidence, score, review state, and decision source; metadata carries KB id, entity types, source refs, and field-level match reasons.
+- RED:
+  - `uv run --project backend pytest backend/tests/analytics/test_identity_resolution_service.py -q` failed with `ImportError: cannot import name 'IdentityRelationshipProjectionRequest'`.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/analytics/test_identity_resolution_service.py -q`: 3 passed.
+  - `uv run --project backend ruff check backend/analytics/identity_resolution backend/tests/analytics/test_identity_resolution_service.py`: passed.
+  - `uv run --project backend pyright backend/analytics/identity_resolution backend/tests/analytics/test_identity_resolution_service.py`: 0 errors.
 
 ## Task 3: Persistence and Review Decisions
 
