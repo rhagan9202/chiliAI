@@ -145,8 +145,24 @@ Task 3 notes:
 - Modify evidence components/pages under `chili_app/src`.
 - Test focused component/API hook tests and build.
 
-- [ ] Add provenance badges and expandable metadata to existing evidence panels.
-- [ ] Keep navigation targets inert or best-effort until SAFE-CMS-007 route resolution.
+- [x] Add provenance badges and expandable metadata to existing evidence panels.
+- [x] Keep navigation targets inert or best-effort until SAFE-CMS-007 route resolution.
+
+Task 4 notes:
+
+- Added provenance rendering to `EvidencePackViewer`: compact reference-type badges, per-ref
+  expandable detail rows, confidence/source/version metadata, and bounded metadata previews.
+- Kept `route_target` inert as displayed provenance data instead of live SPA links; SAFE-CMS-007
+  can translate route targets into navigable app destinations later.
+- Review fixes: details are collapsed by default, arbitrary metadata rows and values are capped
+  with a hidden-count indicator, route targets are not anchors, and long IDs/targets wrap in the panel.
+- Verification passed:
+  - Red viewer test first failed on missing provenance rendering.
+  - `pnpm test:run src/components/investigation/__tests__/EvidencePackViewer.test.tsx`: 6 passed.
+  - `pnpm test:run src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/components/investigation/__tests__/EvidencePackActions.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 71 passed.
+  - `pnpm exec eslint` on touched frontend component/test files: passed.
+  - `npm run codegen:api`: passed with no generated diff.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Review Gates
 

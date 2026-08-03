@@ -25,10 +25,126 @@ export interface EvidencePackViewerProps {
   actions?: ReactNode
 }
 
+type EvidenceProvenanceReference = NonNullable<EvidencePackResponse['provenance']>[number]
+
+const PROVENANCE_METADATA_PREVIEW_LIMIT = 4
+const PROVENANCE_METADATA_VALUE_MAX_CHARS = 120
+
 /** `peer_deviation` -> `Peer deviation`: score keys are data, not copy. */
 function humanizeScoreName(name: string): string {
   const words = name.replace(/[_-]+/g, ' ').trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+function humanizeReferenceType(name: string): string {
+  return name.replace(/[_-]+/g, ' ').trim()
+}
+
+function truncateMetadataValue(value: string): string {
+  if (value.length <= PROVENANCE_METADATA_VALUE_MAX_CHARS) return value
+  return `${value.slice(0, PROVENANCE_METADATA_VALUE_MAX_CHARS - 3)}...`
+}
+
+function stringifyMetadataValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null'
+  if (Array.isArray(value)) return value.map(stringifyMetadataValue).join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function formatMetadataValue(value: unknown): string {
+  return truncateMetadataValue(stringifyMetadataValue(value))
+}
+
+function provenanceLabel(reference: EvidenceProvenanceReference): string {
+  return reference.label || reference.reference_id
+}
+
+function ProvenancePanel({ references }: { references: EvidenceProvenanceReference[] }) {
+  if (references.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="metric-stack evidence-pack__provenance" data-testid="evidence-provenance">
+      <div className="metric-row">
+        <strong>Provenance</strong>
+        <span className="alert-row-card__age">
+          {references.length} {references.length === 1 ? 'reference' : 'references'}
+        </span>
+      </div>
+      <div className="alert-row-card__meta">
+        {references.slice(0, 6).map((reference) => (
+          <Chip
+            key={`${reference.reference_type}:${reference.reference_id}`}
+            label={humanizeReferenceType(reference.reference_type)}
+            title={provenanceLabel(reference)}
+            tone="default"
+          />
+        ))}
+      </div>
+      <div className="evidence-pack__provenance-list">
+        {references.map((reference) => {
+          const label = provenanceLabel(reference)
+          const metadataEntries = Object.entries(reference.metadata ?? {})
+          const previewMetadata = metadataEntries.slice(0, PROVENANCE_METADATA_PREVIEW_LIMIT)
+          const hiddenMetadataCount = metadataEntries.length - previewMetadata.length
+          return (
+            <details
+              className="config-count evidence-pack__provenance-item"
+              key={`${reference.reference_type}:${reference.reference_id}`}
+            >
+              <summary className="config-count__summary">
+                <span>
+                  <strong>{label}</strong>
+                  <span className="metric-row__label">
+                    {humanizeReferenceType(reference.reference_type)} · {reference.reference_id}
+                  </span>
+                </span>
+                {reference.confidence === null || reference.confidence === undefined ? null : (
+                  <span className="flag-label">
+                    Confidence {(reference.confidence * 100).toFixed(0)}%
+                  </span>
+                )}
+              </summary>
+              <div className="config-count__items evidence-pack__provenance-detail">
+                {reference.route_target ? (
+                  <span className="evidence-pack__route-target">
+                    <strong>route_target</strong> {reference.route_target}
+                  </span>
+                ) : null}
+                {reference.source_system ? (
+                  <span>
+                    <strong>source_system</strong> {reference.source_system}
+                  </span>
+                ) : null}
+                {reference.source_version ? (
+                  <span>
+                    <strong>source_version</strong> {reference.source_version}
+                  </span>
+                ) : null}
+                {reference.transformation_version ? (
+                  <span>
+                    <strong>transformation_version</strong> {reference.transformation_version}
+                  </span>
+                ) : null}
+                {previewMetadata.map(([key, value]) => (
+                  <span key={key}>
+                    <strong>{key}</strong> {formatMetadataValue(value)}
+                  </span>
+                ))}
+                {hiddenMetadataCount > 0 ? (
+                  <span className="metric-row__label">
+                    {hiddenMetadataCount} more metadata {hiddenMetadataCount === 1 ? 'field' : 'fields'}
+                  </span>
+                ) : null}
+              </div>
+            </details>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -68,6 +184,7 @@ export function EvidencePackViewer({
   const narrativeSections = pack.narrative_sections ?? []
   const sourceDocuments = pack.source_documents ?? []
   const attribution = pack.attribution ?? []
+  const provenance = pack.provenance ?? []
 
   return (
     <Card>
@@ -135,6 +252,8 @@ export function EvidencePackViewer({
         ) : null}
 
         {attribution.length > 0 ? <AttributionBars attribution={attribution} /> : null}
+
+        <ProvenancePanel references={provenance} />
 
         {packSubgraph.nodes.length > 0 ? (
           <div className="investigation-graph-canvas">

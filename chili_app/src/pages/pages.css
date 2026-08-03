@@ -1615,6 +1615,28 @@ a.housing-run-link:hover {
   gap: 8px;
 }
 
+.evidence-pack__provenance {
+  gap: 10px;
+}
+
+.evidence-pack__provenance-list {
+  display: grid;
+  gap: 6px;
+}
+
+.evidence-pack__provenance-item {
+  overflow-wrap: anywhere;
+}
+
+.evidence-pack__provenance-detail {
+  align-items: center;
+}
+
+.evidence-pack__route-target {
+  color: var(--c-cyan);
+  overflow-wrap: anywhere;
+}
+
 /* A summary count you can open. The marker sits with the label so the row
    still reads as a metric row until you want the detail (UXA-404). */
 .config-count {

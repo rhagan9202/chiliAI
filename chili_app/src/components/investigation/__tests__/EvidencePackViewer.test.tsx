@@ -120,4 +120,54 @@ describe('EvidencePackViewer', () => {
     renderViewer(basePack)
     expect(screen.queryByTestId('attribution-bars')).not.toBeInTheDocument()
   })
+
+  it('renders provenance badges and bounded expandable metadata', () => {
+    const { container } = renderViewer({
+      ...basePack,
+      provenance: [
+        {
+          reference_type: 'risk_score',
+          reference_id: 'risk:corr-1:kb-1:provider-1',
+          label: 'Overall risk score',
+          confidence: 0.82,
+          route_target: '/investigation/entities/provider-1?knowledge_base_id=kb-1',
+          source_system: 'cms-claims',
+          source_version: '2026-08-demo',
+          transformation_version: 'peerstats-zscore-v1',
+          metadata: {
+            overall: 0.82,
+            evidence_refs: ['provider-1'],
+            empty: null,
+            long_value: 'x'.repeat(200),
+            long_nested: { too: 'large' },
+            hidden_field: 'not shown',
+          },
+        },
+        {
+          reference_type: 'document',
+          reference_id: 'doc-1#evidence:0',
+          label: 'Claim volume spike',
+          route_target: '/knowledgebases/kb-1/documents/doc-1/preview',
+          metadata: { rationale_snippet: 'High-volume support', rationale_length: 19 },
+        },
+      ],
+    })
+
+    expect(screen.getByText('Provenance')).toBeInTheDocument()
+    expect(screen.getByText('risk score')).toBeInTheDocument()
+    expect(screen.getByText('document')).toBeInTheDocument()
+    expect(screen.getByText('2 references')).toBeInTheDocument()
+    expect(screen.getByText('Claim volume spike')).toBeInTheDocument()
+    expect(screen.getByText('Confidence 82%')).toBeInTheDocument()
+    expect(container.querySelector('a[href="/knowledgebases/kb-1/documents/doc-1/preview"]')).toBeNull()
+    expect(screen.getByText('/knowledgebases/kb-1/documents/doc-1/preview')).toBeInTheDocument()
+    expect(screen.getByText('rationale_snippet')).toBeInTheDocument()
+    expect(screen.getByText('High-volume support')).toBeInTheDocument()
+    expect(screen.getByText('evidence_refs')).toBeInTheDocument()
+    expect(screen.getByText('provider-1')).toBeInTheDocument()
+    expect(screen.getByText(`${'x'.repeat(117)}...`)).toBeInTheDocument()
+    expect(screen.queryByText('x'.repeat(200))).not.toBeInTheDocument()
+    expect(screen.getByText('2 more metadata fields')).toBeInTheDocument()
+    expect(container.querySelector('details')?.hasAttribute('open')).toBe(false)
+  })
 })
