@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
+from shared.types import Entity
 
 
 class PageInfo(BaseModel):
@@ -421,6 +422,129 @@ class EntityFeatureValueListResponse(BaseModel):
     items: list[EntityFeatureValueResponse] = Field(
         default_factory=lambda: cast(list[EntityFeatureValueResponse], [])
     )
+
+
+IdentityMatchConfidenceValue = Literal["high", "medium", "low"]
+IdentityReviewStateValue = Literal["auto_linkable", "steward_review", "needs_review"]
+IdentityLinkReviewStateValue = Literal[
+    "auto_linkable",
+    "steward_review",
+    "needs_review",
+    "merged",
+    "rejected",
+    "split",
+]
+IdentityLinkDecisionValue = Literal["approve_merge", "reject_merge", "split_identity"]
+
+
+class IdentityMatchReasonResponse(BaseModel):
+    """One reason contributing to an identity candidate score."""
+
+    field: str
+    reason: str
+    source_value: str
+    candidate_value: str
+    score_contribution: float = Field(ge=0.0, le=1.0)
+
+
+class IdentityCandidateEntityRequest(BaseModel):
+    """Candidate canonical entity scoped to one knowledge base."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    entity: Entity
+
+
+class IdentityResolutionRequestPayload(BaseModel):
+    """Payload for scoring a source identity against canonical candidates."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    source_entity: Entity
+    candidates: list[IdentityCandidateEntityRequest] = Field(
+        default_factory=lambda: cast(list[IdentityCandidateEntityRequest], [])
+    )
+    natural_key_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    identifier_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    address_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class IdentityCandidateScoreResponse(BaseModel):
+    """Scored canonical identity candidate."""
+
+    knowledge_base_id: str
+    entity_id: str
+    entity_type: str
+    score: float = Field(ge=0.0, le=1.0)
+    confidence: IdentityMatchConfidenceValue
+    review_state: IdentityReviewStateValue
+    match_reasons: list[IdentityMatchReasonResponse] = Field(
+        default_factory=lambda: cast(list[IdentityMatchReasonResponse], [])
+    )
+
+
+class IdentityResolutionResponse(BaseModel):
+    """Ranked identity candidates for a source entity."""
+
+    knowledge_base_id: str
+    source_entity_id: str
+    candidates: list[IdentityCandidateScoreResponse] = Field(
+        default_factory=lambda: cast(list[IdentityCandidateScoreResponse], [])
+    )
+    excluded_candidate_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class IdentityLinkDecisionRecordResponse(BaseModel):
+    """One steward decision recorded against an identity link."""
+
+    decision: IdentityLinkDecisionValue
+    actor_user_id: str
+    comment: str | None = None
+    created_at: datetime
+
+
+class IdentityLinkResponse(BaseModel):
+    """Stored identity link returned by the API."""
+
+    id: str
+    knowledge_base_id: str
+    canonical_entity_id: str
+    source_entity_id: str
+    relationship_type: str
+    confidence: IdentityMatchConfidenceValue
+    score: float = Field(ge=0.0, le=1.0)
+    review_state: IdentityLinkReviewStateValue
+    decision_source: str
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    match_reasons: list[dict[str, Any]] = Field(
+        default_factory=lambda: cast(list[dict[str, Any]], [])
+    )
+    decision_history: list[IdentityLinkDecisionRecordResponse] = Field(
+        default_factory=lambda: cast(list[IdentityLinkDecisionRecordResponse], [])
+    )
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanonicalIdentityDetailResponse(BaseModel):
+    """Source identities linked to one canonical entity."""
+
+    knowledge_base_id: str
+    canonical_entity_id: str
+    links: list[IdentityLinkResponse] = Field(
+        default_factory=lambda: cast(list[IdentityLinkResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class IdentityLinkDecisionRequestPayload(BaseModel):
+    """Payload for recording a steward identity-link decision."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    decision: IdentityLinkDecisionValue
+    tenant_id: str = Field(default="platform", min_length=1)
+    correlation_id: str | None = Field(default=None, min_length=1)
+    comment: str | None = None
 
 
 ScoreRunStatusValue = Literal["queued", "running", "completed", "failed", "canceled", "replayed"]

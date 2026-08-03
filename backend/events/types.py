@@ -349,6 +349,32 @@ class RiskScoredEvent(EventBase):
     assessments: list[RiskScoredReference]
 
 
+class IdentityLinkDecisionReference(BaseModel):
+    knowledge_base_id: str
+    link_id: str
+    canonical_entity_id: str
+    source_entity_id: str
+    decision: Literal["approve_merge", "reject_merge", "split_identity"]
+    review_state: Literal[
+        "auto_linkable",
+        "steward_review",
+        "needs_review",
+        "merged",
+        "rejected",
+        "split",
+    ]
+    actor_user_id: str
+    score: float = Field(ge=0.0, le=1.0)
+    confidence: Literal["high", "medium", "low"]
+
+
+class IdentityLinkDecisionRecordedEvent(EventBase):
+    event_type: Literal["identity.link_decision.recorded"] = (
+        "identity.link_decision.recorded"
+    )
+    decisions: list[IdentityLinkDecisionReference]
+
+
 class ExplainabilityGeneratedReference(BaseModel):
     knowledge_base_id: str
     request_id: str
@@ -498,6 +524,7 @@ AnyEvent = (
     | TimeseriesAnalyzedEvent
     | GnnAnalyzedEvent
     | RiskScoredEvent
+    | IdentityLinkDecisionRecordedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -548,6 +575,8 @@ __all__ = [
     "GnnAnalyzedReference",
     "GraphUpdatedDocumentReference",
     "GraphUpdatedEvent",
+    "IdentityLinkDecisionRecordedEvent",
+    "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",
     "KnowledgeBaseDeletedEvent",
     "KnowledgeBaseReadyEvent",

@@ -133,6 +133,9 @@ class TestOpenApiSchema:
             "/analytics/risk-projections/rebuild",
             "/analytics/timeseries",
             "/analytics/gnn/clusters",
+            "/identity/canonical/{entity_id}",
+            "/identity/resolve-candidates",
+            "/identity/links/{link_id}/decision",
         }
 
         missing = expected - set(paths)
@@ -161,6 +164,7 @@ class TestOpenApiSchema:
             "chat",
             "analytics",
             "score-runs",
+            "identity",
         }.issubset(tags)
 
     def test_frontend_json_routes_have_response_schemas(self, client: TestClient) -> None:

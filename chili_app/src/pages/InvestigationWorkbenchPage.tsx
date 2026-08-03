@@ -17,6 +17,7 @@ import { useCase, useCaseDossier } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
+import { useCanonicalIdentityDetail } from '../api/identity'
 import {
   useEntityLocations,
   useInvestigationEntity,
@@ -34,6 +35,7 @@ import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowl
 import { EvidencePackActions } from '../components/investigation/EvidencePackActions'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
+import { IdentityPanel } from '../components/investigation/IdentityPanel'
 import { SignalBand } from '../components/investigation/SignalBand'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -394,6 +396,7 @@ export function InvestigationWorkbenchPage() {
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
   const entityQuery = useInvestigationEntity(activeKnowledgeBaseId, selectedEntityId)
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
+  const identityQuery = useCanonicalIdentityDetail(activeKnowledgeBaseId, selectedEntityId)
   const riskQuery = useRiskScore(activeKnowledgeBaseId, selectedEntityId)
   const timeseriesQuery = useTimeseries(activeKnowledgeBaseId, selectedEntityId)
   const gnnClustersQuery = useGnnClusters(activeKnowledgeBaseId)
@@ -732,6 +735,12 @@ export function InvestigationWorkbenchPage() {
                 }
                 riskScore={riskAvailability.unavailable ? null : riskScore}
                 riskUnavailableReason={riskAvailability.reason}
+              />
+
+              <IdentityPanel
+                detail={identityQuery.data ?? null}
+                isError={identityQuery.isError}
+                isLoading={identityQuery.isLoading}
               />
 
               <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />

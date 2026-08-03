@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, Field, field_validator
 
 from shared.types import Entity
-from shared.utils import utc_now
+from shared.utils import generate_id, utc_now
 
 IdentityMatchConfidence = Literal["high", "medium", "low"]
 IdentityReviewState = Literal["auto_linkable", "steward_review", "needs_review"]
@@ -162,11 +162,15 @@ class IdentityLinkPage(BaseModel):
 class IdentityLinkDecisionRequest(BaseModel):
     """Request to record a steward decision against an identity link."""
 
+    tenant_id: str = Field(default="platform", min_length=1)
     knowledge_base_id: str = Field(min_length=1)
     link_id: str = Field(min_length=1)
     decision: IdentityLinkDecision
     actor_user_id: str = Field(min_length=1)
+    actor_email: str | None = None
+    actor_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
     comment: str | None = None
+    correlation_id: str = Field(default_factory=generate_id, min_length=1)
 
 
 __all__ = [

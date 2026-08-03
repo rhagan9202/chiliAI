@@ -7,6 +7,7 @@ import { useAppStore } from '../../stores/appStore'
 
 import type {
   ClusterResult,
+  CanonicalIdentityDetailResponse,
   DomainCapabilities,
   DomainConfig,
   EntityFeatureValueResponse,
@@ -78,6 +79,7 @@ const mocks = vi.hoisted(() => ({
     status: 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
     title: string
   }>,
+  identityDetail: null as CanonicalIdentityDetailResponse | null,
 }))
 
 const analyticsCalls = vi.hoisted(() => ({
@@ -193,6 +195,17 @@ vi.mock('../../api/investigation', () => ({
           relationships: [],
         }
       : undefined,
+  }),
+}))
+
+vi.mock('../../api/identity', () => ({
+  useCanonicalIdentityDetail: (knowledgeBaseId: string | null, entityId: string | null) => ({
+    isLoading: false,
+    isError: false,
+    data:
+      knowledgeBaseId && entityId && mocks.identityDetail
+        ? mocks.identityDetail
+        : undefined,
   }),
 }))
 
@@ -476,6 +489,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.clusters = []
     mocks.capabilities = { ...FULL_CAPABILITIES }
     mocks.policyItems = []
+    mocks.identityDetail = null
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
     analyticsCalls.peerAnalysis = []
@@ -663,6 +677,52 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.getAllByText(/No risk profile has been generated/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/No time series has been generated/i)).toBeInTheDocument()
     expect(screen.queryByText('Risk pressure trend')).not.toBeInTheDocument()
+  })
+
+  it('renders identity links for the selected entity', () => {
+    selectLiveProvider()
+    mocks.identityDetail = {
+      canonical_entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      limit: 50,
+      offset: 0,
+      total: 1,
+      links: [
+        {
+          id: 'identity-link-1',
+          knowledge_base_id: 'kb-live',
+          canonical_entity_id: 'provider-204',
+          source_entity_id: 'source-provider-204',
+          relationship_type: 'same_as',
+          confidence: 'medium',
+          score: 0.74,
+          review_state: 'steward_review',
+          decision_source: 'deterministic_rules',
+          source_refs: ['nppes:1234567890', 'beneficiary_mbi:1EG4-TE5-MK73'],
+          match_reasons: [{ field: 'npi', reason: 'identifier_exact', score_contribution: 0.6 }],
+          decision_history: [
+            {
+              decision: 'approve_merge',
+              actor_user_id: 'analyst-42',
+              comment: 'same provider after source review',
+              created_at: '2026-08-03T12:30:00Z',
+            },
+          ],
+          created_at: '2026-08-03T12:00:00Z',
+          updated_at: '2026-08-03T12:30:00Z',
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    const panel = screen.getByRole('group', { name: 'Identity resolution' })
+    expect(within(panel).getByText('source-provider-204')).toBeInTheDocument()
+    expect(within(panel).getByText('medium confidence')).toBeInTheDocument()
+    expect(within(panel).getByText('steward review')).toBeInTheDocument()
+    expect(within(panel).getByText('nppes:1234567890')).toBeInTheDocument()
+    expect(within(panel).queryByText('beneficiary_mbi:1EG4-TE5-MK73')).not.toBeInTheDocument()
+    expect(within(panel).getByText('approve merge')).toBeInTheDocument()
   })
 
   it('renders unavailable risk analytics with a next step, not a restated reason', () => {

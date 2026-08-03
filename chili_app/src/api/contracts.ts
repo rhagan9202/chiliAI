@@ -69,6 +69,17 @@ export type InvestigationNeighborhoodResponse = Omit<
 export type InvestigationEntitySearchResponse = Omit<Schemas['EntitySearchResponse'], 'items'> & {
   items: RuntimeEntity[]
 }
+export type IdentityLinkDecisionRecordResponse = Schemas['IdentityLinkDecisionRecordResponse']
+export type IdentityLinkResponse = RequireFields<
+  Schemas['IdentityLinkResponse'],
+  'decision_history' | 'match_reasons' | 'source_refs'
+>
+export type CanonicalIdentityDetailResponse = Omit<
+  Schemas['CanonicalIdentityDetailResponse'],
+  'links'
+> & {
+  links: IdentityLinkResponse[]
+}
 
 export type EvidenceItemResponse = Schemas['EvidenceItemResponse']
 export type FeatureAttributionResponse = Schemas['FeatureAttributionResponse']

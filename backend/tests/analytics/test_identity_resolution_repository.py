@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError
+
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEventQuery
+from auditlog.service import AuditLogService
 from analytics.identity_resolution import (
     IdentityDecisionService,
     IdentityLinkDecisionRequest,
@@ -11,6 +17,7 @@ from analytics.identity_resolution import (
     IdentityLinkRepositoryQuery,
     InMemoryIdentityLinkRepository,
 )
+from events.adapters.in_memory import InMemoryEventBus
 
 
 def _link(link_id: str = "identity_link:kb1:canonical-1:source-1") -> IdentityLinkRecord:
@@ -94,3 +101,59 @@ def test_identity_decision_service_records_merge_and_split_history() -> None:
         ("split_identity", "steward-2"),
     ]
     assert split.updated_at == datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+
+def test_identity_decision_service_publishes_event_and_audit_entry() -> None:
+    repository = InMemoryIdentityLinkRepository()
+    event_bus = InMemoryEventBus()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    service = IdentityDecisionService(
+        repository,
+        event_bus=event_bus,
+        audit_log_service=audit_service,
+        clock=lambda: datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+    repository.upsert_link(_link())
+
+    service.record_decision(
+        IdentityLinkDecisionRequest(
+            knowledge_base_id="kb1",
+            link_id="identity_link:kb1:canonical-1:source-1",
+            decision="approve_merge",
+            actor_user_id="steward-1",
+            actor_email="steward-1@example.test",
+            actor_roles=["data_steward"],
+            tenant_id="tenant-identity",
+            correlation_id="corr-identity-1",
+        )
+    )
+
+    assert len(event_bus.published_events) == 1
+    event = event_bus.published_events[0]
+    assert event.event_type == "identity.link_decision.recorded"
+    assert event.correlation_id == "corr-identity-1"
+    assert event.decisions[0].decision == "approve_merge"
+    assert event.decisions[0].review_state == "merged"
+    assert event.decisions[0].canonical_entity_id == "canonical:1"
+    page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id="tenant-identity",
+            knowledge_base_id="kb1",
+            action_prefix="identity_link.",
+        )
+    )
+    assert page.total_items == 1
+    assert page.items[0].action == "identity_link.approve_merge"
+    assert page.items[0].resource_id == "identity_link:kb1:canonical-1:source-1"
+    assert page.items[0].metadata["canonical_entity_id"] == "canonical:1"
+
+
+def test_identity_decision_request_rejects_empty_tenant_id() -> None:
+    with pytest.raises(ValidationError, match="tenant_id"):
+        IdentityLinkDecisionRequest(
+            tenant_id="",
+            knowledge_base_id="kb1",
+            link_id="identity_link:kb1:canonical-1:source-1",
+            decision="approve_merge",
+            actor_user_id="steward-1",
+        )

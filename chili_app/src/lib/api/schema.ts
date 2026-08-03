@@ -1079,6 +1079,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/identity/canonical/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Canonical Identity Detail
+         * @description Return source identities linked to a canonical entity.
+         */
+        get: operations["get_canonical_identity_detail_identity_canonical__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/links/{link_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Identity Link Decision
+         * @description Record a steward decision against one identity link.
+         */
+        post: operations["record_identity_link_decision_identity_links__link_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/identity/resolve-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Identity Candidates
+         * @description Score a source identity against connector-provided canonical candidates.
+         */
+        post: operations["resolve_identity_candidates_identity_resolve_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/investigation/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -2202,6 +2262,24 @@ export interface components {
             feed: string;
             /** File */
             file: string;
+        };
+        /**
+         * CanonicalIdentityDetailResponse
+         * @description Source identities linked to one canonical entity.
+         */
+        CanonicalIdentityDetailResponse: {
+            /** Canonical Entity Id */
+            canonical_entity_id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Limit */
+            limit: number;
+            /** Links */
+            links?: components["schemas"]["IdentityLinkResponse"][];
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /**
          * CapabilitiesConfig
@@ -3971,6 +4049,178 @@ export interface components {
              * @default 0
              */
             total_installations: number;
+        };
+        /**
+         * IdentityCandidateEntityRequest
+         * @description Candidate canonical entity scoped to one knowledge base.
+         */
+        IdentityCandidateEntityRequest: {
+            entity: components["schemas"]["Entity"];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * IdentityCandidateScoreResponse
+         * @description Scored canonical identity candidate.
+         */
+        IdentityCandidateScoreResponse: {
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Match Reasons */
+            match_reasons?: components["schemas"]["IdentityMatchReasonResponse"][];
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "auto_linkable" | "steward_review" | "needs_review";
+            /** Score */
+            score: number;
+        };
+        /**
+         * IdentityLinkDecisionRecordResponse
+         * @description One steward decision recorded against an identity link.
+         */
+        IdentityLinkDecisionRecordResponse: {
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve_merge" | "reject_merge" | "split_identity";
+        };
+        /**
+         * IdentityLinkDecisionRequestPayload
+         * @description Payload for recording a steward identity-link decision.
+         */
+        IdentityLinkDecisionRequestPayload: {
+            /** Comment */
+            comment?: string | null;
+            /** Correlation Id */
+            correlation_id?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve_merge" | "reject_merge" | "split_identity";
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Tenant Id
+             * @default platform
+             */
+            tenant_id: string;
+        };
+        /**
+         * IdentityLinkResponse
+         * @description Stored identity link returned by the API.
+         */
+        IdentityLinkResponse: {
+            /** Canonical Entity Id */
+            canonical_entity_id: string;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decision History */
+            decision_history?: components["schemas"]["IdentityLinkDecisionRecordResponse"][];
+            /** Decision Source */
+            decision_source: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Match Reasons */
+            match_reasons?: {
+                [key: string]: unknown;
+            }[];
+            /** Relationship Type */
+            relationship_type: string;
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "auto_linkable" | "steward_review" | "needs_review" | "merged" | "rejected" | "split";
+            /** Score */
+            score: number;
+            /** Source Entity Id */
+            source_entity_id: string;
+            /** Source Refs */
+            source_refs?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * IdentityMatchReasonResponse
+         * @description One reason contributing to an identity candidate score.
+         */
+        IdentityMatchReasonResponse: {
+            /** Candidate Value */
+            candidate_value: string;
+            /** Field */
+            field: string;
+            /** Reason */
+            reason: string;
+            /** Score Contribution */
+            score_contribution: number;
+            /** Source Value */
+            source_value: string;
+        };
+        /**
+         * IdentityResolutionRequestPayload
+         * @description Payload for scoring a source identity against canonical candidates.
+         */
+        IdentityResolutionRequestPayload: {
+            /** Address Fields */
+            address_fields?: string[];
+            /** Candidates */
+            candidates?: components["schemas"]["IdentityCandidateEntityRequest"][];
+            /** Identifier Fields */
+            identifier_fields?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Natural Key Fields */
+            natural_key_fields?: string[];
+            source_entity: components["schemas"]["Entity"];
+        };
+        /**
+         * IdentityResolutionResponse
+         * @description Ranked identity candidates for a source entity.
+         */
+        IdentityResolutionResponse: {
+            /** Candidates */
+            candidates?: components["schemas"]["IdentityCandidateScoreResponse"][];
+            /** Excluded Candidate Ids */
+            excluded_candidate_ids?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Source Entity Id */
+            source_entity_id: string;
         };
         /**
          * IngestionConfig
@@ -7988,6 +8238,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HousingOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_canonical_identity_detail_identity_canonical__entity_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanonicalIdentityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_identity_link_decision_identity_links__link_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityLinkDecisionRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityLinkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_identity_candidates_identity_resolve_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityResolutionRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityResolutionResponse"];
                 };
             };
             /** @description Validation Error */

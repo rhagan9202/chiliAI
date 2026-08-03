@@ -136,6 +136,15 @@ from analytics.features.service import (
     FeatureCatalogService,
     create_feature_catalog_service,
 )
+from analytics.identity_resolution import (
+    IdentityDecisionService,
+    IdentityLinkRepository,
+    IdentityResolutionService,
+    InMemoryIdentityLinkRepository,
+)
+from analytics.identity_resolution.adapters.postgres import (
+    PostgresIdentityLinkRepository,
+)
 from analytics.explainability.reviews import (
     ExplanationReviewCreate,
     ExplanationReviewPage,
@@ -358,6 +367,9 @@ __all__ = [
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
+    "get_identity_decision_service",
+    "get_identity_link_repository",
+    "get_identity_resolution_service",
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
@@ -2555,6 +2567,44 @@ def get_peer_analysis_service() -> PeerAnalysisService:
     return PeerAnalysisService(
         cast(PeerSignalReaderProtocol, get_derived_signal_store()),
         cohort_definitions=cohorts,
+    )
+
+
+def get_identity_link_repository(request: Request) -> IdentityLinkRepository:
+    """Return the identity-link repository selected by database backend."""
+
+    def build() -> IdentityLinkRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryIdentityLinkRepository()
+        return PostgresIdentityLinkRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "identity_link_repository",
+        build,
+        guard=lambda value: isinstance(value, IdentityLinkRepository),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_identity_resolution_service() -> IdentityResolutionService:
+    """Return the domain-neutral identity candidate scoring service."""
+
+    return IdentityResolutionService()
+
+
+def get_identity_decision_service(
+    repository: IdentityLinkRepository = Depends(get_identity_link_repository),
+    event_bus: EventBus = Depends(get_event_bus),
+    audit_log_service: AuditLogService = Depends(get_audit_log_service),
+) -> IdentityDecisionService:
+    """Return the steward decision service for identity links."""
+
+    return IdentityDecisionService(
+        repository,
+        event_bus=event_bus,
+        audit_log_service=audit_log_service,
     )
 
 

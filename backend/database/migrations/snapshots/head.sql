@@ -127,6 +127,27 @@ CREATE TABLE public.explanation_reviews (
     CONSTRAINT ck_explanation_reviews_target_type CHECK ((target_type = ANY (ARRAY['narrative'::text, 'narrative_section'::text, 'feature_attribution'::text, 'evidence_item'::text, 'provenance_reference'::text]))),
     CONSTRAINT ck_explanation_reviews_update_count CHECK ((update_count >= 0))
 );
+CREATE TABLE public.identity_links (
+    id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    canonical_entity_id text NOT NULL,
+    source_entity_id text NOT NULL,
+    relationship_type text NOT NULL,
+    confidence text NOT NULL,
+    score double precision NOT NULL,
+    review_state text NOT NULL,
+    decision_source text NOT NULL,
+    source_refs jsonb DEFAULT '[]'::jsonb NOT NULL,
+    match_reasons jsonb DEFAULT '[]'::jsonb NOT NULL,
+    decision_history jsonb DEFAULT '[]'::jsonb NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT ck_identity_links_confidence CHECK ((confidence = ANY (ARRAY['high'::text, 'medium'::text, 'low'::text]))),
+    CONSTRAINT ck_identity_links_decision_history_type CHECK ((jsonb_typeof(decision_history) = 'array'::text)),
+    CONSTRAINT ck_identity_links_decision_history_values CHECK (((decision_history = '[]'::jsonb) OR ((jsonb_array_length(jsonb_path_query_array(decision_history, '$[*]."decision"'::jsonpath)) = jsonb_array_length(decision_history)) AND (jsonb_path_query_array(decision_history, '$[*]."decision"'::jsonpath) <@ '["approve_merge", "reject_merge", "split_identity"]'::jsonb)))),
+    CONSTRAINT ck_identity_links_review_state CHECK ((review_state = ANY (ARRAY['auto_linkable'::text, 'steward_review'::text, 'needs_review'::text, 'merged'::text, 'rejected'::text, 'split'::text]))),
+    CONSTRAINT ck_identity_links_score CHECK (((score >= (0)::double precision) AND (score <= (1)::double precision)))
+);
 CREATE TABLE public.observations (
     knowledge_base_id text NOT NULL,
     entity_id text NOT NULL,
@@ -260,6 +281,8 @@ ALTER TABLE ONLY public.explanation_reviews
     ADD CONSTRAINT explanation_reviews_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.identity_links
+    ADD CONSTRAINT pk_identity_links PRIMARY KEY (knowledge_base_id, id);
 ALTER TABLE ONLY public.policy_items
     ADD CONSTRAINT policy_items_pkey PRIMARY KEY (knowledge_base_id, rule_id, target_ref);
 ALTER TABLE ONLY public.raw_records
@@ -293,6 +316,9 @@ CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_histo
 CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_state_updated ON public.explanation_reviews USING btree (knowledge_base_id, state, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_canonical_updated ON public.identity_links USING btree (knowledge_base_id, canonical_entity_id, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_review_state_updated ON public.identity_links USING btree (knowledge_base_id, review_state, updated_at DESC);
+CREATE INDEX ix_identity_links_kb_source_updated ON public.identity_links USING btree (knowledge_base_id, source_entity_id, updated_at DESC);
 CREATE INDEX ix_observations_batch ON public.observations USING btree (knowledge_base_id, batch_id);
 CREATE INDEX ix_policy_items_status ON public.policy_items USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_raw_records_correlation ON public.raw_records USING btree (knowledge_base_id, correlation_id);

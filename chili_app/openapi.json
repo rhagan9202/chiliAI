@@ -1118,6 +1118,50 @@
         "title": "Body_upload_record_file_records__knowledge_base_id__files_post",
         "type": "object"
       },
+      "CanonicalIdentityDetailResponse": {
+        "description": "Source identities linked to one canonical entity.",
+        "properties": {
+          "canonical_entity_id": {
+            "title": "Canonical Entity Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityLinkResponse"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "canonical_entity_id",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CanonicalIdentityDetailResponse",
+        "type": "object"
+      },
       "CapabilitiesConfig": {
         "description": "Feature toggles for optional analytics capabilities.",
         "properties": {
@@ -5104,6 +5148,397 @@
           }
         },
         "title": "HousingPortfolioSummaryResponse",
+        "type": "object"
+      },
+      "IdentityCandidateEntityRequest": {
+        "description": "Candidate canonical entity scoped to one knowledge base.",
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "entity"
+        ],
+        "title": "IdentityCandidateEntityRequest",
+        "type": "object"
+      },
+      "IdentityCandidateScoreResponse": {
+        "description": "Scored canonical identity candidate.",
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "match_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityMatchReasonResponse"
+            },
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "review_state": {
+            "enum": [
+              "auto_linkable",
+              "steward_review",
+              "needs_review"
+            ],
+            "title": "Review State",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "entity_id",
+          "entity_type",
+          "score",
+          "confidence",
+          "review_state"
+        ],
+        "title": "IdentityCandidateScoreResponse",
+        "type": "object"
+      },
+      "IdentityLinkDecisionRecordResponse": {
+        "description": "One steward decision recorded against an identity link.",
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve_merge",
+              "reject_merge",
+              "split_identity"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "actor_user_id",
+          "created_at"
+        ],
+        "title": "IdentityLinkDecisionRecordResponse",
+        "type": "object"
+      },
+      "IdentityLinkDecisionRequestPayload": {
+        "description": "Payload for recording a steward identity-link decision.",
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "decision": {
+            "enum": [
+              "approve_merge",
+              "reject_merge",
+              "split_identity"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "platform",
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "decision"
+        ],
+        "title": "IdentityLinkDecisionRequestPayload",
+        "type": "object"
+      },
+      "IdentityLinkResponse": {
+        "description": "Stored identity link returned by the API.",
+        "properties": {
+          "canonical_entity_id": {
+            "title": "Canonical Entity Id",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision_history": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityLinkDecisionRecordResponse"
+            },
+            "title": "Decision History",
+            "type": "array"
+          },
+          "decision_source": {
+            "title": "Decision Source",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "match_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "review_state": {
+            "enum": [
+              "auto_linkable",
+              "steward_review",
+              "needs_review",
+              "merged",
+              "rejected",
+              "split"
+            ],
+            "title": "Review State",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "source_entity_id": {
+            "title": "Source Entity Id",
+            "type": "string"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "knowledge_base_id",
+          "canonical_entity_id",
+          "source_entity_id",
+          "relationship_type",
+          "confidence",
+          "score",
+          "review_state",
+          "decision_source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IdentityLinkResponse",
+        "type": "object"
+      },
+      "IdentityMatchReasonResponse": {
+        "description": "One reason contributing to an identity candidate score.",
+        "properties": {
+          "candidate_value": {
+            "title": "Candidate Value",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "score_contribution": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score Contribution",
+            "type": "number"
+          },
+          "source_value": {
+            "title": "Source Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "reason",
+          "source_value",
+          "candidate_value",
+          "score_contribution"
+        ],
+        "title": "IdentityMatchReasonResponse",
+        "type": "object"
+      },
+      "IdentityResolutionRequestPayload": {
+        "description": "Payload for scoring a source identity against canonical candidates.",
+        "properties": {
+          "address_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Address Fields",
+            "type": "array"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityCandidateEntityRequest"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "identifier_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Identifier Fields",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "natural_key_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Natural Key Fields",
+            "type": "array"
+          },
+          "source_entity": {
+            "$ref": "#/components/schemas/Entity"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "source_entity"
+        ],
+        "title": "IdentityResolutionRequestPayload",
+        "type": "object"
+      },
+      "IdentityResolutionResponse": {
+        "description": "Ranked identity candidates for a source entity.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityCandidateScoreResponse"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "excluded_candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Candidate Ids",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "source_entity_id": {
+            "title": "Source Entity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "source_entity_id"
+        ],
+        "title": "IdentityResolutionResponse",
         "type": "object"
       },
       "IngestionConfig": {
@@ -13056,6 +13491,177 @@
         "summary": "Get Overview",
         "tags": [
           "housing"
+        ]
+      }
+    },
+    "/identity/canonical/{entity_id}": {
+      "get": {
+        "description": "Return source identities linked to a canonical entity.",
+        "operationId": "get_canonical_identity_detail_identity_canonical__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalIdentityDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Canonical Identity Detail",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/identity/links/{link_id}/decision": {
+      "post": {
+        "description": "Record a steward decision against one identity link.",
+        "operationId": "record_identity_link_decision_identity_links__link_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityLinkDecisionRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Identity Link Decision",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/identity/resolve-candidates": {
+      "post": {
+        "description": "Score a source identity against connector-provided canonical candidates.",
+        "operationId": "resolve_identity_candidates_identity_resolve_candidates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityResolutionRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityResolutionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Identity Candidates",
+        "tags": [
+          "identity"
         ]
       }
     },
