@@ -12,6 +12,7 @@ from analytics.explainability.exceptions import ExplainabilityConfigurationError
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
+    ExplanationLineage,
     ExplanationNarrative,
     ExplanationSubgraph,
     NarrativeSection,
@@ -205,6 +206,11 @@ class _StubNarrativeGenerator:
         )
 
 
+class _StubLineageNarrativeGenerator(_StubNarrativeGenerator):
+    model_name = "llm-model-from-generator"
+    prompt_version = "prompt-from-generator-v1"
+
+
 class _StubFeatureAttributor:
     """Fixed single-feature attribution, independent of the context passed in."""
 
@@ -248,6 +254,114 @@ def test_explainability_service_composes_injected_narrative_and_attribution() ->
         EvidenceNarrativeSection(heading="Second", body="second body", evidence_refs=["doc-2"]),
     ]
     assert pack.attribution == [FeatureAttribution(feature_name="risk", contribution=0.42, rationale="stub")]
+
+
+def test_explainability_service_generates_deterministic_provenance_refs() -> None:
+    event_bus = InMemoryEventBus()
+    context = _single_item_context().model_copy(
+        update={
+            "scores": {"overall": 0.5, "risk": 0.42},
+            "lineage": ExplanationLineage(
+                score_request_id="risk:corr-1:kb-1:provider-7",
+                correlation_id="corr-1",
+                workflow_id="workflow-1",
+                model_version="risk-model-v1",
+                prompt_version="evidence-prompt-v1",
+            ),
+        }
+    )
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[context]),
+        event_bus=event_bus,
+        narrative_generator=_StubNarrativeGenerator(),
+        feature_attributor=_StubFeatureAttributor(),
+    )
+
+    response = service.generate(ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1"))
+
+    refs = {
+        (reference.reference_type, reference.reference_id): reference
+        for reference in response.evidence_pack.provenance
+    }
+    document_ref = refs[("document", "doc-1#evidence:0")]
+    assert document_ref.route_target == "/knowledgebases/kb-1/documents/doc-1/preview"
+    assert document_ref.metadata["rationale_snippet"] == "alpha"
+    assert document_ref.metadata["rationale_length"] == 5
+    assert ("graph_node", "provider-7") in refs
+    assert ("risk_score", "risk:corr-1:kb-1:provider-7") in refs
+    assert refs[("risk_score", "risk:corr-1:kb-1:provider-7")].metadata == {
+        "overall": 0.5,
+        "risk": 0.42,
+    }
+    assert ("feature_attribution", "risk") in refs
+    assert ("narrative_section", "section:0:First") in refs
+    assert ("correlation", "corr-1") in refs
+    assert ("workflow", "workflow-1") in refs
+    assert ("model_version", "risk-model-v1") in refs
+    assert ("prompt_version", "evidence-prompt-v1") in refs
+
+
+def test_explainability_service_keeps_same_document_evidence_refs_distinct() -> None:
+    event_bus = InMemoryEventBus()
+    long_rationale = "x" * 200
+    context = _single_item_context().model_copy(
+        update={
+            "explanation_items": [
+                ExplanationItem(
+                    source_id="doc-1",
+                    source_type="document",
+                    quote="First quote",
+                    rationale=long_rationale,
+                    score=0.8,
+                ),
+                ExplanationItem(
+                    source_id="doc-1",
+                    source_type="document",
+                    quote="Second quote",
+                    rationale="second rationale",
+                    score=0.7,
+                ),
+            ],
+        }
+    )
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[context]),
+        event_bus=event_bus,
+    )
+
+    response = service.generate(
+        ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1", max_evidence_items=2)
+    )
+
+    document_refs = [
+        reference
+        for reference in response.evidence_pack.provenance
+        if reference.reference_type == "document"
+    ]
+    assert [reference.reference_id for reference in document_refs] == [
+        "doc-1#evidence:0",
+        "doc-1#evidence:1",
+    ]
+    assert document_refs[0].metadata["rationale_length"] == 200
+    assert document_refs[0].metadata["rationale_snippet"] == ("x" * 157) + "..."
+
+
+def test_explainability_service_uses_generator_lineage_when_available() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[_single_item_context()]),
+        event_bus=event_bus,
+        narrative_generator=_StubLineageNarrativeGenerator(),
+    )
+
+    response = service.generate(ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1"))
+
+    refs = {
+        (reference.reference_type, reference.reference_id)
+        for reference in response.evidence_pack.provenance
+    }
+    assert ("model_version", "llm-model-from-generator") in refs
+    assert ("prompt_version", "prompt-from-generator-v1") in refs
 
 
 def test_explainability_service_default_construction_has_empty_attribution() -> None:

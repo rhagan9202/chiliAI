@@ -71,6 +71,7 @@ def test_build_explanation_context_uses_graph_subgraph_and_risk_scores() -> None
         entity_id="provider-1",
         alert_id="alert-provider-1-req-1",
         risk_response=_risk_response(),
+        correlation_id="corr-1",
     )
 
     # Subgraph node ids come from graph.get_subgraph, not seeded constants.
@@ -81,6 +82,8 @@ def test_build_explanation_context_uses_graph_subgraph_and_risk_scores() -> None
     assert any(item.quote == "upcoding" for item in context.explanation_items)
     assert context.alert.id == "alert-provider-1-req-1"
     assert context.alert.entity_type == "provider"
+    assert context.lineage.score_request_id == "req-1"
+    assert context.lineage.correlation_id == "corr-1"
 
 
 def test_build_explanation_context_falls_back_to_seed_when_no_factors() -> None:

@@ -115,9 +115,28 @@ Task 2 notes:
 - Modify: coordinator explainability flow as needed
 - Test: evidence service tests
 
-- [ ] Add provenance references for explanation items, subgraph nodes/edges, score snapshots,
+- [x] Add provenance references for explanation items, subgraph nodes/edges, score snapshots,
   feature attribution, model/prompt versions where available, and workflow/correlation ids.
-- [ ] Preserve deterministic behavior for tests and local generation.
+- [x] Preserve deterministic behavior for tests and local generation.
+
+Task 3 notes:
+
+- Added optional `ExplanationLineage` to generation contexts and wired Flow B correlation IDs
+  plus deterministic risk request IDs into generated evidence packs.
+- Added generation-time provenance refs for selected explanation items, graph nodes/edges,
+  score snapshots, feature attributions, narrative sections, correlation IDs, workflow IDs,
+  and model/prompt versions when provided by context or the narrative generator.
+- Review fixes: same-document explanation items now keep distinct provenance refs; document
+  route targets point to the viewer-safe preview route; provenance metadata stores bounded
+  snippets/lengths instead of unbounded generated prose; `LlmNarrativeGenerator` exposes its
+  configured model and prompt contract version for lineage.
+- Verification passed:
+  - Red tests first failed on missing `ExplanationLineage` / `correlation_id` context support.
+  - `backend/tests/analytics/explainability backend/tests/agent/test_explainability_stage.py -q`: 65 passed.
+  - `ruff check` on touched backend files: passed.
+  - `uv run --project backend pyright` on touched backend files: passed.
+  - `compileall backend/analytics/explainability backend/agent`: passed.
+  - `git diff --check`: passed.
 
 ## Task 4: Frontend Provenance Rendering
 

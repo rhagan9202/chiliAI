@@ -85,6 +85,7 @@ from graph.exceptions import (
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
+    ExplanationLineage,
     ExplanationSubgraph,
 )
 from analytics.explainability.protocols import (
@@ -2421,6 +2422,7 @@ def _run_explainability_stage(
             entity_id=entity_id,
             alert_id=alert_id,
             risk_response=risk_response,
+            correlation_id=event.correlation_id,
         )
         response = explainability_service.generate_from_context(context)
     except (ExplainabilityError, GraphError) as exc:
@@ -2480,6 +2482,7 @@ def build_explanation_context(
     entity_id: str,
     alert_id: str,
     risk_response: RiskAssessmentResponse,
+    correlation_id: str | None = None,
 ) -> ExplanationContext:
     """Assemble a real explanation context from the graph subgraph + risk assessment.
 
@@ -2542,6 +2545,10 @@ def build_explanation_context(
         subgraph=ExplanationSubgraph(node_ids=node_ids, edge_ids=edge_ids),
         confidence=risk_response.overall_score,
         scores=scores,
+        lineage=ExplanationLineage(
+            score_request_id=risk_response.request_id,
+            correlation_id=correlation_id,
+        ),
     )
 
 

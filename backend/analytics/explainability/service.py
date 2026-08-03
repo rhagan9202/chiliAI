@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from analytics.explainability.adapters.deterministic import DeterministicNarrativeGenerator
 from analytics.explainability.adapters.protocols import ExplainabilityContextSourceProtocol
 from analytics.explainability.adapters.shap_attribution import NoopFeatureAttributor
@@ -19,8 +21,16 @@ from analytics.explainability.service_models import (
 )
 from events.protocols import EventBus
 from events.types import ExplainabilityGeneratedEvent, ExplainabilityGeneratedReference
-from shared.types import EvidenceNarrativeSection, EvidencePack
+from shared.types import (
+    EvidenceNarrativeSection,
+    EvidencePack,
+    EvidenceProvenanceReference,
+    FeatureAttribution,
+)
 from shared.utils import generate_id
+
+_PROVENANCE_TRANSFORMATION_VERSION = "explainability-provenance-v1"
+_PROVENANCE_SNIPPET_MAX_CHARS = 160
 
 
 class ExplainabilityService:
@@ -75,9 +85,18 @@ class ExplainabilityService:
                 "Explainability context requires at least one explanation item."
             )
 
+        context = _with_generator_lineage(context, self._narrative_generator)
         selected_items = _select_items(context.explanation_items, max_items=max_evidence_items)
         narrative = self._narrative_generator.summarize(context=context, items=selected_items)
         attribution = self._feature_attributor.attribute(context=context)
+        narrative_sections = [
+            EvidenceNarrativeSection(
+                heading=section.heading,
+                body=section.body,
+                evidence_refs=list(section.evidence_refs),
+            )
+            for section in narrative.sections
+        ]
         evidence_pack = EvidencePack(
             id=generate_id(),
             alert_id=context.alert.id,
@@ -87,14 +106,13 @@ class ExplainabilityService:
             confidence=context.confidence,
             scores=context.scores,
             attribution=attribution,
-            narrative_sections=[
-                EvidenceNarrativeSection(
-                    heading=section.heading,
-                    body=section.body,
-                    evidence_refs=list(section.evidence_refs),
-                )
-                for section in narrative.sections
-            ],
+            narrative_sections=narrative_sections,
+            provenance=_build_provenance(
+                context=context,
+                selected_items=selected_items,
+                attribution=attribution,
+                narrative_sections=narrative_sections,
+            ),
         )
         response = ExplainabilityResponse(
             request_id=generate_id(),
@@ -150,6 +168,251 @@ def create_explainability_service(
 
 def _select_items(items: list[ExplanationItem], *, max_items: int) -> list[ExplanationItem]:
     return sorted(items, key=lambda item: item.score, reverse=True)[:max_items]
+
+
+def _build_provenance(
+    *,
+    context: ExplanationContext,
+    selected_items: list[ExplanationItem],
+    attribution: list[FeatureAttribution],
+    narrative_sections: list[EvidenceNarrativeSection],
+) -> list[EvidenceProvenanceReference]:
+    refs: list[EvidenceProvenanceReference] = []
+    seen: set[tuple[str, str]] = set()
+    transformation_version = (
+        context.lineage.transformation_version or _PROVENANCE_TRANSFORMATION_VERSION
+    )
+
+    for index, item in enumerate(selected_items):
+        _append_reference(
+            refs,
+            seen,
+            reference_type=item.source_type,
+            reference_id=_item_reference_id(item, index=index),
+            label=_snippet(item.quote),
+            confidence=item.score,
+            route_target=_route_target_for_item(context, item),
+            transformation_version=transformation_version,
+            metadata={
+                "source_id": item.source_id,
+                "quote_length": len(item.quote),
+                "rationale_snippet": _snippet(item.rationale),
+                "rationale_length": len(item.rationale),
+            },
+        )
+
+    for node_id in context.subgraph.node_ids:
+        _append_reference(
+            refs,
+            seen,
+            reference_type="graph_node",
+            reference_id=node_id,
+            label=node_id,
+            route_target=_entity_route(context.knowledge_base_id, node_id),
+            transformation_version=transformation_version,
+        )
+
+    for edge_id in context.subgraph.edge_ids:
+        _append_reference(
+            refs,
+            seen,
+            reference_type="graph_edge",
+            reference_id=edge_id,
+            label=edge_id,
+            transformation_version=transformation_version,
+        )
+
+    score_reference_id = context.lineage.score_request_id or f"{context.alert.entity_id}:overall"
+    _append_reference(
+        refs,
+        seen,
+        reference_type="risk_score",
+        reference_id=score_reference_id,
+        label="Overall risk score",
+        confidence=context.confidence,
+        route_target=_entity_route(context.knowledge_base_id, context.alert.entity_id),
+        transformation_version=transformation_version,
+        metadata=dict(context.scores),
+    )
+
+    for feature in attribution:
+        _append_reference(
+            refs,
+            seen,
+            reference_type="feature_attribution",
+            reference_id=feature.feature_name,
+            label=feature.feature_name,
+            transformation_version=transformation_version,
+            metadata={
+                "contribution": feature.contribution,
+                "rationale_snippet": _snippet(feature.rationale),
+                "rationale_length": len(feature.rationale),
+            },
+        )
+
+    for index, section in enumerate(narrative_sections):
+        _append_reference(
+            refs,
+            seen,
+            reference_type="narrative_section",
+            reference_id=f"section:{index}:{section.heading}",
+            label=section.heading,
+            transformation_version=transformation_version,
+            metadata={
+                "body_length": len(section.body),
+                "evidence_refs": list(section.evidence_refs),
+            },
+        )
+
+    _append_lineage_reference(
+        refs,
+        seen,
+        reference_type="correlation",
+        reference_id=context.lineage.correlation_id,
+        label="Workflow correlation ID",
+        transformation_version=transformation_version,
+    )
+    _append_lineage_reference(
+        refs,
+        seen,
+        reference_type="workflow",
+        reference_id=context.lineage.workflow_id,
+        label="Workflow run",
+        transformation_version=transformation_version,
+    )
+    _append_lineage_reference(
+        refs,
+        seen,
+        reference_type="model_version",
+        reference_id=context.lineage.model_version,
+        label="Model version",
+        transformation_version=transformation_version,
+    )
+    _append_lineage_reference(
+        refs,
+        seen,
+        reference_type="prompt_version",
+        reference_id=context.lineage.prompt_version,
+        label="Prompt version",
+        transformation_version=transformation_version,
+    )
+
+    return refs
+
+
+def _append_lineage_reference(
+    refs: list[EvidenceProvenanceReference],
+    seen: set[tuple[str, str]],
+    *,
+    reference_type: str,
+    reference_id: str | None,
+    label: str,
+    transformation_version: str,
+) -> None:
+    if reference_id is None:
+        return
+    _append_reference(
+        refs,
+        seen,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        label=label,
+        transformation_version=transformation_version,
+    )
+
+
+def _append_reference(
+    refs: list[EvidenceProvenanceReference],
+    seen: set[tuple[str, str]],
+    *,
+    reference_type: str,
+    reference_id: str,
+    label: str = "",
+    confidence: float | None = None,
+    route_target: str | None = None,
+    transformation_version: str,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    key = (reference_type, reference_id)
+    if key in seen:
+        return
+    seen.add(key)
+    refs.append(
+        EvidenceProvenanceReference(
+            reference_type=reference_type,
+            reference_id=reference_id,
+            label=label,
+            transformation_version=transformation_version,
+            confidence=confidence,
+            route_target=route_target,
+            metadata=metadata or {},
+        )
+    )
+
+
+def _with_generator_lineage(
+    context: ExplanationContext, narrative_generator: NarrativeGeneratorProtocol
+) -> ExplanationContext:
+    model_version = context.lineage.model_version or _optional_string_attr(
+        narrative_generator, "model_name"
+    )
+    prompt_version = context.lineage.prompt_version or _optional_string_attr(
+        narrative_generator, "prompt_version"
+    )
+    if (
+        model_version == context.lineage.model_version
+        and prompt_version == context.lineage.prompt_version
+    ):
+        return context
+    return context.model_copy(
+        update={
+            "lineage": context.lineage.model_copy(
+                update={
+                    "model_version": model_version,
+                    "prompt_version": prompt_version,
+                }
+            )
+        }
+    )
+
+
+def _optional_string_attr(value: object, name: str) -> str | None:
+    attr = getattr(value, name, None)
+    return attr if isinstance(attr, str) and attr else None
+
+
+def _snippet(value: str) -> str:
+    if len(value) <= _PROVENANCE_SNIPPET_MAX_CHARS:
+        return value
+    return value[: _PROVENANCE_SNIPPET_MAX_CHARS - 3] + "..."
+
+
+def _item_reference_id(item: ExplanationItem, *, index: int) -> str:
+    if item.source_type in {"risk_factor", "risk_summary"}:
+        return f"{item.source_id}:{item.quote}"
+    if item.source_type == "document":
+        return f"{item.source_id}#evidence:{index}"
+    return item.source_id
+
+
+def _route_target_for_item(
+    context: ExplanationContext, item: ExplanationItem
+) -> str | None:
+    if item.source_type == "document":
+        return (
+            f"/knowledgebases/{quote(context.knowledge_base_id, safe='')}/documents/"
+            f"{quote(item.source_id, safe='')}/preview"
+        )
+    if item.source_type in {"graph_node", "risk_factor", "risk_summary"}:
+        return _entity_route(context.knowledge_base_id, item.source_id)
+    return None
+
+
+def _entity_route(knowledge_base_id: str, entity_id: str) -> str:
+    return (
+        f"/investigation/entities/{quote(entity_id, safe='')}"
+        f"?knowledge_base_id={quote(knowledge_base_id, safe='')}"
+    )
 
 
 __all__ = ["ExplainabilityService", "create_explainability_service"]

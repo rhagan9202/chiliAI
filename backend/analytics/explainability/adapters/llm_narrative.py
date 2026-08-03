@@ -40,6 +40,7 @@ _SYSTEM_PROMPT = (
 )
 
 _HEADING_SPLIT = re.compile(r"^## ", flags=re.MULTILINE)
+_PROMPT_VERSION = "llm-narrative-prompt-v1"
 
 
 class LlmNarrativeGenerator:
@@ -59,6 +60,14 @@ class LlmNarrativeGenerator:
         self._model_name = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def prompt_version(self) -> str:
+        return _PROMPT_VERSION
 
     def summarize(
         self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
