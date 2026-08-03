@@ -84,6 +84,62 @@ function CockpitStateItem({
   )
 }
 
+function cockpitAlertUrl(knowledgeBaseId: string, alertId: string): string {
+  return `/alerts?${new URLSearchParams({ kb: knowledgeBaseId, alert: alertId }).toString()}`
+}
+
+function cockpitCaseUrl(knowledgeBaseId: string, caseId: string): string {
+  return `/cases?${new URLSearchParams({ kb: knowledgeBaseId, case: caseId }).toString()}`
+}
+
+function CockpitActionRail({
+  alertId,
+  caseId,
+  canViewEvidence,
+  knowledgeBaseId,
+  onViewEvidence,
+}: {
+  alertId: string | null
+  caseId: string | null
+  canViewEvidence: boolean
+  knowledgeBaseId: string | null
+  onViewEvidence: () => void
+}) {
+  if (!knowledgeBaseId || (!alertId && !caseId && !canViewEvidence)) {
+    return null
+  }
+
+  return (
+    <div aria-label="Cockpit actions" className="page-actions-inline">
+      {alertId ? (
+        <Link
+          className="page-button page-button--sm page-button--secondary"
+          to={cockpitAlertUrl(knowledgeBaseId, alertId)}
+        >
+          Open alert
+        </Link>
+      ) : null}
+      {caseId ? (
+        <Link
+          className="page-button page-button--sm page-button--secondary"
+          to={cockpitCaseUrl(knowledgeBaseId, caseId)}
+        >
+          Open case
+        </Link>
+      ) : null}
+      {canViewEvidence ? (
+        <button
+          className="page-button page-button--sm page-button--secondary"
+          onClick={onViewEvidence}
+          type="button"
+        >
+          View cockpit evidence
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
@@ -447,6 +503,15 @@ export function InvestigationWorkbenchPage() {
                       unavailable={requestedEvidenceInvalid}
                     />
                   </div>
+                  <CockpitActionRail
+                    alertId={selectedAlert?.id ?? null}
+                    canViewEvidence={Boolean(
+                      selectedEvidencePackId && tabs.some((tab) => tab.id === 'evidence'),
+                    )}
+                    caseId={ragCaseId}
+                    knowledgeBaseId={activeKnowledgeBaseId}
+                    onViewEvidence={() => setActiveTabId('evidence')}
+                  />
                 </div>
               </Card>
 

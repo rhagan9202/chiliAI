@@ -101,6 +101,21 @@ Task 1 notes:
 - [ ] Keep layout dense and operational across desktop, tablet, and mobile.
 - [ ] Include empty states for missing graph, evidence, policy, peer context, and case.
 
+Task 2 notes:
+
+- First action-rail slice added validated first-viewport actions for the active cockpit
+  context: open selected alert, open selected case, and jump to the selected evidence pack.
+- The actions receive only validated alert/case/evidence IDs from Task 1, so invalid URL
+  context remains visible as unavailable but is not offered as an operational handoff.
+- Focused red/green verification:
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 32 passed.
+- Final verification passed:
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 64 passed.
+  - `pnpm exec eslint src/pages/InvestigationWorkbenchPage.tsx src/pages/AlertFeedPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+
 ## Task 3: Peer, Typology, And Policy Context Panels
 
 **Files:**

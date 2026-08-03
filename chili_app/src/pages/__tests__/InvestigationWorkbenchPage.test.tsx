@@ -726,6 +726,60 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.queryByText('Fallback evidence.')).not.toBeInTheDocument()
   })
 
+  it('renders cockpit actions only for validated alert, case, and evidence context', async () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Action rail evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    expect(screen.getByRole('link', { name: 'Open alert' })).toHaveAttribute(
+      'href',
+      '/alerts?kb=kb-live&alert=alert-live',
+    )
+    expect(screen.getByRole('link', { name: 'Open case' })).toHaveAttribute(
+      'href',
+      '/cases?kb=kb-live&case=case-1',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'View cockpit evidence' }))
+
+    expect(screen.getByText('Action rail evidence.')).toBeInTheDocument()
+  })
+
   it('launches Ask AI with explicit cockpit state instead of the fallback entity alert', async () => {
     selectLiveProvider()
     mocks.alerts = [
