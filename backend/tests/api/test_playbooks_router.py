@@ -19,10 +19,10 @@ from api.dependencies import (
 from api.middleware.auth import User, get_current_user
 from api.routers import playbooks as playbooks_router
 from config.loader import load_config
-from config.schema import AuthConfig, DomainConfig
+from config.schema import AuthConfig, DomainConfig, FraudPlaybookConfig
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from playbooks.adapters.in_memory import InMemoryPlaybookRepository
-from playbooks.models import PlaybookImportArtifact
+from playbooks.models import PlaybookImportArtifact, PlaybookSnapshot
 from playbooks.service import PlaybookService
 from shared.types import KnowledgeBase
 
@@ -206,6 +206,54 @@ def test_published_playbooks_are_scoped_to_knowledge_base() -> None:
     ]
     assert kb_2.published == []
     assert kb_2.published_total == 0
+
+
+def test_list_playbooks_adopts_legacy_snapshots_for_authorized_kb() -> None:
+    config = _domain_config()
+    kb_repository = _repository_with_kbs()
+    repository, service = _repository_service(config)
+    repository.upsert_snapshot(
+        PlaybookSnapshot(
+            snapshot_id="__legacy__:medicare_fraud:external_review:v3",
+            knowledge_base_id="__legacy__",
+            domain_name="medicare_fraud",
+            playbook_id="external_review",
+            version="v3",
+            status="published",
+            definition=FraudPlaybookConfig(
+                id="external_review",
+                version="v3",
+                title="External Review",
+                status="published",
+            ),
+            source="api_import",
+            published_by="admin-legacy",
+        )
+    )
+
+    listed = playbooks_router.list_playbooks(
+        "kb-1",
+        50,
+        0,
+        kb_repository,
+        repository,
+        service,
+        config,
+        _viewer(),
+    )
+
+    assert [(item.knowledge_base_id, item.playbook_id, item.version) for item in listed.published] == [
+        ("kb-1", "external_review", "v3")
+    ]
+    assert (
+        repository.get_snapshot(
+            knowledge_base_id="kb-1",
+            domain_name="medicare_fraud",
+            playbook_id="external_review",
+            version="v3",
+        )
+        is not None
+    )
 
 
 def test_get_playbook_version_finds_config_seed_beyond_first_page() -> None:

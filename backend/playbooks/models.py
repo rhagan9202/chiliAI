@@ -12,6 +12,7 @@ from shared.utils import utc_now
 
 PlaybookStatus = Literal["draft", "published", "retired"]
 PlaybookSnapshotSource = Literal["domain_config", "api_import", "api_publish"]
+LEGACY_PLAYBOOK_KNOWLEDGE_BASE_ID = "__legacy__"
 
 
 class PlaybookSnapshot(BaseModel):
@@ -110,4 +111,5 @@ __all__ = [
     "PlaybookSnapshotPage",
     "PlaybookSnapshotSource",
     "PlaybookStatus",
+    "LEGACY_PLAYBOOK_KNOWLEDGE_BASE_ID",
 ]

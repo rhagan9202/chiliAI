@@ -98,6 +98,10 @@ def list_playbooks(
             limit=limit,
             offset=offset,
         )
+        service.adopt_legacy_snapshots(
+            knowledge_base_id=knowledge_base_id,
+            domain_name=domain_name,
+        )
         published = playbook_repository.list_snapshots(
             knowledge_base_id=knowledge_base_id,
             domain_name=domain_name,
@@ -171,6 +175,10 @@ def get_playbook_version(
         kb_repository,
         user,
         domain_config,
+    )
+    service.adopt_legacy_snapshots(
+        knowledge_base_id=knowledge_base_id,
+        domain_name=domain_name,
     )
     snapshot = playbook_repository.get_snapshot(
         knowledge_base_id=knowledge_base_id,

@@ -128,6 +128,46 @@ def test_import_accepts_non_seed_playbook_definitions() -> None:
     assert artifact.playbooks[0].status == "published"
 
 
+def test_export_adopts_legacy_snapshots_for_target_knowledge_base() -> None:
+    repository, service = _repository_service()
+    repository.upsert_snapshot(
+        PlaybookSnapshot(
+            snapshot_id="__legacy__:medicare_fraud:external_review:v3",
+            knowledge_base_id="__legacy__",
+            domain_name="medicare_fraud",
+            playbook_id="external_review",
+            version="v3",
+            status="published",
+            definition=FraudPlaybookConfig(
+                id="external_review",
+                version="v3",
+                title="External Review",
+                summary="Migrated from the domain-only snapshot table.",
+                status="published",
+            ),
+            source="api_import",
+            published_by="admin-legacy",
+        )
+    )
+
+    artifact = service.export_domain_playbooks(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+    )
+
+    adopted = repository.get_snapshot(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+        playbook_id="external_review",
+        version="v3",
+    )
+    assert [playbook.id for playbook in artifact.playbooks] == ["external_review"]
+    assert adopted is not None
+    assert adopted.snapshot_id == "kb-playbooks:medicare_fraud:external_review:v3"
+    assert adopted.definition.summary == "Migrated from the domain-only snapshot table."
+    assert adopted.source == "api_import"
+
+
 def test_import_rejects_conflicting_existing_snapshot() -> None:
     service = _service()
     service.import_playbooks(
