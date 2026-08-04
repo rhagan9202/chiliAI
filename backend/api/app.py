@@ -37,6 +37,7 @@ from api.routers.rag import router as rag_router
 from api.routers.records import router as records_router
 from api.routers.scorecards import router as scorecards_router
 from api.routers.score_runs import router as score_runs_router
+from api.routers.workflow_definitions import router as workflow_definitions_router
 from api.routers.workflows import router as workflows_router
 from api.routers.ws import router as ws_router
 from config.loader import load_config
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(scorecards_router)
     app.include_router(score_runs_router)
+    app.include_router(workflow_definitions_router)
     app.include_router(playbooks_router)
     app.include_router(housing_router)
     app.include_router(identity_router)

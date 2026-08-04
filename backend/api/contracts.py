@@ -746,6 +746,105 @@ class PlaybookExportResponse(BaseModel):
     artifact: PlaybookImportArtifact
 
 
+WorkflowDefinitionStatusValue = Literal["draft", "approved", "retired"]
+WorkflowRunTargetTypeValue = Literal["alert", "entity", "case", "knowledge_base"]
+WorkflowFailureModeValue = Literal["fail_workflow", "continue", "require_approval"]
+WorkflowDefinitionInputValue = str | int | float | bool
+
+
+class WorkflowStepDefinitionPayload(BaseModel):
+    """Payload for one executable step in a workflow definition."""
+
+    step_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    capability_ref: str = Field(min_length=1)
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    condition: str | None = None
+    retry_policy: dict[str, int] | None = None
+    requires_human_approval: bool = False
+    on_failure: WorkflowFailureModeValue = "fail_workflow"
+
+
+class WorkflowDefinitionCreatePayload(BaseModel):
+    """Payload for creating a draft workflow definition."""
+
+    definition_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    description: str | None = None
+    domain_name: str | None = None
+    allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    steps: list[WorkflowStepDefinitionPayload] = Field(min_length=1)
+
+
+class WorkflowDefinitionUpdatePayload(BaseModel):
+    """Payload for updating a draft workflow definition."""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    domain_name: str | None = None
+    allowed_capability_refs: list[str] | None = None
+    steps: list[WorkflowStepDefinitionPayload] | None = Field(default=None, min_length=1)
+
+
+class WorkflowDefinitionRunRequestPayload(BaseModel):
+    """Payload for requesting an approved workflow definition run."""
+
+    target_type: WorkflowRunTargetTypeValue
+    target_id: str = Field(min_length=1)
+    inputs: dict[str, WorkflowDefinitionInputValue] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, min_length=1)
+
+
+class WorkflowStepDefinitionResponse(BaseModel):
+    """One executable step in a workflow definition response."""
+
+    step_id: str
+    label: str
+    capability_ref: str
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    condition: str | None = None
+    retry_policy: dict[str, int] | None = None
+    requires_human_approval: bool = False
+    on_failure: WorkflowFailureModeValue
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    """KB-scoped workflow definition snapshot."""
+
+    snapshot_id: str
+    definition_id: str
+    knowledge_base_id: str
+    domain_name: str | None = None
+    name: str
+    description: str | None = None
+    version: str
+    status: WorkflowDefinitionStatusValue
+    allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    steps: list[WorkflowStepDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[WorkflowStepDefinitionResponse], [])
+    )
+    created_by: str
+    approved_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+    retired_at: datetime | None = None
+
+
+class WorkflowDefinitionListResponse(BaseModel):
+    """Page of KB-scoped workflow definition snapshots."""
+
+    items: list[WorkflowDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[WorkflowDefinitionResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -1804,4 +1903,15 @@ __all__ = [
     "ScoreRunStartRequest",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
+    "WorkflowDefinitionCreatePayload",
+    "WorkflowDefinitionInputValue",
+    "WorkflowDefinitionListResponse",
+    "WorkflowDefinitionResponse",
+    "WorkflowDefinitionRunRequestPayload",
+    "WorkflowDefinitionStatusValue",
+    "WorkflowDefinitionUpdatePayload",
+    "WorkflowFailureModeValue",
+    "WorkflowRunTargetTypeValue",
+    "WorkflowStepDefinitionPayload",
+    "WorkflowStepDefinitionResponse",
 ]

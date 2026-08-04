@@ -194,6 +194,9 @@ from playbooks.adapters.in_memory import InMemoryPlaybookRepository
 from playbooks.adapters.postgres import PostgresPlaybookRepository
 from playbooks.repository import PlaybookRepository
 from playbooks.service import PlaybookService
+from workflow_definitions.adapters.in_memory import InMemoryWorkflowDefinitionRepository
+from workflow_definitions.repository import WorkflowDefinitionRepository
+from workflow_definitions.service import WorkflowDefinitionService
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -408,6 +411,8 @@ __all__ = [
     "get_vector_store",
     "get_vectorstore_service",
     "get_workflow_run_store",
+    "get_workflow_definition_repository",
+    "get_workflow_definition_service",
     "get_workflow_tracker",
     "resolve_event_bus_settings",
 ]
@@ -2711,6 +2716,16 @@ def get_playbook_service(
     return PlaybookService(repository=repository, domain_config=config)
 
 
+def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRepository:
+    """Return the workflow definition repository for API-authored drafts."""
+    return _memoize_config_derived(
+        request.app,
+        "workflow_definition_repository",
+        lambda: InMemoryWorkflowDefinitionRepository(),
+        guard=lambda value: isinstance(value, WorkflowDefinitionRepository),
+    )
+
+
 def get_score_run_service(
     repository: ScoreRunRepositoryProtocol = Depends(get_score_run_repository),
     event_bus: EventBus = Depends(get_event_bus),
@@ -3272,6 +3287,17 @@ def _create_workflow_run_store() -> WorkflowRunStoreProtocol:
     return create_workflow_run_store_from_env()
 
 
+def get_workflow_definition_service(
+    repository: WorkflowDefinitionRepository = Depends(
+        get_workflow_definition_repository
+    ),
+    run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+) -> WorkflowDefinitionService:
+    """Return the workflow definition service for KB-scoped definitions."""
+    return WorkflowDefinitionService(repository, run_store, audit_service)
+
+
 def get_agent_service(
     run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
     event_bus: EventBus = Depends(get_event_bus),
@@ -3393,6 +3419,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "scorecard_run_repository",
     "score_run_repository",
     "playbook_repository",
+    "workflow_definition_repository",
     "risk_projection_repository",
 )
 
