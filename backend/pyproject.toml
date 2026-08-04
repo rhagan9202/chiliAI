@@ -92,7 +92,7 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*"]
+           "conversations*", "workflow_definitions*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
