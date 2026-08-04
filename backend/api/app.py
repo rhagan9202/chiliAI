@@ -32,6 +32,7 @@ from api.routers.identity import router as identity_router
 from api.routers.investigation import router as investigation_router
 from api.routers.knowledgebases import router as knowledgebases_router
 from api.routers.policy import router as policy_router
+from api.routers.playbooks import router as playbooks_router
 from api.routers.rag import router as rag_router
 from api.routers.records import router as records_router
 from api.routers.scorecards import router as scorecards_router
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(scorecards_router)
     app.include_router(score_runs_router)
+    app.include_router(playbooks_router)
     app.include_router(housing_router)
     app.include_router(identity_router)
     app.include_router(policy_router)

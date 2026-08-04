@@ -626,6 +626,124 @@ class ScoreRunListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+PlaybookStatusValue = Literal["draft", "published", "retired"]
+PlaybookSnapshotSourceValue = Literal["domain_config", "api_import", "api_publish"]
+
+
+class PlaybookEvidenceRequirementResponse(BaseModel):
+    """Evidence requirement configured for one fraud playbook."""
+
+    id: str
+    label: str
+    description: str = ""
+    source_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    required: bool = True
+
+
+class PlaybookWorkflowStepResponse(BaseModel):
+    """Workflow template step configured for one fraud playbook."""
+
+    id: str
+    label: str
+    capability_ref: str
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    requires_human_approval: bool = False
+
+
+class PlaybookRagPromptResponse(BaseModel):
+    """RAG prompt template configured for one fraud playbook."""
+
+    id: str
+    model_ref: str
+    prompt_version: str
+    system_prompt: str
+    user_prompt: str
+
+
+class PlaybookResponse(BaseModel):
+    """Config-authored fraud playbook definition."""
+
+    id: str
+    version: str
+    title: str
+    summary: str = ""
+    status: PlaybookStatusValue
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    evidence_requirements: list[PlaybookEvidenceRequirementResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookEvidenceRequirementResponse], [])
+    )
+    workflow_steps: list[PlaybookWorkflowStepResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookWorkflowStepResponse], [])
+    )
+    rag_prompts: list[PlaybookRagPromptResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookRagPromptResponse], [])
+    )
+    decision_guidance: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    export_tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class PlaybookSnapshotResponse(BaseModel):
+    """Immutable published playbook snapshot."""
+
+    snapshot_id: str
+    domain_name: str
+    playbook_id: str
+    version: str
+    status: PlaybookStatusValue
+    definition: PlaybookResponse
+    source: PlaybookSnapshotSourceValue
+    published_by: str
+    published_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlaybookListResponse(BaseModel):
+    """KB-scoped playbook catalog page plus published snapshots."""
+
+    items: list[PlaybookResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookResponse], [])
+    )
+    published: list[PlaybookSnapshotResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookSnapshotResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    published_total: int = Field(ge=0)
+    published_limit: int = Field(ge=0)
+    published_offset: int = Field(ge=0)
+
+
+class PlaybookPublishRequestPayload(BaseModel):
+    """Payload for publishing a config-authored playbook seed."""
+
+    version: str = Field(default="v1", min_length=1)
+
+
+class PlaybookImportRequestPayload(BaseModel):
+    """Payload for importing portable domain playbooks."""
+
+    artifact: dict[str, object]
+
+
+class PlaybookImportResponse(BaseModel):
+    """Import result summary."""
+
+    domain_name: str
+    imported_count: int = Field(ge=0)
+    snapshot_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class PlaybookExportResponse(BaseModel):
+    """Portable playbook artifact wrapper."""
+
+    artifact: dict[str, object]
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -1641,6 +1759,18 @@ __all__ = [
     "PolicyItemListResponse",
     "PolicyItemSummaryResponse",
     "PolicyTriageRequest",
+    "PlaybookEvidenceRequirementResponse",
+    "PlaybookExportResponse",
+    "PlaybookImportRequestPayload",
+    "PlaybookImportResponse",
+    "PlaybookListResponse",
+    "PlaybookPublishRequestPayload",
+    "PlaybookRagPromptResponse",
+    "PlaybookResponse",
+    "PlaybookSnapshotResponse",
+    "PlaybookSnapshotSourceValue",
+    "PlaybookStatusValue",
+    "PlaybookWorkflowStepResponse",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskProjectionItemResponse",

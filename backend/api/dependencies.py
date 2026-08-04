@@ -190,6 +190,10 @@ from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from analytics.score_runs.service import ScoreRunService, create_score_run_service
+from playbooks.adapters.in_memory import InMemoryPlaybookRepository
+from playbooks.adapters.postgres import PostgresPlaybookRepository
+from playbooks.repository import PlaybookRepository
+from playbooks.service import PlaybookService
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -373,6 +377,8 @@ __all__ = [
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
+    "get_playbook_repository",
+    "get_playbook_service",
     "get_score_run_repository",
     "get_score_run_service",
     "get_scorecard_run_repository",
@@ -2678,6 +2684,32 @@ def get_score_run_repository(request: Request) -> ScoreRunRepositoryProtocol:
     )
 
 
+def get_playbook_repository(request: Request) -> PlaybookRepository:
+    """Return the playbook snapshot repository selected by database backend."""
+
+    def build() -> PlaybookRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryPlaybookRepository()
+        return PostgresPlaybookRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "playbook_repository",
+        build,
+        guard=lambda value: isinstance(value, PlaybookRepository),
+    )
+
+
+def get_playbook_service(
+    repository: PlaybookRepository = Depends(get_playbook_repository),
+    config: DomainConfig = Depends(get_domain_config),
+) -> PlaybookService:
+    """Return the playbook service for config seeds and published snapshots."""
+
+    return PlaybookService(repository=repository, domain_config=config)
+
+
 def get_score_run_service(
     repository: ScoreRunRepositoryProtocol = Depends(get_score_run_repository),
     event_bus: EventBus = Depends(get_event_bus),
@@ -3358,6 +3390,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "policy_repository",
     "scorecard_run_repository",
     "score_run_repository",
+    "playbook_repository",
     "risk_projection_repository",
 )
 

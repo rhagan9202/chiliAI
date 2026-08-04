@@ -2880,6 +2880,9 @@
             ],
             "default": null
           },
+          "playbooks": {
+            "$ref": "#/components/schemas/FraudPlaybookCatalogConfig"
+          },
           "policy_rules": {
             "items": {
               "$ref": "#/components/schemas/PolicyRulePack"
@@ -4343,6 +4346,124 @@
           "source_ref"
         ],
         "title": "FeatureSourceMappingResponse",
+        "type": "object"
+      },
+      "FraudPlaybookCatalogConfig": {
+        "description": "Versioned collection of domain-pack-authored fraud playbooks.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FraudPlaybookConfig"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "FraudPlaybookCatalogConfig",
+        "type": "object"
+      },
+      "FraudPlaybookConfig": {
+        "description": "A versioned fraud investigation playbook authored in a domain pack.",
+        "properties": {
+          "decision_guidance": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Guidance",
+            "type": "array"
+          },
+          "evidence_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookEvidenceRequirementConfig"
+            },
+            "title": "Evidence Requirements",
+            "type": "array"
+          },
+          "export_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Export Tags",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "rag_prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookRagPromptConfig"
+            },
+            "title": "Rag Prompts",
+            "type": "array"
+          },
+          "status": {
+            "default": "draft",
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "workflow_steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookWorkflowStepConfig"
+            },
+            "title": "Workflow Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "FraudPlaybookConfig",
         "type": "object"
       },
       "FraudTypologyConfig": {
@@ -6699,6 +6820,542 @@
           }
         },
         "title": "PeerStatsConfig",
+        "type": "object"
+      },
+      "PlaybookEvidenceRequirementConfig": {
+        "description": "One evidence item a playbook expects before a decision.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PlaybookEvidenceRequirementConfig",
+        "type": "object"
+      },
+      "PlaybookEvidenceRequirementResponse": {
+        "description": "Evidence requirement configured for one fraud playbook.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PlaybookEvidenceRequirementResponse",
+        "type": "object"
+      },
+      "PlaybookExportResponse": {
+        "description": "Portable playbook artifact wrapper.",
+        "properties": {
+          "artifact": {
+            "additionalProperties": true,
+            "title": "Artifact",
+            "type": "object"
+          }
+        },
+        "required": [
+          "artifact"
+        ],
+        "title": "PlaybookExportResponse",
+        "type": "object"
+      },
+      "PlaybookImportRequestPayload": {
+        "description": "Payload for importing portable domain playbooks.",
+        "properties": {
+          "artifact": {
+            "additionalProperties": true,
+            "title": "Artifact",
+            "type": "object"
+          }
+        },
+        "required": [
+          "artifact"
+        ],
+        "title": "PlaybookImportRequestPayload",
+        "type": "object"
+      },
+      "PlaybookImportResponse": {
+        "description": "Import result summary.",
+        "properties": {
+          "domain_name": {
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "imported_count": {
+            "minimum": 0.0,
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Snapshot Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain_name",
+          "imported_count"
+        ],
+        "title": "PlaybookImportResponse",
+        "type": "object"
+      },
+      "PlaybookListResponse": {
+        "description": "KB-scoped playbook catalog page plus published snapshots.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 0.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "published": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookSnapshotResponse"
+            },
+            "title": "Published",
+            "type": "array"
+          },
+          "published_limit": {
+            "minimum": 0.0,
+            "title": "Published Limit",
+            "type": "integer"
+          },
+          "published_offset": {
+            "minimum": 0.0,
+            "title": "Published Offset",
+            "type": "integer"
+          },
+          "published_total": {
+            "minimum": 0.0,
+            "title": "Published Total",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "published_total",
+          "published_limit",
+          "published_offset"
+        ],
+        "title": "PlaybookListResponse",
+        "type": "object"
+      },
+      "PlaybookPublishRequestPayload": {
+        "description": "Payload for publishing a config-authored playbook seed.",
+        "properties": {
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "PlaybookPublishRequestPayload",
+        "type": "object"
+      },
+      "PlaybookRagPromptConfig": {
+        "description": "Prompt template metadata tied to a fraud playbook.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "model_ref": {
+            "default": "default",
+            "minLength": 1,
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "prompt_version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "system_prompt": {
+            "minLength": 1,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "user_prompt": {
+            "minLength": 1,
+            "title": "User Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "system_prompt",
+          "user_prompt"
+        ],
+        "title": "PlaybookRagPromptConfig",
+        "type": "object"
+      },
+      "PlaybookRagPromptResponse": {
+        "description": "RAG prompt template configured for one fraud playbook.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model_ref": {
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "system_prompt": {
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "user_prompt": {
+            "title": "User Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model_ref",
+          "prompt_version",
+          "system_prompt",
+          "user_prompt"
+        ],
+        "title": "PlaybookRagPromptResponse",
+        "type": "object"
+      },
+      "PlaybookResponse": {
+        "description": "Config-authored fraud playbook definition.",
+        "properties": {
+          "decision_guidance": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Guidance",
+            "type": "array"
+          },
+          "evidence_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookEvidenceRequirementResponse"
+            },
+            "title": "Evidence Requirements",
+            "type": "array"
+          },
+          "export_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Export Tags",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "rag_prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookRagPromptResponse"
+            },
+            "title": "Rag Prompts",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "workflow_steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookWorkflowStepResponse"
+            },
+            "title": "Workflow Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "status"
+        ],
+        "title": "PlaybookResponse",
+        "type": "object"
+      },
+      "PlaybookSnapshotResponse": {
+        "description": "Immutable published playbook snapshot.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PlaybookResponse"
+          },
+          "domain_name": {
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "published_by": {
+            "title": "Published By",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "domain_config",
+              "api_import",
+              "api_publish"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "domain_name",
+          "playbook_id",
+          "version",
+          "status",
+          "definition",
+          "source",
+          "published_by",
+          "published_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlaybookSnapshotResponse",
+        "type": "object"
+      },
+      "PlaybookWorkflowStepConfig": {
+        "description": "Data-only workflow template step for later execution engines.",
+        "properties": {
+          "capability_ref": {
+            "minLength": 1,
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "PlaybookWorkflowStepConfig",
+        "type": "object"
+      },
+      "PlaybookWorkflowStepResponse": {
+        "description": "Workflow template step configured for one fraud playbook.",
+        "properties": {
+          "capability_ref": {
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "PlaybookWorkflowStepResponse",
         "type": "object"
       },
       "PolicyCitation": {
@@ -14503,6 +15160,291 @@
         "summary": "Get Feature Catalog",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks": {
+      "get": {
+        "description": "Return config-authored playbooks and published snapshots for one KB.",
+        "operationId": "list_playbooks_knowledgebases__knowledge_base_id__playbooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/export": {
+      "get": {
+        "description": "Export published playbooks for one KB domain, falling back to seeds.",
+        "operationId": "export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/import": {
+      "post": {
+        "description": "Import a portable playbook artifact for one KB domain.",
+        "operationId": "import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookImportRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/publish": {
+      "post": {
+        "description": "Publish a config-authored seed playbook as an immutable snapshot.",
+        "operationId": "publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookPublishRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Playbook",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/versions/{version}": {
+      "get": {
+        "description": "Return one published playbook version or config-authored seed.",
+        "operationId": "get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Playbook Version",
+        "tags": [
+          "playbooks"
         ]
       }
     },

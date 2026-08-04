@@ -1213,7 +1213,7 @@ git commit -m "Persist SAFE-CMS-013 playbook snapshots"
 - Modify: `chili_app/src/lib/api/schema.ts`
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Create `backend/tests/api/test_playbooks_router.py` with tests for:
 
@@ -1226,7 +1226,7 @@ def test_export_import_round_trips_domain_artifact() -> None: ...
 
 Use the auth-enabled pattern from `backend/tests/api/test_identity_router.py` and the KB entitlement pattern from `backend/api/routers/score_runs.py`.
 
-- [ ] **Step 2: Run API tests to verify RED**
+- [x] **Step 2: Run API tests to verify RED**
 
 Run:
 
@@ -1236,7 +1236,7 @@ uv run --project backend pytest backend/tests/api/test_playbooks_router.py -q
 
 Expected: FAIL because the router and API dependencies do not exist.
 
-- [ ] **Step 3: Add API contracts**
+- [x] **Step 3: Add API contracts**
 
 Add response/request models in `backend/api/contracts.py`:
 
@@ -1258,7 +1258,7 @@ class PlaybookExportResponse(BaseModel):
 
 Map `FraudPlaybookConfig` fields directly and keep prompts visible only as configured strings; redact no secrets because no secret fields are allowed.
 
-- [ ] **Step 4: Add dependencies and router**
+- [x] **Step 4: Add dependencies and router**
 
 Add `get_playbook_repository()` and `get_playbook_service()` in `backend/api/dependencies.py`, using Postgres when `get_connection_provider()` is available and `InMemoryPlaybookRepository` otherwise.
 
@@ -1286,7 +1286,7 @@ Each endpoint must:
 3. Resolve `domain_name = kb.domain_name or domain_config.domain.name`.
 4. Return 404 for missing/inaccessible KB or missing playbook.
 
-- [ ] **Step 5: Register router and OpenAPI guards**
+- [x] **Step 5: Register router and OpenAPI guards**
 
 Modify `backend/api/app.py` to include `playbooks_router`.
 
@@ -1302,7 +1302,7 @@ Modify `backend/tests/api/test_app.py` expected paths and tags:
 
 Expected tag: `"playbooks"`.
 
-- [ ] **Step 6: Run API tests to verify GREEN**
+- [x] **Step 6: Run API tests to verify GREEN**
 
 Run:
 
@@ -1314,7 +1314,7 @@ uv run --project backend pyright backend/api/contracts.py backend/api/dependenci
 
 Expected: pytest passes, ruff passes, pyright reports 0 errors.
 
-- [ ] **Step 7: Regenerate contracts**
+- [x] **Step 7: Regenerate contracts**
 
 Run:
 
@@ -1325,7 +1325,7 @@ npm run codegen:api --prefix chili_app
 
 Expected: generated schema includes `Playbook*` response/request models and playbook paths.
 
-- [ ] **Step 8: Commit Task 4**
+- [x] **Step 8: Commit Task 4**
 
 Run:
 

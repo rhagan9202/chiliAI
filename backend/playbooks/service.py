@@ -43,6 +43,16 @@ class PlaybookService:
             offset=max(offset, 0),
         )
 
+    def get_seed_playbook(
+        self, *, domain_name: str, playbook_id: str, version: str
+    ) -> FraudPlaybookConfig | None:
+        """Return one config-authored playbook by natural key."""
+        return self._find_seed(
+            domain_name=domain_name,
+            playbook_id=playbook_id,
+            version=version,
+        )
+
     def publish_seed_playbook(self, request: PlaybookPublishRequest) -> PlaybookSnapshot:
         seed = self._seed_by_id(
             domain_name=request.domain_name,

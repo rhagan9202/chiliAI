@@ -1405,6 +1405,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Playbooks
+         * @description Return config-authored playbooks and published snapshots for one KB.
+         */
+        get: operations["list_playbooks_knowledgebases__knowledge_base_id__playbooks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Playbooks
+         * @description Export published playbooks for one KB domain, falling back to seeds.
+         */
+        get: operations["export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Playbooks
+         * @description Import a portable playbook artifact for one KB domain.
+         */
+        post: operations["import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Playbook
+         * @description Publish a config-authored seed playbook as an immutable snapshot.
+         */
+        post: operations["publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Playbook Version
+         * @description Return one published playbook version or config-authored seed.
+         */
+        get: operations["get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/score-runs": {
         parameters: {
             query?: never;
@@ -3057,6 +3157,7 @@ export interface components {
             monitoring: components["schemas"]["MonitoringConfig"] | null;
             /** @default null */
             peer_stats: components["schemas"]["PeerStatsConfig"] | null;
+            playbooks?: components["schemas"]["FraudPlaybookCatalogConfig"];
             /** Policy Rules */
             policy_rules?: components["schemas"]["PolicyRulePack"][];
             /** @default null */
@@ -3686,6 +3787,61 @@ export interface components {
             source_ref: string;
             /** Source Type */
             source_type: string;
+        };
+        /**
+         * FraudPlaybookCatalogConfig
+         * @description Versioned collection of domain-pack-authored fraud playbooks.
+         */
+        FraudPlaybookCatalogConfig: {
+            /** Items */
+            items?: components["schemas"]["FraudPlaybookConfig"][];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * FraudPlaybookConfig
+         * @description A versioned fraud investigation playbook authored in a domain pack.
+         */
+        FraudPlaybookConfig: {
+            /** Decision Guidance */
+            decision_guidance?: string[];
+            /** Evidence Requirements */
+            evidence_requirements?: components["schemas"]["PlaybookEvidenceRequirementConfig"][];
+            /** Export Tags */
+            export_tags?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Rag Prompts */
+            rag_prompts?: components["schemas"]["PlaybookRagPromptConfig"][];
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+            /** Workflow Steps */
+            workflow_steps?: components["schemas"]["PlaybookWorkflowStepConfig"][];
         };
         /**
          * FraudTypologyConfig
@@ -4810,6 +4966,275 @@ export interface components {
             cohorts?: components["schemas"]["PeerCohortDefinitionConfig"][];
             /** Metrics */
             metrics?: components["schemas"]["PeerMetricSpec"][];
+        };
+        /**
+         * PlaybookEvidenceRequirementConfig
+         * @description One evidence item a playbook expects before a decision.
+         */
+        PlaybookEvidenceRequirementConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Source Types */
+            source_types?: string[];
+        };
+        /**
+         * PlaybookEvidenceRequirementResponse
+         * @description Evidence requirement configured for one fraud playbook.
+         */
+        PlaybookEvidenceRequirementResponse: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Source Types */
+            source_types?: string[];
+        };
+        /**
+         * PlaybookExportResponse
+         * @description Portable playbook artifact wrapper.
+         */
+        PlaybookExportResponse: {
+            /** Artifact */
+            artifact: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PlaybookImportRequestPayload
+         * @description Payload for importing portable domain playbooks.
+         */
+        PlaybookImportRequestPayload: {
+            /** Artifact */
+            artifact: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PlaybookImportResponse
+         * @description Import result summary.
+         */
+        PlaybookImportResponse: {
+            /** Domain Name */
+            domain_name: string;
+            /** Imported Count */
+            imported_count: number;
+            /** Snapshot Ids */
+            snapshot_ids?: string[];
+        };
+        /**
+         * PlaybookListResponse
+         * @description KB-scoped playbook catalog page plus published snapshots.
+         */
+        PlaybookListResponse: {
+            /** Items */
+            items?: components["schemas"]["PlaybookResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Published */
+            published?: components["schemas"]["PlaybookSnapshotResponse"][];
+            /** Published Limit */
+            published_limit: number;
+            /** Published Offset */
+            published_offset: number;
+            /** Published Total */
+            published_total: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PlaybookPublishRequestPayload
+         * @description Payload for publishing a config-authored playbook seed.
+         */
+        PlaybookPublishRequestPayload: {
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * PlaybookRagPromptConfig
+         * @description Prompt template metadata tied to a fraud playbook.
+         */
+        PlaybookRagPromptConfig: {
+            /** Id */
+            id: string;
+            /**
+             * Model Ref
+             * @default default
+             */
+            model_ref: string;
+            /**
+             * Prompt Version
+             * @default v1
+             */
+            prompt_version: string;
+            /** System Prompt */
+            system_prompt: string;
+            /** User Prompt */
+            user_prompt: string;
+        };
+        /**
+         * PlaybookRagPromptResponse
+         * @description RAG prompt template configured for one fraud playbook.
+         */
+        PlaybookRagPromptResponse: {
+            /** Id */
+            id: string;
+            /** Model Ref */
+            model_ref: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** System Prompt */
+            system_prompt: string;
+            /** User Prompt */
+            user_prompt: string;
+        };
+        /**
+         * PlaybookResponse
+         * @description Config-authored fraud playbook definition.
+         */
+        PlaybookResponse: {
+            /** Decision Guidance */
+            decision_guidance?: string[];
+            /** Evidence Requirements */
+            evidence_requirements?: components["schemas"]["PlaybookEvidenceRequirementResponse"][];
+            /** Export Tags */
+            export_tags?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Rag Prompts */
+            rag_prompts?: components["schemas"]["PlaybookRagPromptResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /** Version */
+            version: string;
+            /** Workflow Steps */
+            workflow_steps?: components["schemas"]["PlaybookWorkflowStepResponse"][];
+        };
+        /**
+         * PlaybookSnapshotResponse
+         * @description Immutable published playbook snapshot.
+         */
+        PlaybookSnapshotResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["PlaybookResponse"];
+            /** Domain Name */
+            domain_name: string;
+            /** Playbook Id */
+            playbook_id: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Published By */
+            published_by: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "domain_config" | "api_import" | "api_publish";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * PlaybookWorkflowStepConfig
+         * @description Data-only workflow template step for later execution engines.
+         */
+        PlaybookWorkflowStepConfig: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Id */
+            id: string;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+        };
+        /**
+         * PlaybookWorkflowStepResponse
+         * @description Workflow template step configured for one fraud playbook.
+         */
+        PlaybookWorkflowStepResponse: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Id */
+            id: string;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
         };
         /**
          * PolicyCitation
@@ -8839,6 +9264,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_playbooks_knowledgebases__knowledge_base_id__playbooks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookImportRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                playbook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookPublishRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                playbook_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookResponse"];
                 };
             };
             /** @description Validation Error */
