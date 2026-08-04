@@ -503,7 +503,7 @@ git commit -m "Add SAFE-CMS-013 playbook config schema"
 - Create: `backend/tests/playbooks/test_in_memory.py`
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Create `backend/tests/playbooks/test_service.py`:
 
@@ -598,7 +598,7 @@ def test_publish_unknown_seed_playbook_raises_key_error() -> None:
         )
 ```
 
-- [ ] **Step 2: Run service tests to verify RED**
+- [x] **Step 2: Run service tests to verify RED**
 
 Run:
 
@@ -608,7 +608,7 @@ uv run --project backend pytest backend/tests/playbooks/test_service.py -q
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'playbooks'`.
 
-- [ ] **Step 3: Add playbook models**
+- [x] **Step 3: Add playbook models**
 
 Create `backend/playbooks/models.py`:
 
@@ -697,7 +697,7 @@ class PlaybookRef(BaseModel):
     title: str = ""
 ```
 
-- [ ] **Step 4: Add repository protocol and in-memory adapter**
+- [x] **Step 4: Add repository protocol and in-memory adapter**
 
 Create `backend/playbooks/repository.py`:
 
@@ -772,7 +772,7 @@ class InMemoryPlaybookRepository:
         )
 ```
 
-- [ ] **Step 5: Add service**
+- [x] **Step 5: Add service**
 
 Create `backend/playbooks/service.py`:
 
@@ -885,7 +885,7 @@ class PlaybookService:
 
 Create `backend/playbooks/__init__.py` and `backend/playbooks/adapters/__init__.py` with exports.
 
-- [ ] **Step 6: Run service tests to verify GREEN**
+- [x] **Step 6: Run service tests to verify GREEN**
 
 Run:
 
@@ -896,7 +896,7 @@ uv run --project backend pytest backend/tests/playbooks/test_in_memory.py -q
 
 Expected: PASS.
 
-- [ ] **Step 7: Run quality checks**
+- [x] **Step 7: Run quality checks**
 
 Run:
 
@@ -907,7 +907,7 @@ uv run --project backend pyright backend/playbooks backend/tests/playbooks
 
 Expected: ruff passes and pyright reports 0 errors.
 
-- [ ] **Step 8: Commit Task 2**
+- [x] **Step 8: Commit Task 2**
 
 Run:
 
