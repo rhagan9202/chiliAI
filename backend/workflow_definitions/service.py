@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
-from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
+from agent.models import MetadataValue, WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from auditlog.models import AuditEventCreate, JsonSummary
 from auditlog.service import AuditLogService
 from shared.utils import generate_id, utc_now
@@ -268,6 +268,28 @@ class WorkflowDefinitionService:
             raise WorkflowDefinitionConflictError(
                 "Only approved workflow definitions can be run."
             )
+        if request.idempotency_key is not None:
+            existing_run = self._run_store.find_by_idempotency_key(
+                knowledge_base_id=knowledge_base_id,
+                idempotency_key=request.idempotency_key,
+            )
+            if existing_run is not None:
+                if existing_run.knowledge_base_id != knowledge_base_id:
+                    raise WorkflowDefinitionConflictError(
+                        "Workflow idempotency key belongs to another knowledge base."
+                    )
+                return existing_run
+        metadata: dict[str, MetadataValue] = {
+            "definition_id": definition.definition_id,
+            "definition_version": definition.version,
+            "definition_status": definition.status,
+            "target_type": request.target_type,
+            "target_id": request.target_id,
+            "approved_by": definition.approved_by or "",
+        }
+        metadata.update(
+            {f"input.{key}": value for key, value in request.inputs.items()}
+        )
         run = WorkflowRun(
             workflow_id=generate_id(),
             knowledge_base_id=knowledge_base_id,
@@ -276,14 +298,7 @@ class WorkflowDefinitionService:
             steps=[
                 WorkflowStepState(step_name=step.step_id) for step in definition.steps
             ],
-            metadata={
-                "definition_id": definition.definition_id,
-                "definition_version": definition.version,
-                "definition_status": definition.status,
-                "target_type": request.target_type,
-                "target_id": request.target_id,
-                "approved_by": definition.approved_by or "",
-            },
+            metadata=metadata,
             idempotency_key=request.idempotency_key,
         )
         try:

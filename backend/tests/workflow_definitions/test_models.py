@@ -7,7 +7,9 @@ from workflow_definitions import MetadataValue as PackageMetadataValue
 from workflow_definitions.models import (
     BUILT_IN_WORKFLOW_CAPABILITIES,
     MetadataValue,
+    WorkflowDefinition,
     WorkflowDefinitionCreate,
+    WorkflowDefinitionUpdate,
     WorkflowFailureMode,
     WorkflowDefinitionRunRequest,
     WorkflowStepDefinition,
@@ -102,6 +104,35 @@ def test_human_or_case_draft_steps_force_human_approval() -> None:
     assert result.errors == [
         "Step 'draft-note' using capability 'case.note.draft' must require human approval."
     ]
+
+
+def test_definition_create_requires_at_least_one_step() -> None:
+    with pytest.raises(ValidationError, match="at least 1"):
+        WorkflowDefinitionCreate(
+            definition_id="provider-review-workflow",
+            name="Provider review workflow",
+            version="v1",
+            allowed_capability_refs=["rag.query"],
+            steps=[],
+        )
+
+
+def test_definition_update_requires_at_least_one_step_when_steps_are_provided() -> None:
+    with pytest.raises(ValidationError, match="at least 1"):
+        WorkflowDefinitionUpdate(steps=[])
+
+
+def test_definition_snapshot_requires_at_least_one_step() -> None:
+    with pytest.raises(ValidationError, match="at least 1"):
+        WorkflowDefinition(
+            definition_id="provider-review-workflow",
+            knowledge_base_id="kb-1",
+            name="Provider review workflow",
+            version="v1",
+            allowed_capability_refs=["rag.query"],
+            steps=[],
+            created_by="analyst-1",
+        )
 
 
 def test_retry_policy_requires_positive_attempts() -> None:

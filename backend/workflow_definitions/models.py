@@ -54,9 +54,7 @@ class WorkflowDefinitionCreate(BaseModel):
     description: str | None = None
     domain_name: str | None = None
     allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
-    steps: list[WorkflowStepDefinition] = Field(
-        default_factory=lambda: cast(list[WorkflowStepDefinition], [])
-    )
+    steps: list[WorkflowStepDefinition] = Field(min_length=1)
 
 
 class WorkflowDefinitionUpdate(BaseModel):
@@ -64,7 +62,7 @@ class WorkflowDefinitionUpdate(BaseModel):
     description: str | None = None
     domain_name: str | None = None
     allowed_capability_refs: list[str] | None = None
-    steps: list[WorkflowStepDefinition] | None = None
+    steps: list[WorkflowStepDefinition] | None = Field(default=None, min_length=1)
 
 
 class WorkflowDefinitionRunRequest(BaseModel):
@@ -91,9 +89,7 @@ class WorkflowDefinition(BaseModel):
     version: str = Field(min_length=1)
     status: WorkflowDefinitionStatus = "draft"
     allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
-    steps: list[WorkflowStepDefinition] = Field(
-        default_factory=lambda: cast(list[WorkflowStepDefinition], [])
-    )
+    steps: list[WorkflowStepDefinition] = Field(min_length=1)
     created_by: str = Field(min_length=1)
     approved_by: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -122,6 +118,11 @@ def validate_workflow_definition_payload(
     errors: list[str] = []
     allowed_refs = payload.allowed_capability_refs or []
     steps = payload.steps or []
+
+    if isinstance(payload, WorkflowDefinitionCreate) and not steps:
+        errors.append("Workflow definition requires at least one step.")
+    if isinstance(payload, WorkflowDefinitionUpdate) and payload.steps is not None and not steps:
+        errors.append("Workflow definition requires at least one step.")
 
     for capability_ref in allowed_refs:
         if capability_ref not in BUILT_IN_WORKFLOW_CAPABILITIES:

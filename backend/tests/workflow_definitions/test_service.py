@@ -106,6 +106,24 @@ def test_create_draft_rejects_unknown_capability_before_persistence() -> None:
     assert repository.list_definitions(knowledge_base_id="kb-1").items == []
 
 
+def test_create_draft_rejects_empty_steps_before_persistence() -> None:
+    service, repository, _, _ = _service()
+    payload = WorkflowDefinitionCreate.model_construct(
+        definition_id="empty-workflow",
+        domain_name="medicare_fraud",
+        name="Empty workflow",
+        version="v1",
+        description="Invalid workflow.",
+        allowed_capability_refs=["rag.query"],
+        steps=[],
+    )
+
+    with pytest.raises(WorkflowDefinitionValidationError):
+        service.create_draft("kb-1", payload, **ACTOR_KWARGS)
+
+    assert repository.list_definitions(knowledge_base_id="kb-1").items == []
+
+
 def test_create_draft_returns_snapshot_id() -> None:
     service, _, _, _ = _service()
     payload = _valid_create_payload().model_copy(
@@ -254,6 +272,67 @@ def test_run_approved_definition_creates_queued_workflow_run_and_audit_event() -
         "target_type": "alert",
         "target_id": "alert-123",
     }
+
+
+def test_run_approved_definition_replays_same_idempotency_key_without_new_run_or_audit() -> None:
+    service, _, run_store, audit_service = _service()
+    created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
+    approved = service.approve_definition(
+        "kb-1", created.definition_id, created.version, **ADMIN_KWARGS
+    )
+    request = WorkflowDefinitionRunRequest(
+        target_type="alert",
+        target_id="alert-123",
+        idempotency_key="idem-123",
+    )
+
+    first = service.run_definition(
+        "kb-1",
+        approved.definition_id,
+        approved.version,
+        request,
+        **ACTOR_KWARGS,
+    )
+    second = service.run_definition(
+        "kb-1",
+        approved.definition_id,
+        approved.version,
+        request,
+        **ACTOR_KWARGS,
+    )
+
+    assert second.workflow_id == first.workflow_id
+    assert len(run_store.list_runs(knowledge_base_id="kb-1").items) == 1
+    run_requested_events = [
+        event
+        for event in _audit_events(audit_service)
+        if event.action == "workflow_definition.run_requested"
+    ]
+    assert len(run_requested_events) == 1
+
+
+def test_run_approved_definition_preserves_scalar_inputs_as_metadata() -> None:
+    service, _, run_store, _ = _service()
+    created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
+    approved = service.approve_definition(
+        "kb-1", created.definition_id, created.version, **ADMIN_KWARGS
+    )
+
+    run = service.run_definition(
+        "kb-1",
+        approved.definition_id,
+        approved.version,
+        WorkflowDefinitionRunRequest(
+            target_type="alert",
+            target_id="alert-123",
+            inputs={"note": "review current alert", "priority": 2},
+        ),
+        **ACTOR_KWARGS,
+    )
+
+    persisted = run_store.get_run(run.workflow_id)
+    assert persisted.metadata["input.note"] == "review current alert"
+    assert persisted.metadata["input.priority"] == 2
 
 
 def test_run_draft_is_rejected() -> None:
