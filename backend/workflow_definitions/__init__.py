@@ -1,3 +1,4 @@
+from workflow_definitions.adapters import InMemoryWorkflowDefinitionRepository
 from workflow_definitions.models import (
     BUILT_IN_WORKFLOW_CAPABILITIES,
     HUMAN_APPROVAL_CAPABILITIES,
@@ -15,17 +16,32 @@ from workflow_definitions.models import (
     WorkflowStepDefinition,
     validate_workflow_definition_payload,
 )
+from workflow_definitions.repository import WorkflowDefinitionRepository
+from workflow_definitions.service import (
+    WorkflowDefinitionConflictError,
+    WorkflowDefinitionError,
+    WorkflowDefinitionNotFoundError,
+    WorkflowDefinitionService,
+    WorkflowDefinitionValidationError,
+)
 
 __all__ = [
     "BUILT_IN_WORKFLOW_CAPABILITIES",
     "HUMAN_APPROVAL_CAPABILITIES",
+    "InMemoryWorkflowDefinitionRepository",
     "MetadataValue",
     "WorkflowDefinition",
     "WorkflowDefinitionCreate",
+    "WorkflowDefinitionConflictError",
+    "WorkflowDefinitionError",
+    "WorkflowDefinitionNotFoundError",
     "WorkflowDefinitionPage",
+    "WorkflowDefinitionRepository",
     "WorkflowDefinitionRunRequest",
+    "WorkflowDefinitionService",
     "WorkflowDefinitionStatus",
     "WorkflowDefinitionUpdate",
+    "WorkflowDefinitionValidationError",
     "WorkflowDefinitionValidationResult",
     "WorkflowFailureMode",
     "WorkflowRetryPolicy",
