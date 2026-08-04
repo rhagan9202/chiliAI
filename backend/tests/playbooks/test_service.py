@@ -13,6 +13,8 @@ from playbooks.models import (
 )
 from playbooks.service import PlaybookService
 
+_KB_ID = "kb-playbooks"
+
 
 def _service() -> PlaybookService:
     return PlaybookService(
@@ -47,6 +49,7 @@ def test_publish_seed_playbook_creates_immutable_snapshot() -> None:
 
     first = service.publish_seed_playbook(
         PlaybookPublishRequest(
+            knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
             playbook_id="provider_billing_spike_review",
             version="v1",
@@ -55,6 +58,7 @@ def test_publish_seed_playbook_creates_immutable_snapshot() -> None:
     )
     second = service.publish_seed_playbook(
         PlaybookPublishRequest(
+            knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
             playbook_id="provider_billing_spike_review",
             version="v1",
@@ -71,6 +75,7 @@ def test_import_export_round_trips_playbooks() -> None:
     service = _service()
     service.publish_seed_playbook(
         PlaybookPublishRequest(
+            knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
             playbook_id="provider_billing_spike_review",
             version="v1",
@@ -78,9 +83,13 @@ def test_import_export_round_trips_playbooks() -> None:
         )
     )
 
-    artifact = service.export_domain_playbooks(domain_name="medicare_fraud")
+    artifact = service.export_domain_playbooks(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+    )
     imported = service.import_playbooks(
         PlaybookImportArtifact.model_validate_json(artifact.model_dump_json()),
+        knowledge_base_id=_KB_ID,
         actor_user_id="admin-2",
     )
 
@@ -105,12 +114,16 @@ def test_import_accepts_non_seed_playbook_definitions() -> None:
                 )
             ],
         ),
+        knowledge_base_id=_KB_ID,
         actor_user_id="admin-2",
     )
 
-    artifact = service.export_domain_playbooks(domain_name="medicare_fraud")
+    artifact = service.export_domain_playbooks(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+    )
 
-    assert result.snapshot_ids == ["medicare_fraud:external_review:v3"]
+    assert result.snapshot_ids == ["kb-playbooks:medicare_fraud:external_review:v3"]
     assert {playbook.id for playbook in artifact.playbooks} == {"external_review"}
     assert artifact.playbooks[0].status == "published"
 
@@ -131,6 +144,7 @@ def test_import_rejects_conflicting_existing_snapshot() -> None:
                 )
             ],
         ),
+        knowledge_base_id=_KB_ID,
         actor_user_id="admin-2",
     )
 
@@ -149,10 +163,14 @@ def test_import_rejects_conflicting_existing_snapshot() -> None:
                     )
                 ],
             ),
+            knowledge_base_id=_KB_ID,
             actor_user_id="admin-3",
         )
 
-    artifact = service.export_domain_playbooks(domain_name="medicare_fraud")
+    artifact = service.export_domain_playbooks(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+    )
     assert artifact.playbooks[0].summary == "Original definition."
 
 
@@ -172,14 +190,24 @@ def test_import_same_definition_is_idempotent() -> None:
         ],
     )
 
-    first = service.import_playbooks(artifact, actor_user_id="admin-2")
+    first = service.import_playbooks(
+        artifact,
+        knowledge_base_id=_KB_ID,
+        actor_user_id="admin-2",
+    )
     before = repository.get_snapshot(
+        knowledge_base_id=_KB_ID,
         domain_name="medicare_fraud",
         playbook_id="external_review",
         version="v3",
     )
-    second = service.import_playbooks(artifact, actor_user_id="admin-3")
+    second = service.import_playbooks(
+        artifact,
+        knowledge_base_id=_KB_ID,
+        actor_user_id="admin-3",
+    )
     after = repository.get_snapshot(
+        knowledge_base_id=_KB_ID,
         domain_name="medicare_fraud",
         playbook_id="external_review",
         version="v3",
@@ -193,7 +221,10 @@ def test_import_same_definition_is_idempotent() -> None:
     assert after.published_at == before.published_at
     assert after.created_at == before.created_at
     assert after.updated_at == before.updated_at
-    exported = service.export_domain_playbooks(domain_name="medicare_fraud")
+    exported = service.export_domain_playbooks(
+        knowledge_base_id=_KB_ID,
+        domain_name="medicare_fraud",
+    )
     assert exported.playbooks[0].summary == "Original definition."
 
 
@@ -215,6 +246,7 @@ def test_import_rejects_conflicting_config_seed_snapshot() -> None:
                     )
                 ],
             ),
+            knowledge_base_id=_KB_ID,
             actor_user_id="admin-2",
         )
 
@@ -244,11 +276,55 @@ def test_import_rejects_artifact_without_partial_writes() -> None:
                     ),
                 ],
             ),
+            knowledge_base_id=_KB_ID,
             actor_user_id="admin-2",
         )
 
     assert (
         repository.get_snapshot(
+            knowledge_base_id=_KB_ID,
+            domain_name="medicare_fraud",
+            playbook_id="external_review",
+            version="v3",
+        )
+        is None
+    )
+
+
+def test_import_rejects_unknown_references_without_partial_writes() -> None:
+    repository, service = _repository_service()
+
+    with pytest.raises(ValueError, match="references unknown feature_id 'missing_feature'"):
+        service.import_playbooks(
+            PlaybookImportArtifact(
+                domain_name="medicare_fraud",
+                catalog_version="external-v1",
+                playbooks=[
+                    FraudPlaybookConfig(
+                        id="external_review",
+                        version="v3",
+                        title="External Review",
+                        summary="This should not be written.",
+                        status="draft",
+                    ),
+                    FraudPlaybookConfig(
+                        id="bad_refs",
+                        version="v1",
+                        title="Bad Refs",
+                        status="draft",
+                        typology_ids=["missing_typology"],
+                        feature_ids=["missing_feature"],
+                        policy_rule_ids=["missing_pack.missing_rule"],
+                    ),
+                ],
+            ),
+            knowledge_base_id=_KB_ID,
+            actor_user_id="admin-2",
+        )
+
+    assert (
+        repository.get_snapshot(
+            knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
             playbook_id="external_review",
             version="v3",
@@ -261,7 +337,8 @@ def test_publish_seed_rejects_conflicting_existing_snapshot() -> None:
     repository, service = _repository_service()
     repository.upsert_snapshot(
         PlaybookSnapshot(
-            snapshot_id="medicare_fraud:provider_billing_spike_review:v1",
+            snapshot_id="kb-playbooks:medicare_fraud:provider_billing_spike_review:v1",
+            knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
             playbook_id="provider_billing_spike_review",
             version="v1",
@@ -281,6 +358,7 @@ def test_publish_seed_rejects_conflicting_existing_snapshot() -> None:
     with pytest.raises(ValueError, match="already exists with different definition"):
         service.publish_seed_playbook(
             PlaybookPublishRequest(
+                knowledge_base_id=_KB_ID,
                 domain_name="medicare_fraud",
                 playbook_id="provider_billing_spike_review",
                 version="v1",
@@ -323,6 +401,7 @@ def test_publish_unknown_seed_playbook_raises_key_error() -> None:
     with pytest.raises(KeyError):
         service.publish_seed_playbook(
             PlaybookPublishRequest(
+                knowledge_base_id=_KB_ID,
                 domain_name="medicare_fraud",
                 playbook_id="missing",
                 version="v1",

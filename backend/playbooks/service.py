@@ -60,12 +60,14 @@ class PlaybookService:
             version=request.version,
         )
         snapshot = self._snapshot_from_definition(
+            knowledge_base_id=request.knowledge_base_id,
             domain_name=request.domain_name,
             definition=seed,
             source="domain_config",
             actor_user_id=request.actor_user_id,
         )
         existing = self._repository.get_snapshot(
+            knowledge_base_id=request.knowledge_base_id,
             domain_name=request.domain_name,
             playbook_id=request.playbook_id,
             version=request.version,
@@ -80,9 +82,14 @@ class PlaybookService:
 
         return self._repository.upsert_snapshot(snapshot)
 
-    def export_domain_playbooks(self, *, domain_name: str) -> PlaybookImportArtifact:
+    def export_domain_playbooks(
+        self, *, knowledge_base_id: str, domain_name: str
+    ) -> PlaybookImportArtifact:
         self._require_active_domain(domain_name)
-        definitions = self._published_definitions(domain_name)
+        definitions = self._published_definitions(
+            knowledge_base_id=knowledge_base_id,
+            domain_name=domain_name,
+        )
         if not definitions:
             definitions = [
                 playbook.model_copy(deep=True)
@@ -96,11 +103,17 @@ class PlaybookService:
         )
 
     def import_playbooks(
-        self, artifact: PlaybookImportArtifact, *, actor_user_id: str
+        self,
+        artifact: PlaybookImportArtifact,
+        *,
+        knowledge_base_id: str,
+        actor_user_id: str,
     ) -> PlaybookImportResult:
         self._require_active_domain(artifact.domain_name)
+        self._validate_import_references(artifact)
         snapshots = [
             self._snapshot_from_definition(
+                knowledge_base_id=knowledge_base_id,
                 domain_name=artifact.domain_name,
                 definition=playbook,
                 source="api_import",
@@ -112,6 +125,7 @@ class PlaybookService:
         for snapshot in snapshots:
             self._validate_import_snapshot(snapshot)
             existing = self._repository.get_snapshot(
+                knowledge_base_id=snapshot.knowledge_base_id,
                 domain_name=snapshot.domain_name,
                 playbook_id=snapshot.playbook_id,
                 version=snapshot.version,
@@ -179,12 +193,46 @@ class PlaybookService:
                 "with config-authored seed."
             )
 
-    def _published_definitions(self, domain_name: str) -> list[FraudPlaybookConfig]:
+    def _validate_import_references(self, artifact: PlaybookImportArtifact) -> None:
+        errors: list[str] = []
+        feature_ids = {feature.id for feature in self._domain_config.feature_catalog.features}
+        typology_ids = {typology.id for typology in self._domain_config.typologies}
+        policy_rule_ids = {
+            f"{pack.id}.{rule.id}"
+            for pack in self._domain_config.policy_rules
+            for rule in pack.rules
+        }
+        for playbook in artifact.playbooks:
+            for typology_id in playbook.typology_ids:
+                if typology_id not in typology_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown typology_id "
+                        f"'{typology_id}'."
+                    )
+            for feature_id in playbook.feature_ids:
+                if feature_id not in feature_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown feature_id "
+                        f"'{feature_id}'."
+                    )
+            for policy_rule_id in playbook.policy_rule_ids:
+                if policy_rule_id not in policy_rule_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown policy_rule_id "
+                        f"'{policy_rule_id}'."
+                    )
+        if errors:
+            raise ValueError("; ".join(errors))
+
+    def _published_definitions(
+        self, *, knowledge_base_id: str, domain_name: str
+    ) -> list[FraudPlaybookConfig]:
         definitions: list[FraudPlaybookConfig] = []
         limit = 100
         offset = 0
         while True:
             page = self._repository.list_snapshots(
+                knowledge_base_id=knowledge_base_id,
                 domain_name=domain_name,
                 limit=limit,
                 offset=offset,
@@ -199,6 +247,7 @@ class PlaybookService:
     def _snapshot_from_definition(
         self,
         *,
+        knowledge_base_id: str,
         domain_name: str,
         definition: FraudPlaybookConfig,
         source: PlaybookSnapshotSource,
@@ -209,7 +258,10 @@ class PlaybookService:
             update={"status": "published"}, deep=True
         )
         return PlaybookSnapshot(
-            snapshot_id=f"{domain_name}:{definition.id}:{definition.version}",
+            snapshot_id=(
+                f"{knowledge_base_id}:{domain_name}:{definition.id}:{definition.version}"
+            ),
+            knowledge_base_id=knowledge_base_id,
             domain_name=domain_name,
             playbook_id=definition.id,
             version=definition.version,

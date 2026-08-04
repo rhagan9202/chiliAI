@@ -16,15 +16,25 @@ class PlaybookRepository(Protocol):
         ...
 
     def get_snapshot(
-        self, *, domain_name: str, playbook_id: str, version: str
+        self,
+        *,
+        knowledge_base_id: str,
+        domain_name: str,
+        playbook_id: str,
+        version: str,
     ) -> PlaybookSnapshot | None:
         """Return one snapshot by natural key, or ``None`` if absent."""
         ...
 
     def list_snapshots(
-        self, *, domain_name: str, limit: int = 50, offset: int = 0
+        self,
+        *,
+        knowledge_base_id: str,
+        domain_name: str,
+        limit: int = 50,
+        offset: int = 0,
     ) -> PlaybookSnapshotPage:
-        """Return a deterministic page of snapshots for a domain."""
+        """Return a deterministic page of snapshots for a KB/domain scope."""
         ...
 
 

@@ -1598,7 +1598,7 @@ git commit -m "Surface SAFE-CMS-013 playbooks"
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 - Add or modify frontend management page tests from Task 6 if management actions were split.
 
-- [ ] **Step 1: Run full focused verification**
+- [x] **Step 1: Run full focused verification**
 
 Run:
 
@@ -1624,7 +1624,7 @@ git diff --check
 
 Expected: all checks pass; build may retain the existing Vite chunk-size warning.
 
-- [ ] **Step 2: Request code review**
+- [x] **Step 2: Request code review**
 
 Use Superpowers `requesting-code-review` against the full SAFE-CMS-013 diff. Ask the reviewer to focus on:
 
@@ -1634,7 +1634,7 @@ Use Superpowers `requesting-code-review` against the full SAFE-CMS-013 diff. Ask
 - Historical case/alert/evidence playbook version preservation.
 - Frontend rendering and no CMS literals in shared components.
 
-- [ ] **Step 3: Apply review feedback and rerun focused checks**
+- [x] **Step 3: Apply review feedback and rerun focused checks**
 
 For every accepted finding:
 
@@ -1643,7 +1643,7 @@ For every accepted finding:
 3. Rerun the relevant focused tests.
 4. Rerun the full focused verification command group from Step 1.
 
-- [ ] **Step 4: Update backlog only after review approval**
+- [x] **Step 4: Update backlog only after review approval**
 
 Change the first SAFE-CMS-013 row in `docs/project/planning/backlog.md` from:
 
@@ -1669,7 +1669,7 @@ to:
 Implemented 2026-08-04: PI 4 ADR, config-authored seed playbooks, DB-published immutable snapshots, historical alert/evidence/case refs, KB-scoped API, export/import, and frontend playbook surfaces.
 ```
 
-- [ ] **Step 5: Commit closeout**
+- [x] **Step 5: Commit closeout**
 
 Run:
 

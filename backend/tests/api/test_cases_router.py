@@ -102,3 +102,19 @@ def test_new_playbook_version_does_not_rewrite_existing_case_ref() -> None:
     detail = client.get(f"/cases/{case_id}", params=kb)
     assert detail.status_code == 200
     assert detail.json()["case"]["playbook_ref"] == _PLAYBOOK_REF
+
+
+def test_create_case_rejects_client_supplied_playbook_ref() -> None:
+    client = _client_with_alerts([])
+
+    response = client.post(
+        "/cases",
+        params={"knowledge_base_id": "kb-1"},
+        json={
+            "title": "Untrusted provenance",
+            "priority": "medium",
+            "playbook_ref": _PLAYBOOK_REF,
+        },
+    )
+
+    assert response.status_code == 422

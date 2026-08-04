@@ -2441,7 +2441,6 @@ export interface components {
             alert_ids?: string[];
             /** Assignee */
             assignee?: string | null;
-            playbook_ref?: components["schemas"]["PlaybookRef"] | null;
             /**
              * Priority
              * @enum {string}
@@ -5018,20 +5017,32 @@ export interface components {
          * @description Portable playbook artifact wrapper.
          */
         PlaybookExportResponse: {
-            /** Artifact */
-            artifact: {
-                [key: string]: unknown;
-            };
+            artifact: components["schemas"]["PlaybookImportArtifact"];
+        };
+        /**
+         * PlaybookImportArtifact
+         * @description Portable artifact containing validated domain playbooks.
+         */
+        PlaybookImportArtifact: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Domain Name */
+            domain_name: string;
+            /** Playbooks */
+            playbooks?: components["schemas"]["FraudPlaybookConfig"][];
+            /**
+             * Schema Version
+             * @default playbooks.v1
+             * @constant
+             */
+            schema_version: "playbooks.v1";
         };
         /**
          * PlaybookImportRequestPayload
          * @description Payload for importing portable domain playbooks.
          */
         PlaybookImportRequestPayload: {
-            /** Artifact */
-            artifact: {
-                [key: string]: unknown;
-            };
+            artifact: components["schemas"]["PlaybookImportArtifact"];
         };
         /**
          * PlaybookImportResponse
@@ -5182,6 +5193,8 @@ export interface components {
             definition: components["schemas"]["PlaybookResponse"];
             /** Domain Name */
             domain_name: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
             /** Playbook Id */
             playbook_id: string;
             /**

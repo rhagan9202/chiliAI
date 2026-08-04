@@ -19,6 +19,7 @@ from playbooks.models import PlaybookSnapshot
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _DOMAIN = "safe_cms_013_pg"
+_KB_ID = "kb-safe-cms-013-pg"
 
 pytestmark = pytest.mark.integration
 
@@ -62,6 +63,7 @@ def provider(database_url: str) -> Iterator[ConnectionProvider]:
 
 def _snapshot(
     *,
+    knowledge_base_id: str = _KB_ID,
     domain_name: str = _DOMAIN,
     playbook_id: str = "provider_billing_spike_review",
     version: str = "v1",
@@ -69,7 +71,8 @@ def _snapshot(
 ) -> PlaybookSnapshot:
     published_at = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
     return PlaybookSnapshot(
-        snapshot_id=f"{domain_name}:{playbook_id}:{version}",
+        snapshot_id=f"{knowledge_base_id}:{domain_name}:{playbook_id}:{version}",
+        knowledge_base_id=knowledge_base_id,
         domain_name=domain_name,
         playbook_id=playbook_id,
         version=version,
@@ -96,6 +99,7 @@ def test_postgres_playbook_repository_round_trips_snapshot(
 
     stored = repository.upsert_snapshot(snapshot)
     found = repository.get_snapshot(
+        knowledge_base_id=snapshot.knowledge_base_id,
         domain_name=snapshot.domain_name,
         playbook_id=snapshot.playbook_id,
         version=snapshot.version,
@@ -103,7 +107,10 @@ def test_postgres_playbook_repository_round_trips_snapshot(
 
     assert found is not None
     assert stored == found
-    assert found.snapshot_id == "safe_cms_013_pg:provider_billing_spike_review:v1"
+    assert (
+        found.snapshot_id
+        == "kb-safe-cms-013-pg:safe_cms_013_pg:provider_billing_spike_review:v1"
+    )
     assert found.definition.title == "provider_billing_spike_review title"
 
 
@@ -119,6 +126,7 @@ def test_postgres_playbook_repository_lists_by_domain_and_sorts_by_key(
     )
     repository.upsert_snapshot(
         _snapshot(
+            knowledge_base_id=_KB_ID + "-other",
             domain_name=_DOMAIN + "_other",
             playbook_id="housing_outlier_review",
             version="v1",
@@ -128,7 +136,12 @@ def test_postgres_playbook_repository_lists_by_domain_and_sorts_by_key(
         _snapshot(playbook_id="identity_mismatch_review", version="v1")
     )
 
-    page = repository.list_snapshots(domain_name=_DOMAIN, limit=2, offset=1)
+    page = repository.list_snapshots(
+        knowledge_base_id=_KB_ID,
+        domain_name=_DOMAIN,
+        limit=2,
+        offset=1,
+    )
 
     assert page.total == 3
     assert [(item.playbook_id, item.version) for item in page.items] == [
@@ -149,6 +162,7 @@ def test_postgres_playbook_repository_rejects_conflicting_definition(
         repository.upsert_snapshot(conflicting)
 
     stored = repository.get_snapshot(
+        knowledge_base_id=_KB_ID,
         domain_name=_DOMAIN,
         playbook_id="provider_billing_spike_review",
         version="v1",

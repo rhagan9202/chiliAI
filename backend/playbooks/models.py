@@ -18,6 +18,7 @@ class PlaybookSnapshot(BaseModel):
     """Immutable published playbook version."""
 
     snapshot_id: str = Field(min_length=1)
+    knowledge_base_id: str = Field(min_length=1)
     domain_name: str = Field(min_length=1)
     playbook_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -55,6 +56,7 @@ class PlaybookSnapshotPage(BaseModel):
 class PlaybookPublishRequest(BaseModel):
     """Request to publish a config-authored seed playbook."""
 
+    knowledge_base_id: str = Field(min_length=1)
     domain_name: str = Field(min_length=1)
     playbook_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -65,10 +67,11 @@ class PlaybookImportArtifact(BaseModel):
     """Portable artifact containing validated domain playbooks."""
 
     schema_version: Literal["playbooks.v1"] = "playbooks.v1"
-    domain_name: str = Field(min_length=1)
-    catalog_version: str = Field(min_length=1)
+    domain_name: str = Field(min_length=1, max_length=128)
+    catalog_version: str = Field(min_length=1, max_length=128)
     playbooks: list[FraudPlaybookConfig] = Field(
-        default_factory=lambda: cast(list[FraudPlaybookConfig], [])
+        default_factory=lambda: cast(list[FraudPlaybookConfig], []),
+        max_length=100,
     )
 
     @model_validator(mode="after")

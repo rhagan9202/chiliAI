@@ -9,12 +9,14 @@ from playbooks.models import PlaybookSnapshot
 
 def _snapshot(
     *,
+    knowledge_base_id: str = "kb-playbooks",
     domain_name: str = "medicare_fraud",
     playbook_id: str = "provider_billing_spike_review",
     version: str = "v1",
 ) -> PlaybookSnapshot:
     return PlaybookSnapshot(
-        snapshot_id=f"{domain_name}:{playbook_id}:{version}",
+        snapshot_id=f"{knowledge_base_id}:{domain_name}:{playbook_id}:{version}",
+        knowledge_base_id=knowledge_base_id,
         domain_name=domain_name,
         playbook_id=playbook_id,
         version=version,
@@ -39,6 +41,7 @@ def test_upsert_and_get_return_deep_copies() -> None:
     original.definition.title = "mutated original"
 
     found = repository.get_snapshot(
+        knowledge_base_id="kb-playbooks",
         domain_name="medicare_fraud",
         playbook_id="provider_billing_spike_review",
         version="v1",
@@ -49,6 +52,7 @@ def test_upsert_and_get_return_deep_copies() -> None:
     found.definition.title = "mutated fetched snapshot"
 
     found_again = repository.get_snapshot(
+        knowledge_base_id="kb-playbooks",
         domain_name="medicare_fraud",
         playbook_id="provider_billing_spike_review",
         version="v1",
@@ -68,6 +72,7 @@ def test_upsert_rejects_conflicting_existing_snapshot() -> None:
         repository.upsert_snapshot(conflicting)
 
     stored = repository.get_snapshot(
+        knowledge_base_id="kb-playbooks",
         domain_name="medicare_fraud",
         playbook_id="provider_billing_spike_review",
         version="v1",
@@ -86,6 +91,7 @@ def test_list_snapshots_filters_by_domain_and_paginates_deterministically() -> N
     )
     repository.upsert_snapshot(
         _snapshot(
+            knowledge_base_id="kb-other",
             domain_name="air_force_housing",
             playbook_id="housing_outlier_review",
             version="v1",
@@ -95,7 +101,12 @@ def test_list_snapshots_filters_by_domain_and_paginates_deterministically() -> N
         _snapshot(playbook_id="identity_mismatch_review", version="v1")
     )
 
-    page = repository.list_snapshots(domain_name="medicare_fraud", limit=2, offset=1)
+    page = repository.list_snapshots(
+        knowledge_base_id="kb-playbooks",
+        domain_name="medicare_fraud",
+        limit=2,
+        offset=1,
+    )
 
     assert page.total == 3
     assert [(item.playbook_id, item.version) for item in page.items] == [

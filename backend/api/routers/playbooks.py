@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import ValidationError
 
 from api.contracts import (
     PlaybookEvidenceRequirementResponse,
@@ -29,12 +26,7 @@ from api.middleware.auth import User
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, FraudPlaybookConfig
 from knowledgebases.protocols import KnowledgeBaseRepository
-from playbooks.models import (
-    PlaybookImportArtifact,
-    PlaybookImportResult,
-    PlaybookPublishRequest,
-    PlaybookSnapshot,
-)
+from playbooks.models import PlaybookImportResult, PlaybookPublishRequest, PlaybookSnapshot
 from playbooks.repository import PlaybookRepository
 from playbooks.service import PlaybookService
 from shared.types import KnowledgeBase
@@ -107,6 +99,7 @@ def list_playbooks(
             offset=offset,
         )
         published = playbook_repository.list_snapshots(
+            knowledge_base_id=knowledge_base_id,
             domain_name=domain_name,
             limit=limit,
             offset=offset,
@@ -147,11 +140,14 @@ def export_playbooks(
         domain_config,
     )
     try:
-        artifact = service.export_domain_playbooks(domain_name=domain_name)
+        artifact = service.export_domain_playbooks(
+            knowledge_base_id=knowledge_base_id,
+            domain_name=domain_name,
+        )
     except KeyError as exc:
         raise _not_found("Knowledge base", knowledge_base_id) from exc
     return PlaybookExportResponse(
-        artifact=cast(dict[str, object], artifact.model_dump(mode="json"))
+        artifact=artifact,
     )
 
 
@@ -177,6 +173,7 @@ def get_playbook_version(
         domain_config,
     )
     snapshot = playbook_repository.get_snapshot(
+        knowledge_base_id=knowledge_base_id,
         domain_name=domain_name,
         playbook_id=playbook_id,
         version=version,
@@ -223,6 +220,7 @@ def publish_playbook(
         snapshot = service.publish_seed_playbook(
             PlaybookPublishRequest(
                 domain_name=domain_name,
+                knowledge_base_id=knowledge_base_id,
                 playbook_id=playbook_id,
                 version=payload.version,
                 actor_user_id=user.user_id,
@@ -259,13 +257,7 @@ def import_playbooks(
         user,
         domain_config,
     )
-    try:
-        artifact = PlaybookImportArtifact.model_validate(payload.artifact)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
+    artifact = payload.artifact
     if artifact.domain_name != domain_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -275,7 +267,11 @@ def import_playbooks(
             ),
         )
     try:
-        result = service.import_playbooks(artifact, actor_user_id=user.user_id)
+        result = service.import_playbooks(
+            artifact,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=user.user_id,
+        )
     except KeyError as exc:
         raise _not_found("Knowledge base", knowledge_base_id) from exc
     except ValueError as exc:
@@ -342,6 +338,7 @@ def _playbook_response(playbook: FraudPlaybookConfig) -> PlaybookResponse:
 def _snapshot_response(snapshot: PlaybookSnapshot) -> PlaybookSnapshotResponse:
     return PlaybookSnapshotResponse(
         snapshot_id=snapshot.snapshot_id,
+        knowledge_base_id=snapshot.knowledge_base_id,
         domain_name=snapshot.domain_name,
         playbook_id=snapshot.playbook_id,
         version=snapshot.version,

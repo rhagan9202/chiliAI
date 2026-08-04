@@ -1230,6 +1230,7 @@
         "type": "object"
       },
       "CaseCreateRequest": {
+        "additionalProperties": false,
         "description": "Payload for creating a new case.",
         "properties": {
           "alert_ids": {
@@ -1249,16 +1250,6 @@
               }
             ],
             "title": "Assignee"
-          },
-          "playbook_ref": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlaybookRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "priority": {
             "enum": [
@@ -6922,9 +6913,7 @@
         "description": "Portable playbook artifact wrapper.",
         "properties": {
           "artifact": {
-            "additionalProperties": true,
-            "title": "Artifact",
-            "type": "object"
+            "$ref": "#/components/schemas/PlaybookImportArtifact"
           }
         },
         "required": [
@@ -6933,13 +6922,48 @@
         "title": "PlaybookExportResponse",
         "type": "object"
       },
+      "PlaybookImportArtifact": {
+        "description": "Portable artifact containing validated domain playbooks.",
+        "properties": {
+          "catalog_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "domain_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "playbooks": {
+            "items": {
+              "$ref": "#/components/schemas/FraudPlaybookConfig"
+            },
+            "maxItems": 100,
+            "title": "Playbooks",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "playbooks.v1",
+            "default": "playbooks.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain_name",
+          "catalog_version"
+        ],
+        "title": "PlaybookImportArtifact",
+        "type": "object"
+      },
       "PlaybookImportRequestPayload": {
         "description": "Payload for importing portable domain playbooks.",
         "properties": {
           "artifact": {
-            "additionalProperties": true,
-            "title": "Artifact",
-            "type": "object"
+            "$ref": "#/components/schemas/PlaybookImportArtifact"
           }
         },
         "required": [
@@ -7256,6 +7280,10 @@
             "title": "Domain Name",
             "type": "string"
           },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
           "playbook_id": {
             "title": "Playbook Id",
             "type": "string"
@@ -7303,6 +7331,7 @@
         },
         "required": [
           "snapshot_id",
+          "knowledge_base_id",
           "domain_name",
           "playbook_id",
           "version",

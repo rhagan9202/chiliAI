@@ -18,21 +18,22 @@ from playbooks.models import (
 __all__ = ["PostgresPlaybookRepository"]
 
 _COLUMNS = (
-    "domain_name, playbook_id, version, status, definition, source, published_by, "
-    "published_at, created_at, updated_at"
+    "knowledge_base_id, domain_name, playbook_id, version, status, definition, "
+    "source, published_by, published_at, created_at, updated_at"
 )
 
 _INSERT_DO_NOTHING = f"""
     INSERT INTO fraud_playbook_snapshots (
         {_COLUMNS}
-    ) VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
-    ON CONFLICT (domain_name, playbook_id, version) DO NOTHING
+    ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+    ON CONFLICT (knowledge_base_id, domain_name, playbook_id, version) DO NOTHING
 """
 
 _SELECT_BY_KEY = f"""
     SELECT {_COLUMNS}
     FROM fraud_playbook_snapshots
-    WHERE domain_name = %s AND playbook_id = %s AND version = %s
+    WHERE knowledge_base_id = %s AND domain_name = %s AND playbook_id = %s
+      AND version = %s
 """
 
 
@@ -48,7 +49,12 @@ class PostgresPlaybookRepository:
             conn.execute(_INSERT_DO_NOTHING, _insert_params(snapshot))
             row = conn.execute(
                 _SELECT_BY_KEY,
-                (snapshot.domain_name, snapshot.playbook_id, snapshot.version),
+                (
+                    snapshot.knowledge_base_id,
+                    snapshot.domain_name,
+                    snapshot.playbook_id,
+                    snapshot.version,
+                ),
             ).fetchone()
             if row is None:
                 conn.rollback()
@@ -68,22 +74,36 @@ class PostgresPlaybookRepository:
             return stored
 
     def get_snapshot(
-        self, *, domain_name: str, playbook_id: str, version: str
+        self,
+        *,
+        knowledge_base_id: str,
+        domain_name: str,
+        playbook_id: str,
+        version: str,
     ) -> PlaybookSnapshot | None:
         with self._provider.connection() as conn:
             row = conn.execute(
                 _SELECT_BY_KEY,
-                (domain_name, playbook_id, version),
+                (knowledge_base_id, domain_name, playbook_id, version),
             ).fetchone()
         return None if row is None else _row_to_snapshot(row)
 
     def list_snapshots(
-        self, *, domain_name: str, limit: int = 50, offset: int = 0
+        self,
+        *,
+        knowledge_base_id: str,
+        domain_name: str,
+        limit: int = 50,
+        offset: int = 0,
     ) -> PlaybookSnapshotPage:
         with self._provider.connection() as conn:
             total_row = conn.execute(
-                "SELECT count(*) FROM fraud_playbook_snapshots WHERE domain_name = %s",
-                (domain_name,),
+                """
+                SELECT count(*)
+                FROM fraud_playbook_snapshots
+                WHERE knowledge_base_id = %s AND domain_name = %s
+                """,
+                (knowledge_base_id, domain_name),
             ).fetchone()
             total = cast(int, total_row[0]) if total_row is not None else 0
             if limit <= 0 or offset < 0:
@@ -93,11 +113,11 @@ class PostgresPlaybookRepository:
                     f"""
                     SELECT {_COLUMNS}
                     FROM fraud_playbook_snapshots
-                    WHERE domain_name = %s
+                    WHERE knowledge_base_id = %s AND domain_name = %s
                     ORDER BY playbook_id ASC, version ASC
                     LIMIT %s OFFSET %s
                     """,
-                    (domain_name, limit, offset),
+                    (knowledge_base_id, domain_name, limit, offset),
                 ).fetchall()
         return PlaybookSnapshotPage(
             items=[_row_to_snapshot(row) for row in rows],
@@ -109,6 +129,7 @@ class PostgresPlaybookRepository:
 
 def _insert_params(snapshot: PlaybookSnapshot) -> tuple[object, ...]:
     return (
+        snapshot.knowledge_base_id,
         snapshot.domain_name,
         snapshot.playbook_id,
         snapshot.version,
@@ -123,21 +144,23 @@ def _insert_params(snapshot: PlaybookSnapshot) -> tuple[object, ...]:
 
 
 def _row_to_snapshot(row: Row) -> PlaybookSnapshot:
-    domain_name = cast(str, row[0])
-    playbook_id = cast(str, row[1])
-    version = cast(str, row[2])
+    knowledge_base_id = cast(str, row[0])
+    domain_name = cast(str, row[1])
+    playbook_id = cast(str, row[2])
+    version = cast(str, row[3])
     return PlaybookSnapshot(
-        snapshot_id=f"{domain_name}:{playbook_id}:{version}",
+        snapshot_id=f"{knowledge_base_id}:{domain_name}:{playbook_id}:{version}",
+        knowledge_base_id=knowledge_base_id,
         domain_name=domain_name,
         playbook_id=playbook_id,
         version=version,
-        status=cast(PlaybookStatus, row[3]),
-        definition=_decode_definition(row[4]),
-        source=cast(PlaybookSnapshotSource, row[5]),
-        published_by=cast(str, row[6]),
-        published_at=cast(datetime, row[7]),
-        created_at=cast(datetime, row[8]),
-        updated_at=cast(datetime, row[9]),
+        status=cast(PlaybookStatus, row[4]),
+        definition=_decode_definition(row[5]),
+        source=cast(PlaybookSnapshotSource, row[6]),
+        published_by=cast(str, row[7]),
+        published_at=cast(datetime, row[8]),
+        created_at=cast(datetime, row[9]),
+        updated_at=cast(datetime, row[10]),
     )
 
 

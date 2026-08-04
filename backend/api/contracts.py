@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
-from playbooks.models import PlaybookRef
+from playbooks.models import PlaybookImportArtifact, PlaybookRef
 from shared.types import Entity
 
 
@@ -690,6 +690,7 @@ class PlaybookSnapshotResponse(BaseModel):
     """Immutable published playbook snapshot."""
 
     snapshot_id: str
+    knowledge_base_id: str
     domain_name: str
     playbook_id: str
     version: str
@@ -728,7 +729,7 @@ class PlaybookPublishRequestPayload(BaseModel):
 class PlaybookImportRequestPayload(BaseModel):
     """Payload for importing portable domain playbooks."""
 
-    artifact: dict[str, object]
+    artifact: PlaybookImportArtifact
 
 
 class PlaybookImportResponse(BaseModel):
@@ -742,7 +743,7 @@ class PlaybookImportResponse(BaseModel):
 class PlaybookExportResponse(BaseModel):
     """Portable playbook artifact wrapper."""
 
-    artifact: dict[str, object]
+    artifact: PlaybookImportArtifact
 
 
 class NarrativeSectionResponse(BaseModel):
@@ -1631,11 +1632,12 @@ class HousingInstallationsResponse(BaseModel):
 class CaseCreateRequest(BaseModel):
     """Payload for creating a new case."""
 
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
-    playbook_ref: PlaybookRef | None = None
 
 
 class CaseUpdateRequest(BaseModel):

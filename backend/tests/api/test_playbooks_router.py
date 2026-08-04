@@ -164,6 +164,50 @@ def test_list_playbooks_reports_published_pagination_metadata() -> None:
     assert listed.published_offset == 0
 
 
+def test_published_playbooks_are_scoped_to_knowledge_base() -> None:
+    config = _domain_config()
+    kb_repository = _repository_with_kbs()
+    repository, service = _repository_service(config)
+
+    playbooks_router.publish_playbook(
+        "kb-1",
+        SEED_PLAYBOOK_ID,
+        PlaybookPublishRequestPayload(version="v1"),
+        kb_repository,
+        repository,
+        service,
+        config,
+        _admin(),
+    )
+
+    kb_1 = playbooks_router.list_playbooks(
+        "kb-1",
+        50,
+        0,
+        kb_repository,
+        repository,
+        service,
+        config,
+        _viewer(),
+    )
+    kb_2 = playbooks_router.list_playbooks(
+        "kb-2",
+        50,
+        0,
+        kb_repository,
+        repository,
+        service,
+        config,
+        _viewer(),
+    )
+
+    assert [(item.playbook_id, item.version) for item in kb_1.published] == [
+        (SEED_PLAYBOOK_ID, "v1")
+    ]
+    assert kb_2.published == []
+    assert kb_2.published_total == 0
+
+
 def test_get_playbook_version_finds_config_seed_beyond_first_page() -> None:
     config = _domain_config()
     seed = config.playbooks.items[0]
@@ -303,11 +347,7 @@ def test_export_import_round_trips_domain_artifact() -> None:
     )
     imported = playbooks_router.import_playbooks(
         "kb-1",
-        PlaybookImportRequestPayload(
-            artifact=PlaybookImportArtifact.model_validate(exported.artifact).model_dump(
-                mode="json"
-            )
-        ),
+        PlaybookImportRequestPayload(artifact=exported.artifact),
         kb_repository,
         repository,
         service,

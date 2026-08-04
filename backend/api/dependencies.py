@@ -1577,7 +1577,6 @@ def get_case_create_payload(
         priority=payload.priority,
         assignee=payload.assignee,
         alert_ids=list(payload.alert_ids),
-        playbook_ref=payload.playbook_ref,
     )
     return _assemble_case_detail(
         case, evidence_repository=evidence_repository, alert_store=alert_store

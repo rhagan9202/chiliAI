@@ -48,10 +48,16 @@ describe('playbooks API', () => {
 
   it('serializes publish, import, and export paths', async () => {
     apiPostMock.mockResolvedValue({ snapshot_id: 'snapshot-1' })
-    apiFetchMock.mockResolvedValue({ artifact: {} })
+    const artifact = {
+      schema_version: 'playbooks.v1' as const,
+      domain_name: 'medicare_fraud',
+      catalog_version: 'external-v1',
+      playbooks: [],
+    }
+    apiFetchMock.mockResolvedValue({ artifact })
 
     await publishPlaybook('kb live', 'billing-spike', { version: 'v2' })
-    await importPlaybooks('kb live', { artifact: { playbooks: [] } })
+    await importPlaybooks('kb live', { artifact })
     await exportPlaybooks('kb live')
 
     expect(apiPostMock).toHaveBeenNthCalledWith(
@@ -62,7 +68,7 @@ describe('playbooks API', () => {
     expect(apiPostMock).toHaveBeenNthCalledWith(
       2,
       '/knowledgebases/kb%20live/playbooks/import',
-      { artifact: { playbooks: [] } },
+      { artifact },
     )
     expect(apiFetchMock).toHaveBeenCalledWith('/knowledgebases/kb%20live/playbooks/export')
   })
