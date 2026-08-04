@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal, TypeAlias, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from shared.utils import utc_now
 
@@ -100,6 +100,11 @@ class WorkflowDefinition(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
     approved_at: datetime | None = None
     retired_at: datetime | None = None
+
+    @computed_field
+    @property
+    def snapshot_id(self) -> str:
+        return f"{self.knowledge_base_id}:{self.definition_id}:{self.version}"
 
 
 class WorkflowDefinitionPage(BaseModel):

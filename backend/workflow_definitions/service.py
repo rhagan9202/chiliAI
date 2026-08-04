@@ -142,7 +142,7 @@ class WorkflowDefinitionService:
         knowledge_base_id: str,
         definition_id: str,
         version: str,
-        payload: WorkflowDefinitionUpdate,
+        payload: WorkflowDefinitionCreate | WorkflowDefinitionUpdate,
         *,
         actor_user_id: str,
         actor_email: str | None = None,
@@ -223,6 +223,8 @@ class WorkflowDefinitionService:
             definition_id,
             version,
         )
+        if existing.status == "retired":
+            return existing
         if existing.status != "approved":
             raise WorkflowDefinitionConflictError(
                 "Only approved workflow definitions can be retired."
@@ -324,11 +326,15 @@ class WorkflowDefinitionService:
     @staticmethod
     def _apply_update(
         existing: WorkflowDefinition,
-        payload: WorkflowDefinitionUpdate,
+        payload: WorkflowDefinitionCreate | WorkflowDefinitionUpdate,
     ) -> WorkflowDefinition:
         update = payload.model_dump(exclude_unset=True)
+        update.pop("definition_id", None)
+        update.pop("version", None)
         update["updated_at"] = utc_now()
-        return existing.model_copy(update=update, deep=True)
+        merged = existing.model_dump()
+        merged.update(update)
+        return WorkflowDefinition.model_validate(merged)
 
     @staticmethod
     def _validate_payload(payload: WorkflowDefinitionCreate) -> None:

@@ -106,6 +106,33 @@ def test_create_draft_rejects_unknown_capability_before_persistence() -> None:
     assert repository.list_definitions(knowledge_base_id="kb-1").items == []
 
 
+def test_create_draft_returns_snapshot_id() -> None:
+    service, _, _, _ = _service()
+    payload = _valid_create_payload().model_copy(
+        update={"definition_id": "provider-review-workflow"}
+    )
+
+    created = service.create_draft("kb-workflows", payload, **ACTOR_KWARGS)
+
+    assert created.snapshot_id == "kb-workflows:provider-review-workflow:v1"
+
+
+def test_update_draft_accepts_full_create_payload() -> None:
+    service, _, _, _ = _service()
+    created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
+    replacement = _valid_create_payload().model_copy(update={"name": "Full replacement"})
+
+    updated = service.update_draft(
+        "kb-1",
+        created.definition_id,
+        created.version,
+        replacement,
+        **ACTOR_KWARGS,
+    )
+
+    assert updated.name == "Full replacement"
+
+
 def test_lifecycle_records_audit_events_in_order() -> None:
     service, _, _, audit_service = _service()
 
@@ -142,6 +169,30 @@ def test_lifecycle_records_audit_events_in_order() -> None:
         and event.knowledge_base_id == "kb-1"
         for event in events
     )
+
+
+def test_retire_definition_is_idempotent_without_duplicate_audit_event() -> None:
+    service, _, _, audit_service = _service()
+    created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
+    approved = service.approve_definition(
+        "kb-1", created.definition_id, created.version, **ADMIN_KWARGS
+    )
+
+    first = service.retire_definition(
+        "kb-1", approved.definition_id, approved.version, **ADMIN_KWARGS
+    )
+    second = service.retire_definition(
+        "kb-1", approved.definition_id, approved.version, **ADMIN_KWARGS
+    )
+
+    assert first.status == "retired"
+    assert second.status == "retired"
+    retire_events = [
+        event
+        for event in _audit_events(audit_service)
+        if event.action == "workflow_definition.retired"
+    ]
+    assert len(retire_events) == 1
 
 
 def test_update_rejects_approved_definitions() -> None:
