@@ -456,6 +456,261 @@ def test_typologies_and_feature_catalog_round_trip() -> None:
     ]
 
 
+def test_playbooks_and_typology_refs_round_trip() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing Spike",
+            "entity_types": ["provider"],
+            "feature_ids": ["billing_outlier"],
+            "policy_rule_ids": [],
+            "playbook_ids": ["provider_billing_spike_review"],
+        }
+    ]
+    payload["feature_catalog"] = {
+        "version": "cms-features-v1",
+        "features": [
+            {
+                "id": "billing_outlier",
+                "label": "Billing outlier",
+                "entity_types": ["provider"],
+                "typology_ids": ["billing_spike"],
+            }
+        ],
+    }
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [
+            {
+                "id": "provider_billing_spike_review",
+                "version": "v1",
+                "title": "Provider billing spike review",
+                "summary": "Review a provider whose billing pattern moved outside baseline.",
+                "status": "draft",
+                "typology_ids": ["billing_spike"],
+                "feature_ids": ["billing_outlier"],
+                "policy_rule_ids": [],
+                "evidence_requirements": [
+                    {
+                        "id": "billing_trend",
+                        "label": "Billing trend",
+                        "description": (
+                            "Compare current billing to historical and peer baselines."
+                        ),
+                        "source_types": ["risk_projection", "timeseries"],
+                        "required": True,
+                    }
+                ],
+                "workflow_steps": [
+                    {
+                        "id": "review_risk",
+                        "label": "Review risk projection",
+                        "capability_ref": "analytics.risk_projection.read",
+                        "input_refs": ["entity_id", "knowledge_base_id"],
+                        "output_refs": ["risk_summary"],
+                        "requires_human_approval": False,
+                    }
+                ],
+                "rag_prompts": [
+                    {
+                        "id": "billing_context",
+                        "model_ref": "default",
+                        "prompt_version": "v1",
+                        "system_prompt": "Answer with cited evidence only.",
+                        "user_prompt": (
+                            "Summarize the billing spike evidence for {entity_id}."
+                        ),
+                    }
+                ],
+                "decision_guidance": [
+                    "Open a case when billing spike evidence is corroborated."
+                ],
+                "export_tags": ["cms", "billing"],
+            }
+        ],
+    }
+
+    config = DomainConfig.model_validate(payload)
+
+    assert config.playbooks.version == "cms-playbooks-v1"
+    playbook = config.playbooks.items[0]
+    assert playbook.id == "provider_billing_spike_review"
+    assert playbook.evidence_requirements[0].source_types == [
+        "risk_projection",
+        "timeseries",
+    ]
+    assert config.typologies[0].playbook_ids == ["provider_billing_spike_review"]
+
+
+def test_typology_rejects_unknown_playbook_reference() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing Spike",
+            "entity_types": ["provider"],
+            "feature_ids": [],
+            "policy_rule_ids": [],
+            "playbook_ids": ["missing_playbook"],
+        }
+    ]
+
+    with pytest.raises(ValidationError, match="unknown playbook_id 'missing_playbook'"):
+        DomainConfig.model_validate(payload)
+
+
+def test_playbook_rejects_unknown_references() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [
+            {
+                "id": "bad_review",
+                "version": "v1",
+                "title": "Bad Review",
+                "summary": "Bad refs",
+                "typology_ids": ["missing_typology"],
+                "feature_ids": ["missing_feature"],
+                "policy_rule_ids": ["missing_pack.missing_rule"],
+                "evidence_requirements": [],
+                "workflow_steps": [],
+                "rag_prompts": [],
+                "decision_guidance": [],
+            }
+        ],
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        DomainConfig.model_validate(payload)
+
+    message = str(exc_info.value)
+    assert (
+        "Playbook 'bad_review' references unknown typology_id 'missing_typology'"
+        in message
+    )
+    assert (
+        "Playbook 'bad_review' references unknown feature_id 'missing_feature'"
+        in message
+    )
+    assert (
+        "Playbook 'bad_review' references unknown policy_rule_id "
+        "'missing_pack.missing_rule'" in message
+    )
+
+
+@pytest.mark.parametrize(
+    ("section_name", "duplicate_item"),
+    [
+        (
+            "evidence_requirements",
+            {
+                "id": "duplicate",
+                "label": "Evidence",
+                "source_types": [],
+            },
+        ),
+        (
+            "workflow_steps",
+            {
+                "id": "duplicate",
+                "label": "Workflow",
+                "capability_ref": "analytics.read",
+            },
+        ),
+        (
+            "rag_prompts",
+            {
+                "id": "duplicate",
+                "system_prompt": "Answer with cited evidence only.",
+                "user_prompt": "Summarize {entity_id}.",
+            },
+        ),
+    ],
+)
+def test_playbook_rejects_duplicate_nested_ids(
+    section_name: str, duplicate_item: dict[str, object]
+) -> None:
+    payload = _make_config().model_dump(mode="json")
+    playbook = {
+        "id": "duplicate_nested_review",
+        "version": "v1",
+        "title": "Duplicate Nested Review",
+        "typology_ids": [],
+        "feature_ids": [],
+        "policy_rule_ids": [],
+        "evidence_requirements": [],
+        "workflow_steps": [],
+        "rag_prompts": [],
+        "decision_guidance": [],
+    }
+    playbook[section_name] = [duplicate_item, duplicate_item]
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [playbook],
+    }
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            f"Playbook 'duplicate_nested_review' {section_name} ids must be unique"
+        ),
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_playbook_catalog_rejects_duplicate_playbook_ids() -> None:
+    payload = _make_config().model_dump(mode="json")
+    base_playbook = {
+        "id": "duplicate_review",
+        "title": "Duplicate Review",
+        "typology_ids": [],
+        "feature_ids": [],
+        "policy_rule_ids": [],
+        "evidence_requirements": [],
+        "workflow_steps": [],
+        "rag_prompts": [],
+        "decision_guidance": [],
+    }
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [
+            {**base_playbook, "version": "v1"},
+            {**base_playbook, "version": "v2"},
+        ],
+    }
+
+    with pytest.raises(ValidationError, match="playbook ids must be unique"):
+        DomainConfig.model_validate(payload)
+
+
+def test_playbook_catalog_rejects_duplicate_playbook_versions() -> None:
+    payload = _make_config().model_dump(mode="json")
+    playbook = {
+        "id": "duplicate_review",
+        "version": "v1",
+        "title": "Duplicate Review",
+        "typology_ids": [],
+        "feature_ids": [],
+        "policy_rule_ids": [],
+        "evidence_requirements": [],
+        "workflow_steps": [],
+        "rag_prompts": [],
+        "decision_guidance": [],
+    }
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [playbook, playbook],
+    }
+
+    with pytest.raises(ValidationError, match="id/version pairs must be unique"):
+        DomainConfig.model_validate(payload)
+
+
 def test_typology_rejects_unknown_feature_reference() -> None:
     payload = _make_config().model_dump(mode="json")
     payload["typologies"] = [

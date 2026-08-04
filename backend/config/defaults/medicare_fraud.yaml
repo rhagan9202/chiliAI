@@ -225,6 +225,8 @@ typologies:
     description: "Provider billing volume or amount increased beyond peer and historical norms."
     entity_types: [provider, claim]
     severity_hint: high
+    playbook_ids:
+      - provider_billing_spike_review
     feature_ids:
       - weekly_provider_billing_zscore
       - weekly_provider_claim_count_zscore
@@ -237,6 +239,8 @@ typologies:
     description: "Provider or facility behavior sits outside expected specialty or facility peer groups."
     entity_types: [provider, facility]
     severity_hint: medium
+    playbook_ids:
+      - peer_outlier_provider_review
     feature_ids:
       - specialty_peer_group_outlier
       - facility_concentration_ratio
@@ -288,6 +292,136 @@ typologies:
       - cross_kb_policy_citation_count
     policy_rule_ids:
       - billing_thresholds.claim_over_billed
+  - id: identity_mismatch
+    label: "Identity mismatch"
+    description: "Source identity links need analyst review before the canonical entity can be trusted."
+    entity_types: [provider, beneficiary]
+    severity_hint: medium
+    playbook_ids:
+      - identity_mismatch_review
+    feature_ids:
+      - identity_link_confidence
+
+playbooks:
+  version: cms-playbooks-v1
+  items:
+    - id: provider_billing_spike_review
+      version: v1
+      title: Provider billing spike review
+      summary: Review provider billing acceleration against baseline, peers, policy, and supporting records.
+      status: draft
+      typology_ids: [billing_spike]
+      feature_ids:
+        - weekly_provider_billing_zscore
+        - weekly_provider_claim_count_zscore
+        - anomalous_claim_score
+      policy_rule_ids:
+        - billing_thresholds.claim_over_billed
+      evidence_requirements:
+        - id: risk_projection
+          label: Risk projection
+          description: Current risk score, score age, and top contributing features.
+          source_types: [risk_projection, feature_value]
+          required: true
+        - id: peer_context
+          label: Peer context
+          description: Peer cohort distribution and z-score summary.
+          source_types: [peer_analysis]
+          required: true
+      workflow_steps:
+        - id: review_risk_projection
+          label: Review risk projection
+          capability_ref: analytics.risk_projection.read
+          input_refs: [knowledge_base_id, entity_id]
+          output_refs: [risk_summary]
+          requires_human_approval: false
+        - id: verify_policy_threshold
+          label: Verify policy threshold context
+          capability_ref: policy.rules.read
+          input_refs: [knowledge_base_id, entity_id, policy_rule_id]
+          output_refs: [policy_context]
+          requires_human_approval: false
+      rag_prompts:
+        - id: billing_spike_context
+          model_ref: default
+          prompt_version: v1
+          system_prompt: Answer with cited evidence only.
+          user_prompt: Summarize the billing spike evidence for {entity_id}.
+      decision_guidance:
+        - Open or attach a case when billing acceleration is corroborated by source records and peer context.
+        - Record whether the policy threshold was triggered by claim amount or accumulated billing behavior.
+      export_tags: [cms, billing, provider]
+    - id: peer_outlier_provider_review
+      version: v1
+      title: Peer outlier provider review
+      summary: Review provider behavior against configured specialty and geography peer cohorts.
+      status: draft
+      typology_ids: [peer_outlier]
+      feature_ids:
+        - specialty_peer_group_outlier
+        - weekly_provider_billing_zscore
+        - facility_concentration_ratio
+      policy_rule_ids: []
+      evidence_requirements:
+        - id: peer_distribution
+          label: Peer distribution
+          description: Cohort membership, distribution, entity value, z-score, and percentile.
+          source_types: [peer_analysis]
+          required: true
+        - id: facility_context
+          label: Facility context
+          description: Facility concentration and related claim activity.
+          source_types: [graph_metric, feature_value]
+          required: false
+      workflow_steps:
+        - id: gather_peer_context
+          label: Gather peer context
+          capability_ref: analytics.peer_analysis.read
+          input_refs: [knowledge_base_id, entity_id]
+          output_refs: [peer_summary]
+          requires_human_approval: false
+      rag_prompts:
+        - id: peer_outlier_context
+          model_ref: default
+          prompt_version: v1
+          system_prompt: Answer with cited evidence only.
+          user_prompt: Explain why {entity_id} is an outlier compared with peers.
+      decision_guidance:
+        - Escalate only when the peer cohort is large enough and supporting evidence is available.
+        - Compare peer outlier evidence with facility and claim context before assigning severity.
+      export_tags: [cms, peer, provider]
+    - id: identity_mismatch_review
+      version: v1
+      title: Identity mismatch review
+      summary: Review source identities and merge or split history before relying on the canonical entity.
+      status: draft
+      typology_ids: [identity_mismatch]
+      feature_ids:
+        - identity_link_confidence
+      policy_rule_ids: []
+      evidence_requirements:
+        - id: identity_links
+          label: Identity links
+          description: Canonical and source identity links with confidence and review state.
+          source_types: [identity_link]
+          required: true
+      workflow_steps:
+        - id: inspect_identity_links
+          label: Inspect identity links
+          capability_ref: identity.canonical.read
+          input_refs: [knowledge_base_id, entity_id]
+          output_refs: [identity_summary]
+          requires_human_approval: false
+      rag_prompts:
+        - id: identity_context
+          model_ref: default
+          prompt_version: v1
+          system_prompt: Answer with cited evidence only.
+          user_prompt: Summarize identity-link evidence and unresolved review states for {entity_id}.
+      decision_guidance:
+        - Do not treat a low-confidence identity merge as decisive until a steward review is complete.
+        - Preserve source identity evidence when opening or updating the case.
+      export_tags: [cms, identity]
 
 feature_catalog:
   version: cms-fraud-features-v1
@@ -536,6 +670,18 @@ feature_catalog:
       threshold_hints: { high: 0.75, critical: 0.9 }
       transformation_version: evidence-pack-confidence-v1
       typology_ids: [enrollment_risk, never_provided_service]
+    - id: identity_link_confidence
+      label: "Identity link confidence"
+      description: "Confidence and review status for source-to-canonical identity links."
+      value_type: decimal
+      entity_types: [provider, beneficiary]
+      source_mappings:
+        - source_type: identity_link
+          source_ref: identity.links.confidence
+          raw_fields: [entity_id, canonical_entity_id, review_state]
+      threshold_hints: { high: 0.65, critical: 0.35 }
+      transformation_version: identity-link-v1
+      typology_ids: [identity_mismatch]
 
 # graph:
 #   backend: in_memory  # use neo4j for external graph databases
