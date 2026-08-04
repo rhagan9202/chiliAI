@@ -1,6 +1,7 @@
 from workflow_definitions.models import (
     BUILT_IN_WORKFLOW_CAPABILITIES,
     HUMAN_APPROVAL_CAPABILITIES,
+    MetadataValue,
     WorkflowDefinition,
     WorkflowDefinitionCreate,
     WorkflowDefinitionPage,
@@ -18,6 +19,7 @@ from workflow_definitions.models import (
 __all__ = [
     "BUILT_IN_WORKFLOW_CAPABILITIES",
     "HUMAN_APPROVAL_CAPABILITIES",
+    "MetadataValue",
     "WorkflowDefinition",
     "WorkflowDefinitionCreate",
     "WorkflowDefinitionPage",

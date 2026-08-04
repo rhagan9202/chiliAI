@@ -3,10 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from workflow_definitions import MetadataValue as PackageMetadataValue
 from workflow_definitions.models import (
     BUILT_IN_WORKFLOW_CAPABILITIES,
+    MetadataValue,
     WorkflowDefinitionCreate,
     WorkflowFailureMode,
+    WorkflowDefinitionRunRequest,
     WorkflowStepDefinition,
     validate_workflow_definition_payload,
 )
@@ -108,6 +111,28 @@ def test_retry_policy_requires_positive_attempts() -> None:
             label="Peer context",
             capability_ref="analytics.peer_context",
             retry_policy={"max_attempts": 0},
+        )
+
+
+def test_run_request_inputs_accept_only_scalar_metadata_values() -> None:
+    assert MetadataValue == PackageMetadataValue
+    request = WorkflowDefinitionRunRequest(
+        target_type="alert",
+        target_id="alert-123",
+        inputs={"query": "peer review", "count": 3, "score": 0.75, "urgent": True},
+    )
+
+    assert request.inputs == {
+        "query": "peer review",
+        "count": 3,
+        "score": 0.75,
+        "urgent": True,
+    }
+    with pytest.raises(ValidationError):
+        WorkflowDefinitionRunRequest(
+            target_type="alert",
+            target_id="alert-123",
+            inputs={"nested": {"x": "y"}},
         )
 
 

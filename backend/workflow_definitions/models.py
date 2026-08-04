@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal, TypeAlias, cast
+from typing import Literal, TypeAlias, cast
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ HUMAN_APPROVAL_CAPABILITIES = frozenset({"case.note.draft", "human.approval"})
 
 WorkflowDefinitionStatus: TypeAlias = Literal["draft", "approved", "retired"]
 WorkflowRunTargetType: TypeAlias = Literal["alert", "entity", "case", "knowledge_base"]
-JsonObject: TypeAlias = dict[str, Any]
+MetadataValue: TypeAlias = str | int | float | bool
 
 
 class WorkflowFailureMode(StrEnum):
@@ -70,7 +70,9 @@ class WorkflowDefinitionUpdate(BaseModel):
 class WorkflowDefinitionRunRequest(BaseModel):
     target_type: WorkflowRunTargetType
     target_id: str = Field(min_length=1)
-    inputs: JsonObject = Field(default_factory=lambda: cast(JsonObject, {}))
+    inputs: dict[str, MetadataValue] = Field(
+        default_factory=lambda: cast(dict[str, MetadataValue], {})
+    )
     idempotency_key: str | None = Field(default=None, min_length=1)
 
 
@@ -153,6 +155,7 @@ def validate_workflow_definition_payload(
 __all__ = [
     "BUILT_IN_WORKFLOW_CAPABILITIES",
     "HUMAN_APPROVAL_CAPABILITIES",
+    "MetadataValue",
     "WorkflowDefinition",
     "WorkflowDefinitionCreate",
     "WorkflowDefinitionPage",
