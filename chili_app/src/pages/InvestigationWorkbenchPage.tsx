@@ -6,6 +6,9 @@ import type {
   DomainConfig,
   EntityFeatureValueResponse,
   FeatureCatalogResponse,
+  PlaybookListResponse,
+  PlaybookRef,
+  PlaybookResponse,
   RuntimeEntity,
 } from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
@@ -18,6 +21,7 @@ import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
 import { useCanonicalIdentityDetail } from '../api/identity'
+import { usePlaybooks } from '../api/playbooks'
 import {
   useEntityLocations,
   useInvestigationEntity,
@@ -36,6 +40,8 @@ import { EvidencePackActions } from '../components/investigation/EvidencePackAct
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import { IdentityPanel } from '../components/investigation/IdentityPanel'
+import { PlaybookBadge } from '../components/playbooks/PlaybookBadge'
+import { PlaybookDetailPanel } from '../components/playbooks/PlaybookDetailPanel'
 import { SignalBand } from '../components/investigation/SignalBand'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -258,6 +264,59 @@ type CockpitContextSummary = {
   typologyLabels: string[]
 }
 
+type PlaybookBadgeData = {
+  status?: string
+  title: string
+  version: string
+}
+
+type PlaybookContext = {
+  badge: PlaybookBadgeData
+  definition: PlaybookResponse | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPlaybookRef(value: unknown): value is PlaybookRef {
+  return (
+    isRecord(value) &&
+    typeof value.playbook_id === 'string' &&
+    typeof value.playbook_version === 'string' &&
+    typeof value.title === 'string'
+  )
+}
+
+function playbookRefFromMetadata(metadata: Record<string, unknown> | undefined): PlaybookRef | null {
+  return isPlaybookRef(metadata?.playbook_ref) ? metadata.playbook_ref : null
+}
+
+function resolvePlaybookBadgeData(
+  ref: PlaybookRef | null,
+  list: PlaybookListResponse | undefined,
+): PlaybookContext | null {
+  if (!ref) {
+    return null
+  }
+
+  const published = list?.published.find(
+    (snapshot) =>
+      snapshot.playbook_id === ref.playbook_id &&
+      snapshot.version === ref.playbook_version,
+  )
+  const seed = list?.items.find(
+    (playbook) => playbook.id === ref.playbook_id && playbook.version === ref.playbook_version,
+  )
+  const definition = published?.definition ?? seed
+  const status = published?.status ?? definition?.status
+  const title = definition?.title ?? ref.title
+  const version = definition?.version ?? published?.version ?? ref.playbook_version
+  const badge = status ? { status, title, version } : { title, version }
+
+  return { badge, definition: definition ?? null }
+}
+
 function formatCockpitNormalizedValue(value: number | null | undefined): string | null {
   if (value === null || value === undefined) return null
   return `${Math.round(value * 100)}%`
@@ -467,6 +526,10 @@ export function InvestigationWorkbenchPage() {
   const entityLoadFailed = entityQuery.isError || neighborhoodQuery.isError
   // Asked only once the active KB has already failed to produce the entity.
   const entityLocationsQuery = useEntityLocations(selectedEntityId, entityLoadFailed)
+  const alertPlaybookRef = playbookRefFromMetadata(selectedAlert?.generation_metadata)
+  const casePlaybookRef = requestedCaseInvalid ? null : caseQuery.data?.case.playbook_ref ?? null
+  const activePlaybookRef = casePlaybookRef ?? alertPlaybookRef
+  const playbooksQuery = usePlaybooks(activeKnowledgeBaseId, Boolean(activePlaybookRef))
 
   if (domainConfigQuery.isLoading || knowledgeBasesLoading || alertsQuery.isLoading) {
     return <LoadingState label="Loading investigation context" />
@@ -540,6 +603,10 @@ export function InvestigationWorkbenchPage() {
     domainConfigQuery.data,
     entity?.type ?? null,
     featureValuesQuery.data?.items ?? [],
+  )
+  const cockpitPlaybook = resolvePlaybookBadgeData(
+    activePlaybookRef,
+    playbooksQuery.data,
   )
 
   // Distinct subjects the queue has already flagged, newest first, as opening
@@ -708,6 +775,24 @@ export function InvestigationWorkbenchPage() {
                 riskLabel={cockpitRiskLabel}
                 riskValue={cockpitRiskValue}
               />
+
+              {cockpitPlaybook ? (
+                <Card compact>
+                  <PlaybookBadge
+                    status={cockpitPlaybook.badge.status}
+                    title={cockpitPlaybook.badge.title}
+                    version={cockpitPlaybook.badge.version}
+                  />
+                </Card>
+              ) : null}
+
+              {activePlaybookRef ? (
+                <PlaybookDetailPanel
+                  isError={playbooksQuery.isError}
+                  isLoading={playbooksQuery.isLoading}
+                  playbook={cockpitPlaybook?.definition ?? null}
+                />
+              ) : null}
 
               <CockpitContextPanel summary={cockpitFeatureContext} />
 

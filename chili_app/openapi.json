@@ -4421,6 +4421,7 @@
           },
           "id": {
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
             "title": "Id",
             "type": "string"
           },
@@ -4468,6 +4469,7 @@
           "version": {
             "default": "v1",
             "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
             "title": "Version",
             "type": "string"
           },

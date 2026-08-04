@@ -921,8 +921,8 @@ class PlaybookRagPromptConfig(BaseModel):
 class FraudPlaybookConfig(BaseModel):
     """A versioned fraud investigation playbook authored in a domain pack."""
 
-    id: str = Field(min_length=1)
-    version: str = Field(default="v1", min_length=1)
+    id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
+    version: str = Field(default="v1", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
     title: str = Field(min_length=1)
     summary: str = ""
     status: PlaybookStatusConfigValue = "draft"

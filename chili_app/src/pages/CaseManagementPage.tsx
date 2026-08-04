@@ -18,6 +18,7 @@ import type {
   EvidenceExportFormat,
 } from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
+import { PlaybookBadge } from '../components/playbooks/PlaybookBadge'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -457,6 +458,12 @@ export function CaseManagementPage() {
                 <Chip label={caseQuery.data.case.priority} tone="warning" />
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
+              {caseQuery.data.case.playbook_ref ? (
+                <PlaybookBadge
+                  title={caseQuery.data.case.playbook_ref.title}
+                  version={caseQuery.data.case.playbook_ref.playbook_version}
+                />
+              ) : null}
               <div className="page-actions-inline">
                 {caseCockpitUrl ? (
                   <Link className="page-button page-button--secondary" to={caseCockpitUrl}>

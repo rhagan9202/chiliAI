@@ -1434,7 +1434,7 @@ git commit -m "Preserve SAFE-CMS-013 playbook history"
 - Modify: relevant page tests.
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 
-- [ ] **Step 1: Write failing frontend tests**
+- [x] **Step 1: Write failing frontend tests**
 
 Create API helper tests:
 
@@ -1454,7 +1454,7 @@ Create component tests asserting:
 - `PlaybookDetailPanel` shows evidence requirements, workflow steps, RAG prompt labels, and decision guidance.
 - Investigation/case pages render a playbook badge when API data or case `playbook_ref` is present.
 
-- [ ] **Step 2: Run frontend tests to verify RED**
+- [x] **Step 2: Run frontend tests to verify RED**
 
 Run:
 
@@ -1469,7 +1469,7 @@ npm run test:run --prefix chili_app -- \
 
 Expected: FAIL because API helpers and components do not exist.
 
-- [ ] **Step 3: Add API helper and contract aliases**
+- [x] **Step 3: Add API helper and contract aliases**
 
 Create `chili_app/src/api/playbooks.ts`:
 
@@ -1534,7 +1534,7 @@ export function usePlaybooks(knowledgeBaseId: string | null) {
 
 Add generated schema aliases in `chili_app/src/api/contracts.ts`.
 
-- [ ] **Step 4: Add components and page placements**
+- [x] **Step 4: Add components and page placements**
 
 Create compact components using existing `Card`, `Chip`, `EmptyState`, and `metric-stack` patterns.
 
@@ -1563,7 +1563,7 @@ Wire badges into:
 - `InvestigationWorkbenchPage` near cockpit context when the selected alert/case has a playbook ref.
 - `CaseManagementPage` in the active case detail/dossier header.
 
-- [ ] **Step 5: Run frontend tests to verify GREEN**
+- [x] **Step 5: Run frontend tests to verify GREEN**
 
 Run:
 
@@ -1580,7 +1580,7 @@ pnpm --dir chili_app build
 
 Expected: tests pass, scoped lint passes, build passes with the existing bundle-size warning if still present.
 
-- [ ] **Step 6: Commit Task 6**
+- [x] **Step 6: Commit Task 6**
 
 Run:
 

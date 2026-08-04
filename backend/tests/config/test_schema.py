@@ -603,6 +603,30 @@ def test_playbook_rejects_unknown_references() -> None:
     )
 
 
+def test_playbook_rejects_path_unsafe_identifiers() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["playbooks"] = {
+        "version": "cms-playbooks-v1",
+        "items": [
+            {
+                "id": "bad/review",
+                "version": "v1/beta",
+                "title": "Bad Review",
+                "typology_ids": [],
+                "feature_ids": [],
+                "policy_rule_ids": [],
+                "evidence_requirements": [],
+                "workflow_steps": [],
+                "rag_prompts": [],
+                "decision_guidance": [],
+            }
+        ],
+    }
+
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        DomainConfig.model_validate(payload)
+
+
 @pytest.mark.parametrize(
     ("section_name", "duplicate_item"),
     [
