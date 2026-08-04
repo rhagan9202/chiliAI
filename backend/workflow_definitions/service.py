@@ -268,6 +268,7 @@ class WorkflowDefinitionService:
             raise WorkflowDefinitionConflictError(
                 "Only approved workflow definitions can be run."
             )
+        metadata = self._run_metadata(definition, request)
         if request.idempotency_key is not None:
             existing_run = self._run_store.find_by_idempotency_key(
                 knowledge_base_id=knowledge_base_id,
@@ -278,18 +279,12 @@ class WorkflowDefinitionService:
                     raise WorkflowDefinitionConflictError(
                         "Workflow idempotency key belongs to another knowledge base."
                     )
+                if not self._matches_idempotent_run(existing_run, metadata):
+                    raise WorkflowDefinitionConflictError(
+                        "Idempotency key already used for a different workflow "
+                        "definition run."
+                    )
                 return existing_run
-        metadata: dict[str, MetadataValue] = {
-            "definition_id": definition.definition_id,
-            "definition_version": definition.version,
-            "definition_status": definition.status,
-            "target_type": request.target_type,
-            "target_id": request.target_id,
-            "approved_by": definition.approved_by or "",
-        }
-        metadata.update(
-            {f"input.{key}": value for key, value in request.inputs.items()}
-        )
         run = WorkflowRun(
             workflow_id=generate_id(),
             knowledge_base_id=knowledge_base_id,
@@ -318,6 +313,50 @@ class WorkflowDefinitionService:
             },
         )
         return saved_run
+
+    @staticmethod
+    def _run_metadata(
+        definition: WorkflowDefinition,
+        request: WorkflowDefinitionRunRequest,
+    ) -> dict[str, MetadataValue]:
+        metadata: dict[str, MetadataValue] = {
+            "definition_id": definition.definition_id,
+            "definition_version": definition.version,
+            "definition_status": definition.status,
+            "target_type": request.target_type,
+            "target_id": request.target_id,
+            "approved_by": definition.approved_by or "",
+        }
+        metadata.update(
+            {f"input.{key}": value for key, value in request.inputs.items()}
+        )
+        return metadata
+
+    @staticmethod
+    def _matches_idempotent_run(
+        existing_run: WorkflowRun,
+        requested_metadata: dict[str, MetadataValue],
+    ) -> bool:
+        comparison_keys = {
+            "definition_id",
+            "definition_version",
+            "target_type",
+            "target_id",
+        }
+        comparison_keys.update(
+            key
+            for key in existing_run.metadata
+            if key.startswith("input.")
+        )
+        comparison_keys.update(
+            key
+            for key in requested_metadata
+            if key.startswith("input.")
+        )
+        return all(
+            existing_run.metadata.get(key) == requested_metadata.get(key)
+            for key in comparison_keys
+        )
 
     def _get_required_definition(
         self,

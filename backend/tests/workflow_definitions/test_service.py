@@ -311,6 +311,69 @@ def test_run_approved_definition_replays_same_idempotency_key_without_new_run_or
     assert len(run_requested_events) == 1
 
 
+def test_run_approved_definition_rejects_idempotency_key_reuse_for_different_request() -> None:
+    service, _, run_store, audit_service = _service()
+    created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
+    approved = service.approve_definition(
+        "kb-1", created.definition_id, created.version, **ADMIN_KWARGS
+    )
+
+    first = service.run_definition(
+        "kb-1",
+        approved.definition_id,
+        approved.version,
+        WorkflowDefinitionRunRequest(
+            target_type="alert",
+            target_id="alert-1",
+            inputs={"note": "review current alert"},
+            idempotency_key="same-key",
+        ),
+        **ACTOR_KWARGS,
+    )
+
+    with pytest.raises(
+        WorkflowDefinitionConflictError,
+        match="Idempotency key already used for a different workflow definition run.",
+    ):
+        service.run_definition(
+            "kb-1",
+            approved.definition_id,
+            approved.version,
+            WorkflowDefinitionRunRequest(
+                target_type="alert",
+                target_id="alert-2",
+                inputs={"note": "review current alert"},
+                idempotency_key="same-key",
+            ),
+            **ACTOR_KWARGS,
+        )
+    with pytest.raises(
+        WorkflowDefinitionConflictError,
+        match="Idempotency key already used for a different workflow definition run.",
+    ):
+        service.run_definition(
+            "kb-1",
+            approved.definition_id,
+            approved.version,
+            WorkflowDefinitionRunRequest(
+                target_type="alert",
+                target_id="alert-1",
+                inputs={"note": "review a different alert"},
+                idempotency_key="same-key",
+            ),
+            **ACTOR_KWARGS,
+        )
+
+    assert len(run_store.list_runs(knowledge_base_id="kb-1").items) == 1
+    assert run_store.get_run(first.workflow_id).metadata["target_id"] == "alert-1"
+    run_requested_events = [
+        event
+        for event in _audit_events(audit_service)
+        if event.action == "workflow_definition.run_requested"
+    ]
+    assert len(run_requested_events) == 1
+
+
 def test_run_approved_definition_preserves_scalar_inputs_as_metadata() -> None:
     service, _, run_store, _ = _service()
     created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)
