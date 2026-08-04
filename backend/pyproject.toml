@@ -152,6 +152,7 @@ include = [
     "records",
     "shared/metrics.py",
     "vectorstore",
+    "workflow_definitions",
     "tests/agent",
     "tests/conversations",
     "tests/analytics/gnn",
@@ -187,6 +188,7 @@ include = [
     "tests/records",
     "tests/shared/test_metrics.py",
     "tests/vectorstore",
+    "tests/workflow_definitions",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
 

@@ -106,11 +106,13 @@ def test_human_or_case_draft_steps_force_human_approval() -> None:
 
 def test_retry_policy_requires_positive_attempts() -> None:
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
-        WorkflowStepDefinition(
-            step_id="peer-context",
-            label="Peer context",
-            capability_ref="analytics.peer_context",
-            retry_policy={"max_attempts": 0},
+        WorkflowStepDefinition.model_validate(
+            {
+                "step_id": "peer-context",
+                "label": "Peer context",
+                "capability_ref": "analytics.peer_context",
+                "retry_policy": {"max_attempts": 0},
+            }
         )
 
 
@@ -129,10 +131,12 @@ def test_run_request_inputs_accept_only_scalar_metadata_values() -> None:
         "urgent": True,
     }
     with pytest.raises(ValidationError):
-        WorkflowDefinitionRunRequest(
-            target_type="alert",
-            target_id="alert-123",
-            inputs={"nested": {"x": "y"}},
+        WorkflowDefinitionRunRequest.model_validate(
+            {
+                "target_type": "alert",
+                "target_id": "alert-123",
+                "inputs": {"nested": {"x": "y"}},
+            }
         )
 
 
