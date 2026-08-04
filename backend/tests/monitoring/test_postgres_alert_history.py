@@ -11,6 +11,7 @@ from config.schema import DatabaseConfig
 from database.runtime import create_connection_provider
 from monitoring.adapters.postgres import PostgresAlertHistoryStore
 from monitoring.models import AlertHistoryRecord
+from playbooks.models import PlaybookRef
 
 pytestmark = pytest.mark.integration
 
@@ -35,6 +36,50 @@ def _record(alert_id: str) -> AlertHistoryRecord:
         reasoning="score exceeded threshold",
         metric_name="claim_anomaly",
     )
+
+
+def test_alert_history_preserves_playbook_ref_in_generation_metadata(
+    database_url: str,
+) -> None:
+    kb_id = "kb-alert-playbook-ref-test"
+    expected = {
+        "playbook_id": "provider_billing_spike_review",
+        "playbook_version": "v1",
+        "title": "Provider billing spike review",
+    }
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = _record("a-playbook-ref").model_copy(
+            update={
+                "knowledge_base_id": kb_id,
+                "generation_metadata": {
+                    "playbook_ref": PlaybookRef(**expected),
+                    "generation": {"source": "test"},
+                },
+            }
+        )
+
+        assert store.write_alerts([record]) == 1
+        fetched = store.get_alert("a-playbook-ref")
+
+        assert fetched is not None
+        assert fetched.generation_metadata["playbook_ref"] == expected
+        assert fetched.generation_metadata["generation"] == {"source": "test"}
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
 
 
 def test_write_and_count_round_trip(database_url: str) -> None:

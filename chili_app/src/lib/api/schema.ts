@@ -2441,6 +2441,7 @@ export interface components {
             alert_ids?: string[];
             /** Assignee */
             assignee?: string | null;
+            playbook_ref?: components["schemas"]["PlaybookRef"] | null;
             /**
              * Priority
              * @enum {string}
@@ -2591,6 +2592,7 @@ export interface components {
             knowledge_base_id: string;
             /** Originating Alert Id */
             originating_alert_id?: string | null;
+            playbook_ref?: components["schemas"]["PlaybookRef"] | null;
             /**
              * Priority
              * @enum {string}
@@ -5113,6 +5115,21 @@ export interface components {
             system_prompt: string;
             /** User Prompt */
             user_prompt: string;
+        };
+        /**
+         * PlaybookRef
+         * @description Historical reference to a playbook version.
+         */
+        PlaybookRef: {
+            /** Playbook Id */
+            playbook_id: string;
+            /** Playbook Version */
+            playbook_version: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
         };
         /**
          * PlaybookResponse

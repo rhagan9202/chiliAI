@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
+from playbooks.models import PlaybookRef
 from shared.types import Entity
 
 
@@ -929,6 +930,7 @@ class CaseSummaryResponse(BaseModel):
     assignee: str | None = None
     originating_alert_id: str | None = None
     evidence_pack_id: str | None = None
+    playbook_ref: PlaybookRef | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     updated_at: datetime
 
@@ -1633,6 +1635,7 @@ class CaseCreateRequest(BaseModel):
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    playbook_ref: PlaybookRef | None = None
 
 
 class CaseUpdateRequest(BaseModel):

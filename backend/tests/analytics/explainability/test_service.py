@@ -21,7 +21,14 @@ from analytics.explainability.service import create_explainability_service
 from analytics.explainability.service_models import ExplainabilityRequest
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import ExplainabilityGeneratedEvent
+from playbooks.models import PlaybookRef
 from shared.types import Alert, EvidenceNarrativeSection, FeatureAttribution
+
+_PLAYBOOK_REF = {
+    "playbook_id": "provider_billing_spike_review",
+    "playbook_version": "v1",
+    "title": "Provider billing spike review",
+}
 
 
 def _alert() -> Alert:
@@ -299,6 +306,36 @@ def test_explainability_service_generates_deterministic_provenance_refs() -> Non
     assert ("workflow", "workflow-1") in refs
     assert ("model_version", "risk-model-v1") in refs
     assert ("prompt_version", "evidence-prompt-v1") in refs
+
+
+def test_evidence_provenance_records_playbook_ref_metadata() -> None:
+    event_bus = InMemoryEventBus()
+    context = _single_item_context().model_copy(
+        update={
+            "lineage": ExplanationLineage(playbook_ref=PlaybookRef(**_PLAYBOOK_REF)),
+        }
+    )
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[context]),
+        event_bus=event_bus,
+        narrative_generator=_StubNarrativeGenerator(),
+        feature_attributor=_StubFeatureAttributor(),
+    )
+
+    response = service.generate(ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1"))
+
+    refs = {
+        (reference.reference_type, reference.reference_id): reference
+        for reference in response.evidence_pack.provenance
+    }
+    assert (
+        refs[("document", "doc-1#evidence:0")].metadata["playbook_ref"]
+        == _PLAYBOOK_REF
+    )
+    assert (
+        refs[("risk_score", "provider-7:overall")].metadata["playbook_ref"]
+        == _PLAYBOOK_REF
+    )
 
 
 def test_explainability_service_keeps_same_document_evidence_refs_distinct() -> None:

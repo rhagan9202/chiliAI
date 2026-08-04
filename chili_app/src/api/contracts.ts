@@ -92,6 +92,7 @@ export type CaseStatus = Schemas['CaseSummaryResponse']['status']
 export type CasePriority = Schemas['CaseSummaryResponse']['priority']
 export type FeedbackLabel = Schemas['AnalystFeedbackResponse']['label']
 export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adequacy']
+export type PlaybookRef = Schemas['PlaybookRef']
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']

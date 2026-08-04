@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # MonitoringObservation now lives in shared/types.py so producers
 # (records/) and consumers (monitoring/) can both depend on it without
@@ -43,6 +44,13 @@ class AlertCandidate(BaseModel):
     metric_name: str
     evidence_pack_id: str | None = None
     generation_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("generation_metadata")
+    @classmethod
+    def _generation_metadata_must_be_json_safe(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        return normalize_generation_metadata(value)
 
 
 class SuppressionRule(BaseModel):
@@ -127,6 +135,43 @@ class AlertHistoryRecord(BaseModel):
         default_factory=lambda: list[AlertTriageEvent]()
     )
 
+    @field_validator("generation_metadata")
+    @classmethod
+    def _generation_metadata_must_be_json_safe(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        return normalize_generation_metadata(value)
+
+
+def normalize_generation_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Return a JSON-safe metadata copy, expanding Pydantic values."""
+
+    normalized = _json_safe_value(metadata)
+    if not isinstance(normalized, dict):
+        raise ValueError("generation_metadata must decode to a JSON object.")
+    return cast(dict[str, Any], normalized)
+
+
+def _json_safe_value(value: Any) -> object:
+    if isinstance(value, BaseModel):
+        return _json_safe_value(value.model_dump(mode="json"))
+    if value is None or isinstance(value, str | int | bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("generation_metadata floats must be finite.")
+        return value
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in cast(list[Any], value)]
+    if isinstance(value, dict):
+        normalized: dict[str, object] = {}
+        for key, item in cast(dict[Any, Any], value).items():
+            if not isinstance(key, str):
+                raise ValueError("generation_metadata keys must be strings.")
+            normalized[key] = _json_safe_value(item)
+        return normalized
+    raise ValueError("generation_metadata must contain only JSON-safe values.")
+
 
 __all__ = [
     "AlertCandidate",
@@ -135,5 +180,6 @@ __all__ = [
     "AlertTriageEvent",
     "MonitoringBatch",
     "MonitoringObservation",
+    "normalize_generation_metadata",
     "SuppressionRule",
 ]

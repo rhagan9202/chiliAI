@@ -1350,7 +1350,7 @@ git commit -m "Expose SAFE-CMS-013 playbook API"
 - Modify: `backend/tests/analytics/explainability/test_service.py`
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 
-- [ ] **Step 1: Write failing historical snapshot tests**
+- [x] **Step 1: Write failing historical snapshot tests**
 
 Add focused tests proving:
 
@@ -1367,7 +1367,7 @@ Expected fields:
 {"playbook_id": "provider_billing_spike_review", "playbook_version": "v1", "title": "Provider billing spike review"}
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -1377,7 +1377,7 @@ uv run --project backend pytest backend/tests/api/test_cases_router.py backend/t
 
 Expected: FAIL where `Case` has no `playbook_ref` and provenance/metadata mappers do not assert the snapshot.
 
-- [ ] **Step 3: Add model and mapper support**
+- [x] **Step 3: Add model and mapper support**
 
 Add to `backend/cases/models.py`:
 
@@ -1396,7 +1396,7 @@ For alerts and evidence:
 - Keep alert `generation_metadata["playbook_ref"]` as JSON-safe metadata.
 - Add evidence provenance `metadata["playbook_ref"]` when explanation lineage includes playbook context.
 
-- [ ] **Step 4: Run historical snapshot tests to verify GREEN**
+- [x] **Step 4: Run historical snapshot tests to verify GREEN**
 
 Run:
 
@@ -1408,7 +1408,7 @@ uv run --project backend pyright backend/cases backend/monitoring backend/analyt
 
 Expected: pytest passes, ruff passes, pyright reports 0 errors.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 Run:
 

@@ -985,6 +985,7 @@ def _case_to_summary(case: Case) -> CaseSummaryResponse:
         assignee=case.assignee,
         originating_alert_id=case.originating_alert_id,
         evidence_pack_id=case.evidence_pack_id,
+        playbook_ref=case.playbook_ref,
         alert_ids=list(case.alert_ids),
         updated_at=case.updated_at,
     )
@@ -1576,6 +1577,7 @@ def get_case_create_payload(
         priority=payload.priority,
         assignee=payload.assignee,
         alert_ids=list(payload.alert_ids),
+        playbook_ref=payload.playbook_ref,
     )
     return _assemble_case_detail(
         case, evidence_repository=evidence_repository, alert_store=alert_store
@@ -2967,6 +2969,7 @@ def _resolve_kb_scoped_alert(
         ),
         updated_at=record.updated_at,
         acknowledged=record.status == "acknowledged",
+        generation_metadata=dict(record.generation_metadata),
     )
 
 

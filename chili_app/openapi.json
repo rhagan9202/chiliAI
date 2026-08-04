@@ -1250,6 +1250,16 @@
             ],
             "title": "Assignee"
           },
+          "playbook_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "priority": {
             "enum": [
               "low",
@@ -1623,6 +1633,16 @@
               }
             ],
             "title": "Originating Alert Id"
+          },
+          "playbook_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "priority": {
             "enum": [
@@ -7096,6 +7116,32 @@
           "user_prompt"
         ],
         "title": "PlaybookRagPromptResponse",
+        "type": "object"
+      },
+      "PlaybookRef": {
+        "description": "Historical reference to a playbook version.",
+        "properties": {
+          "playbook_id": {
+            "minLength": 1,
+            "title": "Playbook Id",
+            "type": "string"
+          },
+          "playbook_version": {
+            "minLength": 1,
+            "title": "Playbook Version",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_id",
+          "playbook_version"
+        ],
+        "title": "PlaybookRef",
         "type": "object"
       },
       "PlaybookResponse": {
