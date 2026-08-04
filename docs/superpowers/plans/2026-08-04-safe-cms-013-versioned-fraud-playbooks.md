@@ -928,7 +928,7 @@ git commit -m "Add SAFE-CMS-013 playbook service"
 - Create: `backend/tests/database/test_fraud_playbooks_migration.py`
 - Modify: `docs/superpowers/plans/2026-08-04-safe-cms-013-versioned-fraud-playbooks.md`
 
-- [ ] **Step 1: Write failing migration and Postgres tests**
+- [x] **Step 1: Write failing migration and Postgres tests**
 
 Create `backend/tests/database/test_fraud_playbooks_migration.py`:
 
@@ -966,7 +966,7 @@ def test_postgres_playbook_repository_round_trips_snapshot(postgres_connection_p
     assert page.items[0].definition.id == "provider_billing_spike_review"
 ```
 
-- [ ] **Step 2: Run tests to verify RED**
+- [x] **Step 2: Run tests to verify RED**
 
 Run:
 
@@ -976,7 +976,7 @@ uv run --project backend pytest backend/tests/database/test_fraud_playbooks_migr
 
 Expected: FAIL because migration and `PostgresPlaybookRepository` do not exist.
 
-- [ ] **Step 3: Add migration**
+- [x] **Step 3: Add migration**
 
 Create `backend/database/migrations/versions/0019_fraud_playbooks.py`:
 
@@ -1043,7 +1043,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS fraud_playbook_snapshots")
 ```
 
-- [ ] **Step 4: Add Postgres adapter**
+- [x] **Step 4: Add Postgres adapter**
 
 Create `backend/playbooks/adapters/postgres.py` using JSONB serialization like existing adapters:
 
@@ -1166,7 +1166,7 @@ def _row_to_snapshot(row: Row) -> PlaybookSnapshot:
     )
 ```
 
-- [ ] **Step 5: Refresh and verify migration snapshot**
+- [x] **Step 5: Refresh and verify migration snapshot**
 
 Run:
 
@@ -1177,7 +1177,7 @@ scripts/ci_migration_check.sh
 
 Expected: both commands pass; `backend/database/migrations/snapshots/head.sql` includes `fraud_playbook_snapshots` and `cases.playbook_ref`.
 
-- [ ] **Step 6: Run adapter tests to verify GREEN**
+- [x] **Step 6: Run adapter tests to verify GREEN**
 
 Run:
 
@@ -1189,7 +1189,7 @@ uv run --project backend pyright backend/playbooks/adapters/postgres.py backend/
 
 Expected: pytest passes, ruff passes, pyright reports 0 errors.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 Run:
 
