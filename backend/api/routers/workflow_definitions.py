@@ -117,11 +117,12 @@ def create_workflow_definition(
         user,
         domain_config,
     )
-    _stash_correlation_id(request)
+    correlation_id = _correlation_id(request)
     try:
         definition = service.create_draft(
             knowledge_base_id,
             _create_model(payload, domain_name=domain_name),
+            correlation_id=correlation_id,
             **_actor_kwargs(user),
         )
     except WorkflowDefinitionValidationError as exc:
@@ -175,13 +176,14 @@ def update_workflow_definition(
         user,
         domain_config,
     )
-    _stash_correlation_id(request)
+    correlation_id = _correlation_id(request)
     try:
         definition = service.update_draft(
             knowledge_base_id,
             definition_id,
             version,
             _update_model(payload, domain_name=domain_name),
+            correlation_id=correlation_id,
             **_actor_kwargs(user),
         )
     except WorkflowDefinitionNotFoundError as exc:
@@ -209,12 +211,13 @@ def approve_workflow_definition(
 ) -> WorkflowDefinitionResponse:
     """Approve one draft workflow definition snapshot."""
     _require_knowledge_base(knowledge_base_id, kb_repository, user, domain_config)
-    _stash_correlation_id(request)
+    correlation_id = _correlation_id(request)
     try:
         definition = service.approve_definition(
             knowledge_base_id,
             definition_id,
             version,
+            correlation_id=correlation_id,
             **_actor_kwargs(user),
         )
     except WorkflowDefinitionNotFoundError as exc:
@@ -240,12 +243,13 @@ def retire_workflow_definition(
 ) -> WorkflowDefinitionResponse:
     """Retire one approved workflow definition snapshot."""
     _require_knowledge_base(knowledge_base_id, kb_repository, user, domain_config)
-    _stash_correlation_id(request)
+    correlation_id = _correlation_id(request)
     try:
         definition = service.retire_definition(
             knowledge_base_id,
             definition_id,
             version,
+            correlation_id=correlation_id,
             **_actor_kwargs(user),
         )
     except WorkflowDefinitionNotFoundError as exc:
@@ -272,13 +276,14 @@ def run_workflow_definition(
 ) -> WorkflowRunResponse:
     """Queue a run for one approved workflow definition snapshot."""
     _require_knowledge_base(knowledge_base_id, kb_repository, user, domain_config)
-    _stash_correlation_id(request)
+    correlation_id = _correlation_id(request)
     try:
         run = service.run_definition(
             knowledge_base_id,
             definition_id,
             version,
             WorkflowDefinitionRunRequest.model_validate(payload.model_dump()),
+            correlation_id=correlation_id,
             **_actor_kwargs(user),
         )
     except WorkflowDefinitionNotFoundError as exc:
@@ -360,12 +365,14 @@ def _roles(roles: Sequence[str]) -> list[str]:
     return list(roles)
 
 
-def _stash_correlation_id(request: Request) -> None:
-    request.state.correlation_id = (
+def _correlation_id(request: Request) -> str:
+    correlation_id = (
         request.headers.get("x-request-id")
         or request.headers.get("x-correlation-id")
         or "workflow-definition-request"
     )
+    request.state.correlation_id = correlation_id
+    return correlation_id
 
 
 def _not_found(resource: str, identifier: str) -> HTTPException:

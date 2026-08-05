@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from workflow_definitions import MetadataValue as PackageMetadataValue
+import workflow_definitions
 from workflow_definitions.models import (
     BUILT_IN_WORKFLOW_CAPABILITIES,
     MetadataValue,
@@ -148,7 +148,7 @@ def test_retry_policy_requires_positive_attempts() -> None:
 
 
 def test_run_request_inputs_accept_only_scalar_metadata_values() -> None:
-    assert MetadataValue == PackageMetadataValue
+    assert MetadataValue == getattr(workflow_definitions, "MetadataValue")
     request = WorkflowDefinitionRunRequest(
         target_type="alert",
         target_id="alert-123",

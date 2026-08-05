@@ -10670,6 +10670,365 @@
         "title": "VectorStoreConfig",
         "type": "object"
       },
+      "WorkflowDefinitionCreatePayload": {
+        "description": "Payload for creating a draft workflow definition.",
+        "properties": {
+          "allowed_capability_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Capability Refs",
+            "type": "array"
+          },
+          "definition_id": {
+            "minLength": 1,
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepDefinitionPayload"
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "name",
+          "version",
+          "steps"
+        ],
+        "title": "WorkflowDefinitionCreatePayload",
+        "type": "object"
+      },
+      "WorkflowDefinitionListResponse": {
+        "description": "Page of KB-scoped workflow definition snapshots.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "WorkflowDefinitionListResponse",
+        "type": "object"
+      },
+      "WorkflowDefinitionResponse": {
+        "description": "KB-scoped workflow definition snapshot.",
+        "properties": {
+          "allowed_capability_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Capability Refs",
+            "type": "array"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepDefinitionResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "definition_id",
+          "knowledge_base_id",
+          "name",
+          "version",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkflowDefinitionResponse",
+        "type": "object"
+      },
+      "WorkflowDefinitionRunRequestPayload": {
+        "description": "Payload for requesting an approved workflow definition run.",
+        "properties": {
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Inputs",
+            "type": "object"
+          },
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "alert",
+              "entity",
+              "case",
+              "knowledge_base"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "WorkflowDefinitionRunRequestPayload",
+        "type": "object"
+      },
+      "WorkflowDefinitionUpdatePayload": {
+        "description": "Payload for updating a draft workflow definition.",
+        "properties": {
+          "allowed_capability_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Capability Refs"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WorkflowStepDefinitionPayload"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          }
+        },
+        "title": "WorkflowDefinitionUpdatePayload",
+        "type": "object"
+      },
       "WorkflowRunListResponse": {
         "description": "Collection of workflow runs.",
         "properties": {
@@ -10781,6 +11140,165 @@
         ],
         "title": "WorkflowRunStatus",
         "type": "string"
+      },
+      "WorkflowStepDefinitionPayload": {
+        "description": "Payload for one executable step in a workflow definition.",
+        "properties": {
+          "capability_ref": {
+            "minLength": 1,
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "on_failure": {
+            "default": "fail_workflow",
+            "enum": [
+              "fail_workflow",
+              "continue",
+              "require_approval"
+            ],
+            "title": "On Failure",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "step_id": {
+            "minLength": 1,
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "WorkflowStepDefinitionPayload",
+        "type": "object"
+      },
+      "WorkflowStepDefinitionResponse": {
+        "description": "One executable step in a workflow definition response.",
+        "properties": {
+          "capability_ref": {
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "on_failure": {
+            "enum": [
+              "fail_workflow",
+              "continue",
+              "require_approval"
+            ],
+            "title": "On Failure",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "label",
+          "capability_ref",
+          "on_failure"
+        ],
+        "title": "WorkflowStepDefinitionResponse",
+        "type": "object"
       }
     }
   },
@@ -15805,6 +16323,446 @@
         "summary": "Replay Score Run",
         "tags": [
           "score-runs"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions": {
+      "get": {
+        "description": "Return workflow definitions for one knowledge base.",
+        "operationId": "list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflow Definitions",
+        "tags": [
+          "workflow-definitions"
+        ]
+      },
+      "post": {
+        "description": "Create a draft workflow definition for one knowledge base.",
+        "operationId": "create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionCreatePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}": {
+      "get": {
+        "description": "Return one workflow definition snapshot.",
+        "operationId": "get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      },
+      "put": {
+        "description": "Update one draft workflow definition snapshot.",
+        "operationId": "update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionUpdatePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/approve": {
+      "post": {
+        "description": "Approve one draft workflow definition snapshot.",
+        "operationId": "approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/retire": {
+      "post": {
+        "description": "Retire one approved workflow definition snapshot.",
+        "operationId": "retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/run": {
+      "post": {
+        "description": "Queue a run for one approved workflow definition snapshot.",
+        "operationId": "run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionRunRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Workflow Definition",
+        "tags": [
+          "workflow-definitions"
         ]
       }
     },

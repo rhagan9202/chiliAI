@@ -1589,6 +1589,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Definitions
+         * @description Return workflow definitions for one knowledge base.
+         */
+        get: operations["list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get"];
+        put?: never;
+        /**
+         * Create Workflow Definition
+         * @description Create a draft workflow definition for one knowledge base.
+         */
+        post: operations["create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Definition
+         * @description Return one workflow definition snapshot.
+         */
+        get: operations["get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get"];
+        /**
+         * Update Workflow Definition
+         * @description Update one draft workflow definition snapshot.
+         */
+        put: operations["update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Workflow Definition
+         * @description Approve one draft workflow definition snapshot.
+         */
+        post: operations["approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Workflow Definition
+         * @description Retire one approved workflow definition snapshot.
+         */
+        post: operations["retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflow Definition
+         * @description Queue a run for one approved workflow definition snapshot.
+         */
+        post: operations["run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -6816,6 +6924,122 @@ export interface components {
             uri: string | null;
         };
         /**
+         * WorkflowDefinitionCreatePayload
+         * @description Payload for creating a draft workflow definition.
+         */
+        WorkflowDefinitionCreatePayload: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[];
+            /** Definition Id */
+            definition_id: string;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Name */
+            name: string;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStepDefinitionPayload"][];
+            /** Version */
+            version: string;
+        };
+        /**
+         * WorkflowDefinitionListResponse
+         * @description Page of KB-scoped workflow definition snapshots.
+         */
+        WorkflowDefinitionListResponse: {
+            /** Items */
+            items?: components["schemas"]["WorkflowDefinitionResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * WorkflowDefinitionResponse
+         * @description KB-scoped workflow definition snapshot.
+         */
+        WorkflowDefinitionResponse: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[];
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Definition Id */
+            definition_id: string;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Name */
+            name: string;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved" | "retired";
+            /** Steps */
+            steps?: components["schemas"]["WorkflowStepDefinitionResponse"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * WorkflowDefinitionRunRequestPayload
+         * @description Payload for requesting an approved workflow definition run.
+         */
+        WorkflowDefinitionRunRequestPayload: {
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Inputs */
+            inputs?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "alert" | "entity" | "case" | "knowledge_base";
+        };
+        /**
+         * WorkflowDefinitionUpdatePayload
+         * @description Payload for updating a draft workflow definition.
+         */
+        WorkflowDefinitionUpdatePayload: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Steps */
+            steps?: components["schemas"]["WorkflowStepDefinitionPayload"][] | null;
+        };
+        /**
          * WorkflowRunListResponse
          * @description Collection of workflow runs.
          */
@@ -6870,6 +7094,71 @@ export interface components {
          * @enum {string}
          */
         WorkflowRunStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+        /**
+         * WorkflowStepDefinitionPayload
+         * @description Payload for one executable step in a workflow definition.
+         */
+        WorkflowStepDefinitionPayload: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Condition */
+            condition?: string | null;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /**
+             * On Failure
+             * @default fail_workflow
+             * @enum {string}
+             */
+            on_failure: "fail_workflow" | "continue" | "require_approval";
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+            /** Retry Policy */
+            retry_policy?: {
+                [key: string]: number;
+            } | null;
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * WorkflowStepDefinitionResponse
+         * @description One executable step in a workflow definition response.
+         */
+        WorkflowStepDefinitionResponse: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Condition */
+            condition?: string | null;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /**
+             * On Failure
+             * @enum {string}
+             */
+            on_failure: "fail_workflow" | "continue" | "require_approval";
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+            /** Retry Policy */
+            retry_policy?: {
+                [key: string]: number;
+            } | null;
+            /** Step Id */
+            step_id: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -9632,6 +9921,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionCreatePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionUpdatePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionRunRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
                 };
             };
             /** @description Validation Error */

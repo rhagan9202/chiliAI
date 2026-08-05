@@ -100,7 +100,7 @@ async def stream_workspace_updates(
 
 def _count_active_alerts(alert_store: AlertFeedStoreProtocol) -> int:
     """Return the number of active alerts for realtime workspace snapshots."""
-    return alert_store.count_by_statuses(ACTIVE_ALERT_STATUSES)
+    return alert_store.count_by_statuses(set(ACTIVE_ALERT_STATUSES))
 
 
 def _build_realtime_snapshot(

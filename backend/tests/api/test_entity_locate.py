@@ -10,7 +10,6 @@ open it" without being able to ask where it actually lives.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import cast
 
 import pytest
 from fastapi import FastAPI
@@ -34,7 +33,7 @@ from config.schema import (
 )
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
-from graph.protocols import GraphServiceProtocol
+from graph.service import GraphService
 from graph.service import create_graph_service
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from shared.types import Entity, KnowledgeBase
@@ -68,14 +67,11 @@ def kb_repository() -> InMemoryKnowledgeBaseRepository:
 
 
 @pytest.fixture()
-def graph_service() -> GraphServiceProtocol:
-    service = cast(
-        GraphServiceProtocol,
-        create_graph_service(
-            InMemoryGraphRepository(),
-            object_store=InMemoryObjectStore(),
-            event_bus=InMemoryEventBus(),
-        ),
+def graph_service() -> GraphService:
+    service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
     )
     # The entity lives in kb-2 only; kb-1 is the decoy the workspace might be
     # pointing at when a deep link arrives with no ?kb=.
@@ -87,7 +83,7 @@ def graph_service() -> GraphServiceProtocol:
 
 @pytest.fixture()
 def client(
-    graph_service: GraphServiceProtocol,
+    graph_service: GraphService,
     kb_repository: InMemoryKnowledgeBaseRepository,
 ) -> Iterator[TestClient]:
     app = FastAPI()

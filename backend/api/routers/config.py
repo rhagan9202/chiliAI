@@ -37,10 +37,11 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import JsonValue
 from pydantic import ValidationError
 
 from api import dependencies
@@ -208,7 +209,7 @@ class _PackParseError(Exception):
     """Raised when a pack file cannot be read or parsed into a mapping."""
 
 
-def _parse_pack_file(path: Path) -> dict[str, object]:
+def _parse_pack_file(path: Path) -> dict[str, JsonValue]:
     """Read + parse a pack file into a mapping (no validation)."""
     try:
         raw = path.read_text(encoding="utf-8")
@@ -225,7 +226,7 @@ def _parse_pack_file(path: Path) -> dict[str, object]:
         raise _PackParseError(f"JSON parse error in {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise _PackParseError(f"Pack file {path} must contain a mapping at the top level.")
-    return {str(key): value for key, value in data.items()}
+    return cast(dict[str, JsonValue], {str(key): value for key, value in data.items()})
 
 
 def _validation_issues(exc: ValidationError) -> list[ConfigValidationIssue]:

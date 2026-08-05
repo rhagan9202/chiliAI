@@ -195,6 +195,7 @@ from playbooks.adapters.postgres import PostgresPlaybookRepository
 from playbooks.repository import PlaybookRepository
 from playbooks.service import PlaybookService
 from workflow_definitions.adapters.in_memory import InMemoryWorkflowDefinitionRepository
+from workflow_definitions.adapters.postgres import PostgresWorkflowDefinitionRepository
 from workflow_definitions.repository import WorkflowDefinitionRepository
 from workflow_definitions.service import WorkflowDefinitionService
 from analytics.timeseries.adapters.in_memory import (
@@ -2718,10 +2719,17 @@ def get_playbook_service(
 
 def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRepository:
     """Return the workflow definition repository for API-authored drafts."""
+
+    def build() -> WorkflowDefinitionRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryWorkflowDefinitionRepository()
+        return PostgresWorkflowDefinitionRepository(provider)
+
     return _memoize_config_derived(
         request.app,
         "workflow_definition_repository",
-        lambda: InMemoryWorkflowDefinitionRepository(),
+        build,
         guard=lambda value: isinstance(value, WorkflowDefinitionRepository),
     )
 

@@ -107,6 +107,7 @@ class WorkflowDefinitionService:
         actor_user_id: str,
         actor_email: str | None = None,
         actor_roles: Sequence[str] = (),
+        correlation_id: str | None = None,
     ) -> WorkflowDefinition:
         self._validate_payload(payload)
         now = utc_now()
@@ -134,6 +135,7 @@ class WorkflowDefinitionService:
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=actor_roles,
+            correlation_id=correlation_id,
         )
         return saved
 
@@ -147,6 +149,7 @@ class WorkflowDefinitionService:
         actor_user_id: str,
         actor_email: str | None = None,
         actor_roles: Sequence[str] = (),
+        correlation_id: str | None = None,
     ) -> WorkflowDefinition:
         existing = self._get_required_definition(
             knowledge_base_id,
@@ -166,6 +169,7 @@ class WorkflowDefinitionService:
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=actor_roles,
+            correlation_id=correlation_id,
         )
         return updated
 
@@ -178,6 +182,7 @@ class WorkflowDefinitionService:
         actor_user_id: str,
         actor_email: str | None = None,
         actor_roles: Sequence[str] = (),
+        correlation_id: str | None = None,
     ) -> WorkflowDefinition:
         existing = self._get_required_definition(
             knowledge_base_id,
@@ -205,6 +210,7 @@ class WorkflowDefinitionService:
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=actor_roles,
+            correlation_id=correlation_id,
         )
         return updated
 
@@ -217,6 +223,7 @@ class WorkflowDefinitionService:
         actor_user_id: str,
         actor_email: str | None = None,
         actor_roles: Sequence[str] = (),
+        correlation_id: str | None = None,
     ) -> WorkflowDefinition:
         existing = self._get_required_definition(
             knowledge_base_id,
@@ -245,6 +252,7 @@ class WorkflowDefinitionService:
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=actor_roles,
+            correlation_id=correlation_id,
         )
         return updated
 
@@ -258,6 +266,7 @@ class WorkflowDefinitionService:
         actor_user_id: str,
         actor_email: str | None = None,
         actor_roles: Sequence[str] = (),
+        correlation_id: str | None = None,
     ) -> WorkflowRun:
         definition = self._get_required_definition(
             knowledge_base_id,
@@ -306,6 +315,7 @@ class WorkflowDefinitionService:
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=actor_roles,
+            correlation_id=correlation_id,
             metadata={
                 "run_id": saved_run.workflow_id,
                 "target_type": request.target_type,
@@ -418,6 +428,7 @@ class WorkflowDefinitionService:
         actor_email: str | None,
         actor_roles: Sequence[str],
         metadata: JsonSummary | None = None,
+        correlation_id: str | None = None,
     ) -> None:
         audit_metadata: JsonSummary = {
             "domain_name": definition.domain_name,
@@ -436,7 +447,8 @@ class WorkflowDefinitionService:
                 action=action,
                 resource_type="workflow_definition",
                 resource_id=f"{definition.definition_id}:{definition.version}",
-                correlation_id=self._audit_correlation_id(action, definition),
+                correlation_id=correlation_id
+                or self._audit_correlation_id(action, definition),
                 metadata=audit_metadata,
             )
         )

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 import pytest
 
 from analytics.risk.projections import (
     InMemoryRiskProjectionRepository,
+    RiskProjectionLevel,
     RiskProjectionQuery,
     RiskProjectionRow,
+    RiskProjectionStatus,
 )
 
 
@@ -31,7 +34,7 @@ def _row(
         entity_id=entity_id,
         entity_type=entity_type,
         overall_score=score,
-        risk_level=risk_level,
+        risk_level=cast(RiskProjectionLevel, risk_level),
         top_typology_ids=typologies or [],
         alert_ids=[f"alert-{entity_id}"],
         case_ids=[f"case-{entity_id}"],
@@ -41,7 +44,7 @@ def _row(
         catalog_version="cms-fraud-features-v1",
         scored_at=scored_at,
         updated_at=scored_at,
-        status=status,
+        status=cast(RiskProjectionStatus, status),
     )
 
 
@@ -55,7 +58,9 @@ def test_projection_repository_upserts_by_kb_and_entity_with_detached_copies() -
     assert repository.get("kb-1", "provider-1") == replacement
 
     replacement.alert_ids.append("mutated")
-    assert repository.get("kb-1", "provider-1").alert_ids == ["alert-provider-1"]
+    found = repository.get("kb-1", "provider-1")
+    assert found is not None
+    assert found.alert_ids == ["alert-provider-1"]
 
 
 def test_projection_repository_keeps_same_entity_id_independent_across_kbs() -> None:
@@ -67,8 +72,12 @@ def test_projection_repository_keeps_same_entity_id_independent_across_kbs() -> 
         )
     )
 
-    assert repository.get("kb-1", "provider-1").overall_score == 0.91
-    assert repository.get("kb-2", "provider-1").overall_score == 0.2
+    kb_1_row = repository.get("kb-1", "provider-1")
+    kb_2_row = repository.get("kb-2", "provider-1")
+    assert kb_1_row is not None
+    assert kb_2_row is not None
+    assert kb_1_row.overall_score == 0.91
+    assert kb_2_row.overall_score == 0.2
 
 
 def test_projection_repository_lists_ranked_page_with_offset() -> None:

@@ -15,7 +15,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from api import dependencies
+import api.dependencies as dependencies
 from api.app import create_app
 from api.dependencies import get_domain_config
 from api.middleware.auth import User, get_current_user

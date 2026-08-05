@@ -277,6 +277,25 @@ CREATE TABLE public.timeseries_anomalies (
     correlation_id text NOT NULL,
     detected_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.workflow_definition_snapshots (
+    snapshot_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    domain_name text,
+    definition_id text NOT NULL,
+    version text NOT NULL,
+    status text NOT NULL,
+    name text NOT NULL,
+    description text,
+    allowed_capability_refs jsonb NOT NULL,
+    steps jsonb NOT NULL,
+    created_by text NOT NULL,
+    approved_by text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    approved_at timestamp with time zone,
+    retired_at timestamp with time zone,
+    CONSTRAINT ck_workflow_definition_snapshots_status CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'retired'::text])))
+);
 ALTER TABLE ONLY public.alert_history
     ADD CONSTRAINT alert_history_pkey PRIMARY KEY (knowledge_base_id, alert_id);
 ALTER TABLE ONLY public.audit_log
@@ -321,6 +340,10 @@ ALTER TABLE ONLY public.timeseries_anomalies
     ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.explanation_reviews
     ADD CONSTRAINT uq_explanation_reviews_target UNIQUE (knowledge_base_id, evidence_pack_id, target_type, target_id);
+ALTER TABLE ONLY public.workflow_definition_snapshots
+    ADD CONSTRAINT uq_workflow_definition_snapshots_natural_key UNIQUE (knowledge_base_id, definition_id, version);
+ALTER TABLE ONLY public.workflow_definition_snapshots
+    ADD CONSTRAINT workflow_definition_snapshots_pkey PRIMARY KEY (snapshot_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
@@ -347,6 +370,7 @@ CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btre
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
+CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX observations_observed_at_idx ON public.observations USING btree (observed_at DESC);
 CREATE UNIQUE INDEX ux_policy_items_item_id ON public.policy_items USING btree (knowledge_base_id, item_id);
 -- timescaledb hypertables (hypertable_name|num_dimensions)

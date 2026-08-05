@@ -17,6 +17,7 @@ from api.dependencies import (
 )
 from api.middleware.auth import User, get_current_user
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEventQuery
 from auditlog.service import AuditLogService
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
@@ -105,6 +106,7 @@ def _app_harness() -> tuple[
     FastAPI,
     InMemoryWorkflowDefinitionRepository,
     InMemoryWorkflowRunStore,
+    AuditLogService,
 ]:
     app = create_app()
     definition_repository = InMemoryWorkflowDefinitionRepository()
@@ -119,7 +121,19 @@ def _app_harness() -> tuple[
     app.dependency_overrides[get_domain_config] = _domain_config
     app.dependency_overrides[get_knowledge_base_repository] = _knowledge_base_repository
     app.dependency_overrides[get_workflow_definition_service] = lambda: service
-    return app, definition_repository, run_store
+    return app, definition_repository, run_store, audit_service
+
+
+def _audit_correlation_id(
+    audit_service: AuditLogService,
+    *,
+    action: str,
+) -> str:
+    events = audit_service.list_events(
+        AuditEventQuery(tenant_id="tenant-1", action_prefix=action)
+    ).items
+    assert len(events) == 1
+    return events[0].correlation_id
 
 
 def _create_and_approve_definition(
@@ -140,7 +154,7 @@ def _create_and_approve_definition(
 
 
 def test_analyst_can_create_draft_and_list_detail_it() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
     _set_user(app, _user("analyst"))
 
     with TestClient(app) as client:
@@ -160,7 +174,7 @@ def test_analyst_can_create_draft_and_list_detail_it() -> None:
 
 
 def test_viewer_cannot_create_definition_when_auth_enabled() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
     _set_user(app, _user("viewer"))
 
     with TestClient(app) as client:
@@ -170,7 +184,7 @@ def test_viewer_cannot_create_definition_when_auth_enabled() -> None:
 
 
 def test_admin_can_approve_then_analyst_can_run_approved_definition() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, audit_service = _app_harness()
 
     with TestClient(app) as client:
         _create_and_approve_definition(client, app)
@@ -186,10 +200,17 @@ def test_admin_can_approve_then_analyst_can_run_approved_definition() -> None:
     assert body["status"] == "queued"
     assert body["knowledge_base_id"] == KB_ID
     assert body["current_step"] == "ask-rag"
+    assert (
+        _audit_correlation_id(
+            audit_service,
+            action="workflow_definition.run_requested",
+        )
+        == "run-request"
+    )
 
 
 def test_analyst_cannot_approve_definition() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
     _set_user(app, _user("analyst"))
 
     with TestClient(app) as client:
@@ -201,7 +222,7 @@ def test_analyst_cannot_approve_definition() -> None:
 
 
 def test_run_draft_returns_409() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
     _set_user(app, _user("analyst"))
 
     with TestClient(app) as client:
@@ -216,7 +237,7 @@ def test_run_draft_returns_409() -> None:
 
 
 def test_out_of_scope_knowledge_base_returns_404() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
     _set_user(app, _user("analyst", knowledge_base_ids=["kb-other"]))
 
     with TestClient(app) as client:
@@ -226,7 +247,7 @@ def test_out_of_scope_knowledge_base_returns_404() -> None:
 
 
 def test_invalid_capability_returns_422_and_does_not_persist() -> None:
-    app, repository, _ = _app_harness()
+    app, repository, _, _ = _app_harness()
     _set_user(app, _user("analyst"))
 
     with TestClient(app) as client:
@@ -240,7 +261,7 @@ def test_invalid_capability_returns_422_and_does_not_persist() -> None:
 
 
 def test_admin_can_retire_approved_definition_and_analyst_run_retired_returns_409() -> None:
-    app, _, _ = _app_harness()
+    app, _, _, _ = _app_harness()
 
     with TestClient(app) as client:
         _create_and_approve_definition(client, app)
@@ -258,7 +279,7 @@ def test_admin_can_retire_approved_definition_and_analyst_run_retired_returns_40
 
 
 def test_run_idempotency_replay_with_same_key_returns_same_workflow_id() -> None:
-    app, _, run_store = _app_harness()
+    app, _, run_store, _ = _app_harness()
 
     with TestClient(app) as client:
         _create_and_approve_definition(client, app)
@@ -276,3 +297,20 @@ def test_run_idempotency_replay_with_same_key_returns_same_workflow_id() -> None
     assert second.status_code == 200
     assert second.json()["id"] == first.json()["id"]
     assert len(run_store.list_runs(knowledge_base_id=KB_ID).items) == 1
+
+
+def test_create_without_correlation_header_uses_workflow_definition_fallback() -> None:
+    app, _, _, audit_service = _app_harness()
+    _set_user(app, _user("analyst"))
+
+    with TestClient(app) as client:
+        response = client.post(BASE_URL, json=_create_payload())
+
+    assert response.status_code == 200
+    assert (
+        _audit_correlation_id(
+            audit_service,
+            action="workflow_definition.created",
+        )
+        == "workflow-definition-request"
+    )

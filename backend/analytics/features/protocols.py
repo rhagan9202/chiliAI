@@ -12,6 +12,7 @@ class FeatureValueRepositoryProtocol(Protocol):
 
     def upsert(self, record: FeatureValueRecord) -> None:
         """Create or replace a feature value record."""
+        ...
 
     def list_for_entity(
         self,
@@ -20,9 +21,11 @@ class FeatureValueRepositoryProtocol(Protocol):
         entity_id: str,
     ) -> list[FeatureValueRecord]:
         """List feature values for a KB-scoped entity."""
+        ...
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         """Delete all feature values for a knowledge base; return rows removed."""
+        ...
 
 
 __all__ = ["FeatureValueRepositoryProtocol"]
