@@ -25,8 +25,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1, 2, and 3.
-- Remaining work: Tasks 4 and 5.
+- Completed in this pass: Tasks 1, 2, 3, and 4.
+- Remaining work: Task 5.
 
 ---
 
@@ -237,21 +237,21 @@ git commit -m "feat: show rag active scope"
 - Modify: `backend/capabilities/registry.py`
 - Test: `backend/tests/workflow_definitions/test_rag_adapter.py`
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
-Create tests for authorized `rag.query` execution returning `CapabilityExecutionEnvelope` with `citation_refs`, and denied viewer execution returning `capability_role_denied`.
+Create tests for authorized `rag.query` execution returning `CapabilityExecutionEnvelope` with `citation_refs`, and actor-without-viewer-role execution returning `capability_role_denied`.
 
-- [ ] **Step 2: Run focused red tests**
+- [x] **Step 2: Run focused red tests**
 
 Run: `uv run --project backend pytest backend/tests/workflow_definitions/test_rag_adapter.py -q`
 
 Expected: FAIL because the adapter module does not exist.
 
-- [ ] **Step 3: Implement the adapter**
+- [x] **Step 3: Implement the adapter**
 
 Add a small `execute_rag_query_capability()` function that calls `CapabilityRegistryService.authorize("rag.query", actor_roles, domain_name=..., environment_tag=...)`, short-circuits denied envelopes, then invokes `RagServiceProtocol.answer()`.
 
-- [ ] **Step 4: Run focused green tests**
+- [x] **Step 4: Run focused green tests**
 
 Run:
 
@@ -262,7 +262,7 @@ uv run --project backend ruff check backend/workflow_definitions/rag_adapter.py 
 
 Expected: PASS and Ruff clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

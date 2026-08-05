@@ -125,5 +125,5 @@ def test_execution_envelope_helpers_attach_manifest_audit_requirement() -> None:
         "requires_human_approval": True,
     }
     assert failure.success is False
-    assert failure.audit_required is False
+    assert failure.audit_required is True
     assert failure.output is None

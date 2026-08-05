@@ -197,7 +197,7 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
                 }
             ),
             side_effect_class="read",
-            permission=CapabilityPermission(required_roles=["viewer"]),
+            permission=CapabilityPermission(required_roles=["viewer"], requires_audit=True),
             domain_compatibility=_compat("medicare_fraud", "af_housing", "food_supply_chain"),
             health=CapabilityHealth(status="healthy"),
             examples=[
