@@ -909,6 +909,137 @@ class CapabilityListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+ConnectorSourceTypeValue = Literal["filesystem", "object_store", "http"]
+ConnectorScheduleModeValue = Literal["manual", "interval", "cron"]
+ConnectorStatusValue = Literal["active", "disabled"]
+ConnectorSyncStatusValue = Literal["queued", "running", "completed", "failed", "canceled"]
+ConnectorConfigValue = str | int | float | bool | None
+
+
+class ConnectorSchedulePayload(BaseModel):
+    """Connector schedule request/response payload."""
+
+    mode: ConnectorScheduleModeValue = "manual"
+    expression: str | None = None
+
+
+class ConnectorMappingRefPayload(BaseModel):
+    """Connector mapping reference payload."""
+
+    mapping_id: str = Field(min_length=1)
+    mapping_version: str = Field(min_length=1)
+    feed_name: str = Field(min_length=1)
+
+
+class ConnectorCreateRequest(BaseModel):
+    """Payload for registering a KB-scoped connector."""
+
+    connector_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    source_type: ConnectorSourceTypeValue
+    domain_name: str | None = None
+    credentials_ref: str | None = None
+    schedule: ConnectorSchedulePayload = Field(default_factory=ConnectorSchedulePayload)
+    mapping: ConnectorMappingRefPayload
+    config: dict[str, ConnectorConfigValue] = Field(default_factory=dict)
+
+
+class ConnectorResponse(BaseModel):
+    """Audit-safe connector definition response."""
+
+    connector_id: str
+    name: str
+    source_type: ConnectorSourceTypeValue
+    knowledge_base_id: str
+    domain_name: str | None = None
+    credentials_display: str | None = None
+    schedule: ConnectorSchedulePayload
+    mapping: ConnectorMappingRefPayload
+    config: dict[str, ConnectorConfigValue] = Field(default_factory=dict)
+    status: ConnectorStatusValue
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConnectorListResponse(BaseModel):
+    """Page of KB-scoped connector definitions."""
+
+    items: list[ConnectorResponse] = Field(
+        default_factory=lambda: cast(list[ConnectorResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class ConnectorSyncRunRequest(BaseModel):
+    """Payload for manually starting a connector sync run."""
+
+    idempotency_key: str | None = Field(default=None, min_length=1)
+
+
+class ConnectorSyncCountersResponse(BaseModel):
+    """Connector sync run counters."""
+
+    pulled: int = Field(ge=0)
+    accepted: int = Field(ge=0)
+    quarantined: int = Field(ge=0)
+    failed: int = Field(ge=0)
+
+
+class ConnectorSyncRunResponse(BaseModel):
+    """Connector sync run response."""
+
+    run_id: str
+    connector_id: str
+    knowledge_base_id: str
+    requested_by: str
+    status: ConnectorSyncStatusValue
+    counters: ConnectorSyncCountersResponse
+    idempotency_key: str | None = None
+    ingest_correlation_id: str | None = None
+    source_cursor: str | None = None
+    error_message: str | None = None
+    started_at: datetime
+    completed_at: datetime | None = None
+    updated_at: datetime
+
+
+class ConnectorSyncRunListResponse(BaseModel):
+    """Page of connector sync runs."""
+
+    items: list[ConnectorSyncRunResponse] = Field(
+        default_factory=lambda: cast(list[ConnectorSyncRunResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class ConnectorQuarantineRecordResponse(BaseModel):
+    """Audit-safe quarantined source record metadata."""
+
+    quarantine_id: str
+    run_id: str
+    connector_id: str
+    knowledge_base_id: str
+    source_record_id: str
+    reason: str
+    raw_ref: str | None = None
+    created_at: datetime
+
+
+class ConnectorQuarantineListResponse(BaseModel):
+    """Page of connector quarantine records."""
+
+    items: list[ConnectorQuarantineRecordResponse] = Field(
+        default_factory=lambda: cast(list[ConnectorQuarantineRecordResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -1891,6 +2022,22 @@ __all__ = [
     "ChatMessageResponse",
     "ChatStreamCitationResponse",
     "ChatStreamFinalEventResponse",
+    "ConnectorConfigValue",
+    "ConnectorCreateRequest",
+    "ConnectorListResponse",
+    "ConnectorMappingRefPayload",
+    "ConnectorQuarantineListResponse",
+    "ConnectorQuarantineRecordResponse",
+    "ConnectorResponse",
+    "ConnectorScheduleModeValue",
+    "ConnectorSchedulePayload",
+    "ConnectorSourceTypeValue",
+    "ConnectorStatusValue",
+    "ConnectorSyncCountersResponse",
+    "ConnectorSyncRunListResponse",
+    "ConnectorSyncRunRequest",
+    "ConnectorSyncRunResponse",
+    "ConnectorSyncStatusValue",
     "DomainConfigSchemaResponse",
     "DomainFeaturesResponse",
     "EvidenceItemResponse",
