@@ -20,6 +20,7 @@ from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.audit import router as audit_router
 from api.routers.auth import router as auth_router
+from api.routers.capabilities import router as capabilities_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
 from api.routers.dev_seed import router as dev_seed_router
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(scorecards_router)
     app.include_router(score_runs_router)
+    app.include_router(capabilities_router)
     app.include_router(workflow_definitions_router)
     app.include_router(playbooks_router)
     app.include_router(housing_router)

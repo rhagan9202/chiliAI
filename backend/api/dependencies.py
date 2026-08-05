@@ -104,6 +104,10 @@ from shared.kb_scope import resolve_kb_scope
 from cases.exceptions import AlertAlreadyAttachedError, CaseNotFoundError
 from cases.models import Case, CasePriority, CaseTimelineEvent
 from cases.service import CaseService, create_case_service
+from capabilities.service import (
+    CapabilityRegistryService,
+    create_default_capability_registry_service,
+)
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
 from policy.adapters.postgres import PostgresPolicyItemRepository
 from policy.adapters.protocols import PolicyItemRepository
@@ -347,6 +351,7 @@ __all__ = [
     "get_case_repository",
     "get_case_service",
     "get_case_update_payload",
+    "get_capability_registry_service",
     "get_chat_conversation_create_payload",
     "get_chat_conversation_payload",
     "get_chat_message_payload",
@@ -2717,6 +2722,13 @@ def get_playbook_service(
     return PlaybookService(repository=repository, domain_config=config)
 
 
+@lru_cache(maxsize=1)
+def get_capability_registry_service() -> CapabilityRegistryService:
+    """Return the typed capability registry for workflows and agents."""
+
+    return create_default_capability_registry_service()
+
+
 def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRepository:
     """Return the workflow definition repository for API-authored drafts."""
 
@@ -3301,9 +3313,17 @@ def get_workflow_definition_service(
     ),
     run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
     audit_service: AuditLogService = Depends(get_audit_log_service),
+    capability_registry: CapabilityRegistryService = Depends(
+        get_capability_registry_service
+    ),
 ) -> WorkflowDefinitionService:
     """Return the workflow definition service for KB-scoped definitions."""
-    return WorkflowDefinitionService(repository, run_store, audit_service)
+    return WorkflowDefinitionService(
+        repository,
+        run_store,
+        audit_service,
+        capability_registry=capability_registry,
+    )
 
 
 def get_agent_service(
@@ -3410,6 +3430,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_entity_metric_repository": get_entity_metric_repository,
     "get_knowledge_base_repository": get_knowledge_base_repository,
     "get_rag_service": get_rag_service,
+    "get_capability_registry_service": get_capability_registry_service,
 }
 """All ``@lru_cache`` singletons in this module, cleared together on swap."""
 

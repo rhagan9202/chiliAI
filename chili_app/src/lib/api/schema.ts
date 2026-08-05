@@ -1278,6 +1278,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Capabilities
+         * @description Return registered capabilities available to one knowledge base.
+         */
+        get: operations["list_capabilities_knowledgebases__knowledge_base_id__capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/documents": {
         parameters: {
             query?: never;
@@ -2529,6 +2549,112 @@ export interface components {
              * @default false
              */
             timeseries: boolean;
+        };
+        /**
+         * CapabilityDomainCompatibilityResponse
+         * @description Domain and environment metadata for one registered capability.
+         */
+        CapabilityDomainCompatibilityResponse: {
+            /** Environment Tags */
+            environment_tags?: string[];
+            /** Supported Domains */
+            supported_domains?: string[];
+            /** Unsupported Domains */
+            unsupported_domains?: string[];
+        };
+        /**
+         * CapabilityExampleResponse
+         * @description Example input/output pair for a registered capability.
+         */
+        CapabilityExampleResponse: {
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * CapabilityHealthResponse
+         * @description Last-known health metadata for one registered capability.
+         */
+        CapabilityHealthResponse: {
+            /** Details */
+            details?: string | null;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "disabled";
+        };
+        /**
+         * CapabilityListResponse
+         * @description Page of registered capabilities available to one knowledge base.
+         */
+        CapabilityListResponse: {
+            /** Items */
+            items?: components["schemas"]["CapabilityManifestResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * CapabilityManifestResponse
+         * @description Author-facing manifest for a registered capability.
+         */
+        CapabilityManifestResponse: {
+            /** Capability Id */
+            capability_id: string;
+            /** Description */
+            description: string;
+            domain_compatibility: components["schemas"]["CapabilityDomainCompatibilityResponse"];
+            /** Examples */
+            examples?: components["schemas"]["CapabilityExampleResponse"][];
+            health: components["schemas"]["CapabilityHealthResponse"];
+            /** Input Schema */
+            input_schema: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
+            /** Module */
+            module: string;
+            /** Output Schema */
+            output_schema: {
+                [key: string]: unknown;
+            };
+            permission: components["schemas"]["CapabilityPermissionResponse"];
+            /**
+             * Side Effect Class
+             * @enum {string}
+             */
+            side_effect_class: "read" | "write" | "external_call" | "approval";
+            /** Version */
+            version: string;
+        };
+        /**
+         * CapabilityPermissionResponse
+         * @description Permission metadata for one registered capability.
+         */
+        CapabilityPermissionResponse: {
+            /** Required Roles */
+            required_roles?: string[];
+            /** Required Scopes */
+            required_scopes?: string[];
+            /**
+             * Requires Audit
+             * @default false
+             */
+            requires_audit: boolean;
         };
         /**
          * CaseAttachAlertRequest
@@ -9351,6 +9477,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_capabilities_knowledgebases__knowledge_base_id__capabilities_get: {
+        parameters: {
+            query?: {
+                role?: string | null;
+                module?: string | null;
+                side_effect_class?: ("read" | "write" | "external_call" | "approval") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilityListResponse"];
                 };
             };
             /** @description Validation Error */

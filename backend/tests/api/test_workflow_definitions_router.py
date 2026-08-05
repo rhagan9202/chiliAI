@@ -260,6 +260,20 @@ def test_invalid_capability_returns_422_and_does_not_persist() -> None:
     assert repository.list_definitions(knowledge_base_id=KB_ID).items == []
 
 
+def test_create_accepts_registered_connector_status_capability() -> None:
+    app, _, _, _ = _app_harness()
+    _set_user(app, _user("analyst"))
+
+    with TestClient(app) as client:
+        response = client.post(
+            BASE_URL,
+            json=_create_payload(capability_ref="connector.sync.status"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["steps"][0]["capability_ref"] == "connector.sync.status"
+
+
 def test_admin_can_retire_approved_definition_and_analyst_run_retired_returns_409() -> None:
     app, _, _, _ = _app_harness()
 

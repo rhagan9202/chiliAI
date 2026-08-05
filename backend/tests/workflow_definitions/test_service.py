@@ -135,6 +135,26 @@ def test_create_draft_returns_snapshot_id() -> None:
     assert created.snapshot_id == "kb-workflows:provider-review-workflow:v1"
 
 
+def test_create_draft_accepts_registered_connector_status_capability() -> None:
+    service, _, _, _ = _service()
+    payload = _valid_create_payload().model_copy(
+        update={
+            "allowed_capability_refs": ["connector.sync.status"],
+            "steps": [
+                WorkflowStepDefinition(
+                    step_id="sync-status",
+                    label="Connector status",
+                    capability_ref="connector.sync.status",
+                )
+            ],
+        }
+    )
+
+    created = service.create_draft("kb-1", payload, **ACTOR_KWARGS)
+
+    assert created.steps[0].capability_ref == "connector.sync.status"
+
+
 def test_update_draft_accepts_full_create_payload() -> None:
     service, _, _, _ = _service()
     created = service.create_draft("kb-1", _valid_create_payload(), **ACTOR_KWARGS)

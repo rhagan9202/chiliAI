@@ -750,6 +750,8 @@ WorkflowDefinitionStatusValue = Literal["draft", "approved", "retired"]
 WorkflowRunTargetTypeValue = Literal["alert", "entity", "case", "knowledge_base"]
 WorkflowFailureModeValue = Literal["fail_workflow", "continue", "require_approval"]
 WorkflowDefinitionInputValue = str | int | float | bool
+CapabilitySideEffectClassValue = Literal["read", "write", "external_call", "approval"]
+CapabilityHealthStatusValue = Literal["healthy", "degraded", "disabled"]
 
 
 class WorkflowStepDefinitionPayload(BaseModel):
@@ -839,6 +841,68 @@ class WorkflowDefinitionListResponse(BaseModel):
 
     items: list[WorkflowDefinitionResponse] = Field(
         default_factory=lambda: cast(list[WorkflowDefinitionResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class CapabilityPermissionResponse(BaseModel):
+    """Permission metadata for one registered capability."""
+
+    required_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    requires_audit: bool = False
+    required_scopes: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class CapabilityDomainCompatibilityResponse(BaseModel):
+    """Domain and environment metadata for one registered capability."""
+
+    supported_domains: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    unsupported_domains: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    environment_tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class CapabilityHealthResponse(BaseModel):
+    """Last-known health metadata for one registered capability."""
+
+    status: CapabilityHealthStatusValue
+    last_checked_at: datetime | None = None
+    details: str | None = None
+
+
+class CapabilityExampleResponse(BaseModel):
+    """Example input/output pair for a registered capability."""
+
+    name: str
+    input: dict[str, object] = Field(default_factory=lambda: cast(dict[str, object], {}))
+    output: dict[str, object] = Field(default_factory=lambda: cast(dict[str, object], {}))
+
+
+class CapabilityManifestResponse(BaseModel):
+    """Author-facing manifest for a registered capability."""
+
+    capability_id: str
+    version: str
+    module: str
+    label: str
+    description: str
+    input_schema: dict[str, object]
+    output_schema: dict[str, object]
+    side_effect_class: CapabilitySideEffectClassValue
+    permission: CapabilityPermissionResponse
+    domain_compatibility: CapabilityDomainCompatibilityResponse
+    health: CapabilityHealthResponse
+    examples: list[CapabilityExampleResponse] = Field(
+        default_factory=lambda: cast(list[CapabilityExampleResponse], [])
+    )
+
+
+class CapabilityListResponse(BaseModel):
+    """Page of registered capabilities available to one knowledge base."""
+
+    items: list[CapabilityManifestResponse] = Field(
+        default_factory=lambda: cast(list[CapabilityManifestResponse], [])
     )
     total: int = Field(ge=0)
     limit: int = Field(ge=1)
@@ -1813,6 +1877,14 @@ __all__ = [
     "CaseListResponse",
     "CaseSummaryResponse",
     "CaseUpdateRequest",
+    "CapabilityDomainCompatibilityResponse",
+    "CapabilityExampleResponse",
+    "CapabilityHealthResponse",
+    "CapabilityHealthStatusValue",
+    "CapabilityListResponse",
+    "CapabilityManifestResponse",
+    "CapabilityPermissionResponse",
+    "CapabilitySideEffectClassValue",
     "ChatConversationCreateRequest",
     "ChatConversationResponse",
     "ChatMessageCreateRequest",

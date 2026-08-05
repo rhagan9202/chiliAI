@@ -8,6 +8,10 @@ from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.models import MetadataValue, WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from auditlog.models import AuditEventCreate, JsonSummary
 from auditlog.service import AuditLogService
+from capabilities.service import (
+    CapabilityRegistryService,
+    create_default_capability_registry_service,
+)
 from shared.utils import generate_id, utc_now
 from workflow_definitions.models import (
     WorkflowDefinition,
@@ -71,11 +75,15 @@ class WorkflowDefinitionService:
         run_store: WorkflowRunStoreProtocol,
         audit_service: AuditLogService,
         *,
+        capability_registry: CapabilityRegistryService | None = None,
         tenant_id: str = "default",
     ) -> None:
         self._repository = repository
         self._run_store = run_store
         self._audit_service = audit_service
+        self._capability_registry = (
+            capability_registry or create_default_capability_registry_service()
+        )
         self._tenant_id = tenant_id
 
     def list_definitions(
@@ -400,14 +408,15 @@ class WorkflowDefinitionService:
         merged.update(update)
         return WorkflowDefinition.model_validate(merged)
 
-    @staticmethod
-    def _validate_payload(payload: WorkflowDefinitionCreate) -> None:
-        result = validate_workflow_definition_payload(payload)
+    def _validate_payload(self, payload: WorkflowDefinitionCreate) -> None:
+        result = validate_workflow_definition_payload(
+            payload,
+            registered_capability_refs=self._registered_capability_refs(),
+        )
         if not result.valid:
             raise WorkflowDefinitionValidationError(result.errors)
 
-    @staticmethod
-    def _validate_definition(definition: WorkflowDefinition) -> None:
+    def _validate_definition(self, definition: WorkflowDefinition) -> None:
         payload = WorkflowDefinitionCreate(
             definition_id=definition.definition_id,
             name=definition.name,
@@ -417,7 +426,11 @@ class WorkflowDefinitionService:
             allowed_capability_refs=list(definition.allowed_capability_refs),
             steps=[step.model_copy(deep=True) for step in definition.steps],
         )
-        WorkflowDefinitionService._validate_payload(payload)
+        self._validate_payload(payload)
+
+    def _registered_capability_refs(self) -> frozenset[str]:
+        page = self._capability_registry.list_capabilities()
+        return frozenset(item.capability_id for item in page.items)
 
     def _record_definition_audit(
         self,

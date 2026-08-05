@@ -1204,6 +1204,236 @@
         "title": "CapabilitiesConfig",
         "type": "object"
       },
+      "CapabilityDomainCompatibilityResponse": {
+        "description": "Domain and environment metadata for one registered capability.",
+        "properties": {
+          "environment_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Environment Tags",
+            "type": "array"
+          },
+          "supported_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Domains",
+            "type": "array"
+          },
+          "unsupported_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unsupported Domains",
+            "type": "array"
+          }
+        },
+        "title": "CapabilityDomainCompatibilityResponse",
+        "type": "object"
+      },
+      "CapabilityExampleResponse": {
+        "description": "Example input/output pair for a registered capability.",
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "title": "Output",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CapabilityExampleResponse",
+        "type": "object"
+      },
+      "CapabilityHealthResponse": {
+        "description": "Last-known health metadata for one registered capability.",
+        "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "CapabilityHealthResponse",
+        "type": "object"
+      },
+      "CapabilityListResponse": {
+        "description": "Page of registered capabilities available to one knowledge base.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityManifestResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CapabilityListResponse",
+        "type": "object"
+      },
+      "CapabilityManifestResponse": {
+        "description": "Author-facing manifest for a registered capability.",
+        "properties": {
+          "capability_id": {
+            "title": "Capability Id",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "domain_compatibility": {
+            "$ref": "#/components/schemas/CapabilityDomainCompatibilityResponse"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityExampleResponse"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "health": {
+            "$ref": "#/components/schemas/CapabilityHealthResponse"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "title": "Input Schema",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "module": {
+            "title": "Module",
+            "type": "string"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/CapabilityPermissionResponse"
+          },
+          "side_effect_class": {
+            "enum": [
+              "read",
+              "write",
+              "external_call",
+              "approval"
+            ],
+            "title": "Side Effect Class",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability_id",
+          "version",
+          "module",
+          "label",
+          "description",
+          "input_schema",
+          "output_schema",
+          "side_effect_class",
+          "permission",
+          "domain_compatibility",
+          "health"
+        ],
+        "title": "CapabilityManifestResponse",
+        "type": "object"
+      },
+      "CapabilityPermissionResponse": {
+        "description": "Permission metadata for one registered capability.",
+        "properties": {
+          "required_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Roles",
+            "type": "array"
+          },
+          "required_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Scopes",
+            "type": "array"
+          },
+          "requires_audit": {
+            "default": false,
+            "title": "Requires Audit",
+            "type": "boolean"
+          }
+        },
+        "title": "CapabilityPermissionResponse",
+        "type": "object"
+      },
       "CaseAttachAlertRequest": {
         "description": "Payload for attaching an alert to a case that already exists (UXA-405).",
         "properties": {
@@ -15342,6 +15572,128 @@
         "summary": "Read Knowledge Base",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/capabilities": {
+      "get": {
+        "description": "Return registered capabilities available to one knowledge base.",
+        "operationId": "list_capabilities_knowledgebases__knowledge_base_id__capabilities_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "module",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side_effect_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "read",
+                    "write",
+                    "external_call",
+                    "approval"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side Effect Class"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Capabilities",
+        "tags": [
+          "capabilities"
         ]
       }
     },

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from collections.abc import Collection
 from typing import Literal, TypeAlias, cast
 
 from pydantic import BaseModel, Field, computed_field
@@ -114,10 +115,17 @@ class WorkflowDefinitionPage(BaseModel):
 
 def validate_workflow_definition_payload(
     payload: WorkflowDefinitionCreate | WorkflowDefinitionUpdate,
+    *,
+    registered_capability_refs: Collection[str] | None = None,
 ) -> WorkflowDefinitionValidationResult:
     errors: list[str] = []
     allowed_refs = payload.allowed_capability_refs or []
     steps = payload.steps or []
+    capability_refs = (
+        BUILT_IN_WORKFLOW_CAPABILITIES
+        if registered_capability_refs is None
+        else frozenset(registered_capability_refs)
+    )
 
     if isinstance(payload, WorkflowDefinitionCreate) and not steps:
         errors.append("Workflow definition requires at least one step.")
@@ -125,7 +133,7 @@ def validate_workflow_definition_payload(
         errors.append("Workflow definition requires at least one step.")
 
     for capability_ref in allowed_refs:
-        if capability_ref not in BUILT_IN_WORKFLOW_CAPABILITIES:
+        if capability_ref not in capability_refs:
             errors.append(
                 f"allowed_capability_refs contains unknown capability '{capability_ref}'."
             )
@@ -136,7 +144,7 @@ def validate_workflow_definition_payload(
 
     allowed_ref_set = set(allowed_refs)
     for step in steps:
-        if step.capability_ref not in BUILT_IN_WORKFLOW_CAPABILITIES:
+        if step.capability_ref not in capability_refs:
             errors.append(
                 f"Step '{step.step_id}' references unknown capability '{step.capability_ref}'."
             )

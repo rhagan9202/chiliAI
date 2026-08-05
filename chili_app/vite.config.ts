@@ -7,6 +7,9 @@ const wsProxyTarget = process.env.VITE_WS_PROXY_TARGET ?? 'ws://localhost:8000'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    chunkSizeWarningLimit: 2000,
+  },
   server: {
     allowedHosts: [
 	    "5173--main--hopes-and-dreams--rhagan.coder.sand.uskgc.com"
