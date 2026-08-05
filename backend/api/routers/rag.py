@@ -154,6 +154,8 @@ async def add_message(
             state.rag_service,
             knowledge_base_ids=kb_ids,
             question=payload.content,
+            include_graph_context=payload.include_graph_context,
+            filters=payload.filters,
         ),
         media_type="text/event-stream",
     )
@@ -164,10 +166,14 @@ async def _stream_sse(
     *,
     knowledge_base_ids: list[str],
     question: str,
+    include_graph_context: bool,
+    filters: dict[str, str | int | float | bool],
 ) -> AsyncIterator[bytes]:
     query_request = RagQueryRequest(
         knowledge_base_ids=knowledge_base_ids,
         question=question,
+        include_graph_context=include_graph_context,
+        filters=filters,
     )
     try:
         for chunk in rag_service.stream_answer(query_request):
