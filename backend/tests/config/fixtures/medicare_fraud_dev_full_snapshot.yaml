@@ -1248,6 +1248,10 @@ ui:
       label: Policy Intelligence
       route: /policy
       capability: explainability
+    - id: governance
+      label: Governance
+      route: /governance
+      capability: explainability
     - id: rag_chat
       label: RAG Chat
       route: /rag-chat
@@ -1299,6 +1303,7 @@ ui:
       - investigation
       - cases
       - policy
+      - governance
       - knowledge_bases
       - rag_chat
       - configuration

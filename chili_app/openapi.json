@@ -5453,6 +5453,293 @@
         "title": "GnnConfig",
         "type": "object"
       },
+      "GovernanceBaselineDecisionResponse": {
+        "description": "Approval or rejection decision for a governance eval run.",
+        "properties": {
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "decided_by",
+          "decided_at",
+          "rationale"
+        ],
+        "title": "GovernanceBaselineDecisionResponse",
+        "type": "object"
+      },
+      "GovernanceDriftSummaryResponse": {
+        "description": "Compact drift summary for a governance evaluation run.",
+        "properties": {
+          "failed_metric_count": {
+            "minimum": 0.0,
+            "title": "Failed Metric Count",
+            "type": "integer"
+          },
+          "max_abs_delta": {
+            "minimum": 0.0,
+            "title": "Max Abs Delta",
+            "type": "number"
+          },
+          "metric_count": {
+            "minimum": 0.0,
+            "title": "Metric Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metric_count",
+          "failed_metric_count",
+          "max_abs_delta"
+        ],
+        "title": "GovernanceDriftSummaryResponse",
+        "type": "object"
+      },
+      "GovernanceEvalApprovalRequest": {
+        "description": "Approve a passing governance eval run as a baseline decision.",
+        "properties": {
+          "rationale": {
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rationale"
+        ],
+        "title": "GovernanceEvalApprovalRequest",
+        "type": "object"
+      },
+      "GovernanceEvalRunCreateRequest": {
+        "description": "Register a candidate governance evaluation run.",
+        "properties": {
+          "affected_alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Alert Ids",
+            "type": "array"
+          },
+          "affected_case_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Case Ids",
+            "type": "array"
+          },
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_kind": {
+            "enum": [
+              "connector",
+              "model",
+              "playbook",
+              "prompt",
+              "scoring",
+              "workflow_definition"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "artifact_version": {
+            "title": "Artifact Version",
+            "type": "string"
+          },
+          "baseline_version": {
+            "title": "Baseline Version",
+            "type": "string"
+          },
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "dataset_source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dataset Source Refs",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceMetricInputRequest"
+            },
+            "minItems": 1,
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifact_kind",
+          "artifact_id",
+          "artifact_version",
+          "baseline_version",
+          "dataset_id",
+          "metrics"
+        ],
+        "title": "GovernanceEvalRunCreateRequest",
+        "type": "object"
+      },
+      "GovernanceEvalRunListResponse": {
+        "description": "List of governance evaluation runs for one knowledge base.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceEvalRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total_items": {
+            "minimum": 0.0,
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_items"
+        ],
+        "title": "GovernanceEvalRunListResponse",
+        "type": "object"
+      },
+      "GovernanceEvalRunResponse": {
+        "description": "Persisted governance evaluation run response.",
+        "properties": {
+          "affected_alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Alert Ids",
+            "type": "array"
+          },
+          "affected_case_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Case Ids",
+            "type": "array"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GovernanceBaselineDecisionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_kind": {
+            "enum": [
+              "connector",
+              "model",
+              "playbook",
+              "prompt",
+              "scoring",
+              "workflow_definition"
+            ],
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "artifact_version": {
+            "title": "Artifact Version",
+            "type": "string"
+          },
+          "baseline_version": {
+            "title": "Baseline Version",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "dataset_source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dataset Source Refs",
+            "type": "array"
+          },
+          "drift_summary": {
+            "$ref": "#/components/schemas/GovernanceDriftSummaryResponse"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceMetricResultResponse"
+            },
+            "minItems": 1,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "candidate",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "knowledge_base_id",
+          "artifact_kind",
+          "artifact_id",
+          "artifact_version",
+          "baseline_version",
+          "dataset_id",
+          "status",
+          "metrics",
+          "drift_summary",
+          "created_by",
+          "created_at"
+        ],
+        "title": "GovernanceEvalRunResponse",
+        "type": "object"
+      },
       "GovernanceFeedbackTrendResponse": {
         "description": "Explanation-review feedback trend summary for release evaluation.",
         "properties": {
@@ -5485,6 +5772,94 @@
           "approved_reviews"
         ],
         "title": "GovernanceFeedbackTrendResponse",
+        "type": "object"
+      },
+      "GovernanceMetricInputRequest": {
+        "description": "Candidate-vs-baseline metric submitted to a governance eval run.",
+        "properties": {
+          "baseline_value": {
+            "title": "Baseline Value",
+            "type": "number"
+          },
+          "candidate_value": {
+            "title": "Candidate Value",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "higher",
+              "lower"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "threshold": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "baseline_value",
+          "candidate_value",
+          "direction"
+        ],
+        "title": "GovernanceMetricInputRequest",
+        "type": "object"
+      },
+      "GovernanceMetricResultResponse": {
+        "description": "Persisted candidate-vs-baseline metric result.",
+        "properties": {
+          "baseline_value": {
+            "title": "Baseline Value",
+            "type": "number"
+          },
+          "candidate_value": {
+            "title": "Candidate Value",
+            "type": "number"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "higher",
+              "lower"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "threshold": {
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "baseline_value",
+          "candidate_value",
+          "threshold",
+          "direction",
+          "delta",
+          "passed"
+        ],
+        "title": "GovernanceMetricResultResponse",
         "type": "object"
       },
       "GovernancePendingApprovalResponse": {
@@ -5572,6 +5947,13 @@
           "domain_name": {
             "title": "Domain Name",
             "type": "string"
+          },
+          "eval_runs": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceEvalRunResponse"
+            },
+            "title": "Eval Runs",
+            "type": "array"
           },
           "feedback_trends": {
             "$ref": "#/components/schemas/GovernanceFeedbackTrendResponse"
@@ -17432,6 +17814,247 @@
         "summary": "Get Feature Catalog",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs": {
+      "get": {
+        "description": "Return governance evaluation runs for one knowledge base.",
+        "operationId": "list_governance_eval_runs_knowledgebases__knowledge_base_id__governance_eval_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceEvalRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Governance Eval Runs",
+        "tags": [
+          "governance"
+        ]
+      },
+      "post": {
+        "description": "Register a candidate evaluation run for release governance.",
+        "operationId": "create_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceEvalRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceEvalRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Governance Eval Run",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs/{run_id}/approve": {
+      "post": {
+        "description": "Approve a passing candidate eval run before release promotion.",
+        "operationId": "approve_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceEvalApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceEvalRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Governance Eval Run",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs/{run_id}/reject": {
+      "post": {
+        "description": "Reject a candidate eval run and retain the decision as release evidence.",
+        "operationId": "reject_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceEvalApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceEvalRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Governance Eval Run",
+        "tags": [
+          "governance"
         ]
       }
     },

@@ -12,6 +12,14 @@ from analytics.explainability.reviews import (
 )
 from config.loader import load_config
 from config.schema import FraudPlaybookConfig
+from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
+from governance.models import (
+    GovernanceBaselineDecision,
+    GovernanceComponentKind,
+    GovernanceDriftSummary,
+    GovernanceEvalRun,
+    GovernanceMetricResult,
+)
 from governance.service import GovernanceReportService
 from playbooks.adapters.in_memory import InMemoryPlaybookRepository
 from playbooks.models import PlaybookSnapshot
@@ -38,6 +46,18 @@ def test_report_lists_published_playbooks_and_approved_workflows() -> None:
                 version="v1",
                 status="approved",
                 approved_by="supervisor-1",
+            ),
+        ],
+        eval_runs=[
+            _approved_eval_run(
+                artifact_kind="playbook",
+                artifact_id="billing-review",
+                artifact_version="v2",
+            ),
+            _approved_eval_run(
+                artifact_kind="workflow_definition",
+                artifact_id="alert-review",
+                artifact_version="v1",
             ),
         ],
     )
@@ -72,6 +92,13 @@ def test_draft_workflow_definition_requires_approval_before_release() -> None:
                 version="v3",
                 status="draft",
             ),
+        ],
+        eval_runs=[
+            _approved_eval_run(
+                artifact_kind="playbook",
+                artifact_id="billing-review",
+                artifact_version="v1",
+            )
         ],
     )
 
@@ -130,6 +157,13 @@ def test_challenged_explanation_reviews_feed_governance_trends() -> None:
             _playbook_snapshot(playbook_id="billing-review", version="v1"),
         ],
         explanation_review_service=review_service,
+        eval_runs=[
+            _approved_eval_run(
+                artifact_kind="playbook",
+                artifact_id="billing-review",
+                artifact_version="v1",
+            )
+        ],
     )
 
     report = service.build_report(knowledge_base_id=KB_ID, domain_name=DOMAIN_NAME)
@@ -245,6 +279,13 @@ def test_feedback_trends_count_reviews_beyond_first_page() -> None:
             _playbook_snapshot(playbook_id="billing-review", version="v1"),
         ],
         explanation_review_service=review_service,
+        eval_runs=[
+            _approved_eval_run(
+                artifact_kind="playbook",
+                artifact_id="billing-review",
+                artifact_version="v1",
+            )
+        ],
     )
 
     report = service.build_report(knowledge_base_id=KB_ID, domain_name=DOMAIN_NAME)
@@ -263,6 +304,7 @@ def _service(
     playbook_snapshots: list[PlaybookSnapshot] | None = None,
     workflow_definitions: list[WorkflowDefinition] | None = None,
     explanation_review_service: ExplanationReviewService | None = None,
+    eval_runs: list[GovernanceEvalRun] | None = None,
 ) -> GovernanceReportService:
     playbooks = InMemoryPlaybookRepository()
     for snapshot in playbook_snapshots or []:
@@ -275,6 +317,7 @@ def _service(
             explanation_review_service
             or ExplanationReviewService(InMemoryExplanationReviewRepository())
         ),
+        eval_repository=InMemoryGovernanceEvalRepository(eval_runs or []),
         clock=lambda: BASE_TIME,
     )
 
@@ -330,4 +373,47 @@ def _workflow_definition(
         updated_at=BASE_TIME,
         approved_at=approved_at,
         retired_at=None,
+    )
+
+
+def _approved_eval_run(
+    *,
+    artifact_kind: GovernanceComponentKind,
+    artifact_id: str,
+    artifact_version: str,
+) -> GovernanceEvalRun:
+    return GovernanceEvalRun(
+        run_id=f"{KB_ID}:{artifact_kind}:{artifact_id}:{artifact_version}:tn-demo-1pct",
+        knowledge_base_id=KB_ID,
+        artifact_kind=artifact_kind,
+        artifact_id=artifact_id,
+        artifact_version=artifact_version,
+        baseline_version="baseline-v1",
+        dataset_id="tn-demo-1pct",
+        status="approved",
+        metrics=[
+            GovernanceMetricResult(
+                name="precision",
+                baseline_value=0.72,
+                candidate_value=0.78,
+                threshold=0.0,
+                direction="higher",
+                delta=0.06,
+                passed=True,
+            )
+        ],
+        drift_summary=GovernanceDriftSummary(
+            metric_count=1,
+            failed_metric_count=0,
+            max_abs_delta=0.06,
+        ),
+        dataset_source_refs=["explanation_review:pack-1:narrative:narrative"],
+        created_by="model-owner-1",
+        created_at=BASE_TIME,
+        approval=GovernanceBaselineDecision(
+            decision="approved",
+            decided_by="supervisor-1",
+            decided_at=BASE_TIME,
+            rationale="Approved baseline.",
+        ),
     )

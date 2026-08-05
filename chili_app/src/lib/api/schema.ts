@@ -1493,6 +1493,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Governance Eval Runs
+         * @description Return governance evaluation runs for one knowledge base.
+         */
+        get: operations["list_governance_eval_runs_knowledgebases__knowledge_base_id__governance_eval_runs_get"];
+        put?: never;
+        /**
+         * Create Governance Eval Run
+         * @description Register a candidate evaluation run for release governance.
+         */
+        post: operations["create_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs/{run_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Governance Eval Run
+         * @description Approve a passing candidate eval run before release promotion.
+         */
+        post: operations["approve_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/governance/eval-runs/{run_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Governance Eval Run
+         * @description Reject a candidate eval run and retain the decision as release evidence.
+         */
+        post: operations["reject_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/governance/report": {
         parameters: {
             query?: never;
@@ -4480,6 +4544,128 @@ export interface components {
             snapshot_max_nodes: number;
         };
         /**
+         * GovernanceBaselineDecisionResponse
+         * @description Approval or rejection decision for a governance eval run.
+         */
+        GovernanceBaselineDecisionResponse: {
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Decided By */
+            decided_by: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Rationale */
+            rationale: string;
+        };
+        /**
+         * GovernanceDriftSummaryResponse
+         * @description Compact drift summary for a governance evaluation run.
+         */
+        GovernanceDriftSummaryResponse: {
+            /** Failed Metric Count */
+            failed_metric_count: number;
+            /** Max Abs Delta */
+            max_abs_delta: number;
+            /** Metric Count */
+            metric_count: number;
+        };
+        /**
+         * GovernanceEvalApprovalRequest
+         * @description Approve a passing governance eval run as a baseline decision.
+         */
+        GovernanceEvalApprovalRequest: {
+            /** Rationale */
+            rationale: string;
+        };
+        /**
+         * GovernanceEvalRunCreateRequest
+         * @description Register a candidate governance evaluation run.
+         */
+        GovernanceEvalRunCreateRequest: {
+            /** Affected Alert Ids */
+            affected_alert_ids?: string[];
+            /** Affected Case Ids */
+            affected_case_ids?: string[];
+            /** Artifact Id */
+            artifact_id: string;
+            /**
+             * Artifact Kind
+             * @enum {string}
+             */
+            artifact_kind: "connector" | "model" | "playbook" | "prompt" | "scoring" | "workflow_definition";
+            /** Artifact Version */
+            artifact_version: string;
+            /** Baseline Version */
+            baseline_version: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Dataset Source Refs */
+            dataset_source_refs?: string[];
+            /** Metrics */
+            metrics: components["schemas"]["GovernanceMetricInputRequest"][];
+        };
+        /**
+         * GovernanceEvalRunListResponse
+         * @description List of governance evaluation runs for one knowledge base.
+         */
+        GovernanceEvalRunListResponse: {
+            /** Items */
+            items?: components["schemas"]["GovernanceEvalRunResponse"][];
+            /** Total Items */
+            total_items: number;
+        };
+        /**
+         * GovernanceEvalRunResponse
+         * @description Persisted governance evaluation run response.
+         */
+        GovernanceEvalRunResponse: {
+            /** Affected Alert Ids */
+            affected_alert_ids?: string[];
+            /** Affected Case Ids */
+            affected_case_ids?: string[];
+            approval?: components["schemas"]["GovernanceBaselineDecisionResponse"] | null;
+            /** Artifact Id */
+            artifact_id: string;
+            /**
+             * Artifact Kind
+             * @enum {string}
+             */
+            artifact_kind: "connector" | "model" | "playbook" | "prompt" | "scoring" | "workflow_definition";
+            /** Artifact Version */
+            artifact_version: string;
+            /** Baseline Version */
+            baseline_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Dataset Source Refs */
+            dataset_source_refs?: string[];
+            drift_summary: components["schemas"]["GovernanceDriftSummaryResponse"];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Metrics */
+            metrics: components["schemas"]["GovernanceMetricResultResponse"][];
+            /** Run Id */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "candidate" | "approved" | "rejected";
+        };
+        /**
          * GovernanceFeedbackTrendResponse
          * @description Explanation-review feedback trend summary for release evaluation.
          */
@@ -4494,6 +4680,51 @@ export interface components {
             };
             /** Total Reviews */
             total_reviews: number;
+        };
+        /**
+         * GovernanceMetricInputRequest
+         * @description Candidate-vs-baseline metric submitted to a governance eval run.
+         */
+        GovernanceMetricInputRequest: {
+            /** Baseline Value */
+            baseline_value: number;
+            /** Candidate Value */
+            candidate_value: number;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "higher" | "lower";
+            /** Name */
+            name: string;
+            /**
+             * Threshold
+             * @default 0
+             */
+            threshold: number;
+        };
+        /**
+         * GovernanceMetricResultResponse
+         * @description Persisted candidate-vs-baseline metric result.
+         */
+        GovernanceMetricResultResponse: {
+            /** Baseline Value */
+            baseline_value: number;
+            /** Candidate Value */
+            candidate_value: number;
+            /** Delta */
+            delta: number;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "higher" | "lower";
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: boolean;
+            /** Threshold */
+            threshold: number;
         };
         /**
          * GovernancePendingApprovalResponse
@@ -4545,6 +4776,8 @@ export interface components {
         GovernanceReportResponse: {
             /** Domain Name */
             domain_name: string;
+            /** Eval Runs */
+            eval_runs?: components["schemas"]["GovernanceEvalRunResponse"][];
             feedback_trends: components["schemas"]["GovernanceFeedbackTrendResponse"];
             /**
              * Generated At
@@ -10440,6 +10673,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_governance_eval_runs_knowledgebases__knowledge_base_id__governance_eval_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvalRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceEvalRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvalRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceEvalApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvalRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_governance_eval_run_knowledgebases__knowledge_base_id__governance_eval_runs__run_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GovernanceEvalApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvalRunResponse"];
                 };
             };
             /** @description Validation Error */

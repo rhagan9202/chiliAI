@@ -60,7 +60,7 @@
 | SAFE-CMS-017 | Pull connectors for CMS-adjacent sources | SAFE-CMS-SURGE | P1 (PI 5 Sprint 17) | done — connector definitions, sync-run/quarantine tracking, KB-scoped API, local filesystem adapter, frontend management surface, capability status adapter, and verification merged 2026-08-05 (`eebd6f5`) | 0 SP |
 | SAFE-CMS-018 | Global KB, domain, and readiness controls | SAFE-CMS-SURGE | P1 (PI 5 Sprint 18) | done — readiness aggregation service, KB-scoped API, generated frontend client, app-shell workspace control, route gating tests, and live-stack verification merged 2026-08-05 (`92d1538`) | 0 SP |
 | SAFE-CMS-019 | Enterprise visual refinement and accessibility pass | SAFE-CMS-SURGE | P1 (PI 5 Sprint 19) | done — shared status pill primitive, density/contrast/radius guardrails, dashboard/alert/case status refactors, docs, and frontend verification merged 2026-08-05 (`4e06a70`) | 0 SP |
-| SAFE-CMS-020 | Governance, evals, and release evidence loop | SAFE-CMS-SURGE | P1 (PI 5 Sprint 20) | done — governance report service/API, generated contracts, supervisor dashboard, CMS pack wiring, live e2e smoke, and prod sync merged 2026-08-05 (`58ff388`) | 0 SP |
+| SAFE-CMS-020 | Governance, evals, and release evidence loop | SAFE-CMS-SURGE | P1 (PI 5 Sprint 20) | done — governance report service/API, persisted eval runs, metric comparisons, drift summaries, baseline approval gates, affected alert/case linkage, supervisor dashboard eval evidence, generated contracts, migration replay, and live e2e smoke completed 2026-08-05 | 0 SP |
 
 Sprint 2026-28 committed set (owner directive + approved design note `docs/superpowers/specs/2026-07-16-sprint28-cms-fraud-workbench-design.md`): BL-046..051 core (26 SP, two-track), BL-052 stretch. BL-030 remains the post-v1 record; BL-052 is its sprint-scoped stretch slice.
 
@@ -79,7 +79,7 @@ drafted at each PI planning gate before implementation starts.
 
 | ID | PI/Sprint | Primary outcome | Main dependencies | Formalization status |
 |----|-----------|-----------------|-------------------|----------------------|
-| SAFE-CMS-001 | PI 1 / Sprint 1 | Versioned typology and reusable feature catalog with source lineage. | Fresh CMS route/API/component inventory. | Ready for Sprint 1 planning via PI 1 spec. |
+| SAFE-CMS-001 | PI 1 / Sprint 1 | Versioned typology and reusable feature catalog with source lineage. | Fresh CMS route/API/component inventory. | Implemented 2026-08-02: route/API/component inventory, PI 1 spec, typed feature catalog, CMS typology config, API, repository, frontend primitives, and focused verification. |
 | SAFE-CMS-002 | PI 1 / Sprint 2 | Durable, replayable, observable score-all workflow. | SAFE-CMS-001 feature/version metadata. | Implemented and pushed 2026-08-03 (`41efb7e`). |
 | SAFE-CMS-003 | PI 1 / Sprint 3 | Queryable risk read models for alerts, dashboards, entities, and cohorts. | SAFE-CMS-001, SAFE-CMS-002. | Projection domain/service/API/dashboard slice implemented and pushed 2026-08-03; durable Postgres storage, rebuild source, KB cleanup purge, and live `risk.scored` writer implemented 2026-08-03. |
 | SAFE-CMS-004 | PI 1 / Sprint 4 | Structured evidence provenance across scores, features, records, graph, policy, prompts, and workflows. | SAFE-CMS-001, SAFE-CMS-002, SAFE-CMS-003. | Implemented and pushed 2026-08-03 (`4a220f2`..`dad0b90`). |

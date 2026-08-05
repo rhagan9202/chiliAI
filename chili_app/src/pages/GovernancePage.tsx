@@ -1,5 +1,6 @@
 import { useDomainConfig } from '../api/config'
 import type {
+  GovernanceEvalRunResponse,
   GovernancePendingApprovalResponse,
   GovernanceReleaseBlockerResponse,
   GovernanceVersionSummaryResponse,
@@ -37,8 +38,29 @@ function countTone(count: number, positiveTone: StatusPillTone = 'info'): Status
   return count > 0 ? positiveTone : 'default'
 }
 
-function componentKindLabel(value: GovernanceVersionSummaryResponse['component_kind']) {
-  return value === 'workflow_definition' ? 'Workflow definition' : 'Playbook'
+function componentKindLabel(
+  value:
+    | GovernanceVersionSummaryResponse['component_kind']
+    | GovernanceEvalRunResponse['artifact_kind'],
+) {
+  if (value === 'workflow_definition') {
+    return 'Workflow definition'
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1).replaceAll('_', ' ')
+}
+
+function formatDelta(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(3)}`
+}
+
+function evalStatusTone(status: GovernanceEvalRunResponse['status']): StatusPillTone {
+  if (status === 'approved') {
+    return 'success'
+  }
+  if (status === 'rejected') {
+    return 'danger'
+  }
+  return 'warning'
 }
 
 function VersionRow({ version }: { version: GovernanceVersionSummaryResponse }) {
@@ -99,6 +121,48 @@ function BlockerRow({ blocker }: { blocker: GovernanceReleaseBlockerResponse }) 
   )
 }
 
+function EvalRunRow({ run }: { run: GovernanceEvalRunResponse }) {
+  return (
+    <div className="dashboard-summary-row">
+      <span>
+        <strong>{run.artifact_id}</strong>
+        <span className="metric-row__label">{componentKindLabel(run.artifact_kind)}</span>
+        <span className="metric-row__label">
+          {run.artifact_version} vs {run.baseline_version}
+        </span>
+      </span>
+      <span className="page-actions-inline">
+        <StatusPill
+          compact
+          context="Eval status"
+          label={run.status}
+          tone={evalStatusTone(run.status)}
+        />
+        <StatusPill
+          compact
+          context="Failed eval metrics"
+          label={String(run.drift_summary.failed_metric_count)}
+          tone={countTone(run.drift_summary.failed_metric_count, 'danger')}
+        />
+      </span>
+      <span className="metric-row__label">
+        Dataset {run.dataset_id} - Max drift{' '}
+        <strong>{formatDelta(run.drift_summary.max_abs_delta)}</strong>
+      </span>
+      {run.metrics.map((metric) => (
+        <span className="metric-row__label" key={metric.name}>
+          <strong>{metric.name}</strong>
+          {' '}
+          <strong>{formatDelta(metric.delta)}</strong> / {metric.passed ? 'passed' : 'failed'}
+        </span>
+      ))}
+      <span className="metric-row__label">
+        Approval {run.approval ? `${run.approval.decision} by ${run.approval.decided_by}` : 'pending'}
+      </span>
+    </div>
+  )
+}
+
 export function GovernancePage() {
   const domainConfigQuery = useDomainConfig()
   const activeKnowledgeBase = useActiveKnowledgeBase()
@@ -151,6 +215,7 @@ export function GovernancePage() {
 
   const pendingCount = report.pending_approvals.length
   const challengedCount = report.feedback_trends.challenged_reviews
+  const evalRuns = report.eval_runs ?? []
   const domainName = report.domain_name || domainConfigQuery.data?.domain.name || 'domain'
 
   return (
@@ -206,6 +271,16 @@ export function GovernancePage() {
               context="Challenged explanations"
               label={String(challengedCount)}
               tone={countTone(challengedCount, 'warning')}
+            />
+          </div>
+        </Card>
+        <Card compact>
+          <div className="metric-row">
+            <span className="metric-row__label">Evals</span>
+            <StatusPill
+              context="Evaluation runs"
+              label={String(evalRuns.length)}
+              tone={countTone(evalRuns.length)}
             />
           </div>
         </Card>
@@ -290,6 +365,30 @@ export function GovernancePage() {
                 <EmptyState
                   title="No release blockers"
                   description="The active knowledge base has no blocking governance issues."
+                />
+              )}
+            </div>
+          </Card>
+        </section>
+
+        <section aria-label="Evaluation runs" role="region">
+          <Card>
+            <div className="metric-stack">
+              <div className="metric-row">
+                <strong>Evaluation runs</strong>
+                <StatusPill
+                  compact
+                  context="Evaluation run count"
+                  label={String(evalRuns.length)}
+                  tone={countTone(evalRuns.length)}
+                />
+              </div>
+              {evalRuns.length > 0 ? (
+                evalRuns.map((run) => <EvalRunRow key={run.run_id} run={run} />)
+              ) : (
+                <EmptyState
+                  title="No evaluation runs"
+                  description="Record candidate-vs-baseline evaluations before release promotion."
                 />
               )}
             </div>

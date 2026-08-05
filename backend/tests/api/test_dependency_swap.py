@@ -248,6 +248,7 @@ def test_reset_with_app_purges_config_derived_state_and_rebuilds_api_state() -> 
         "audit_log_service": object(),
         "conversation_repository": object(),
         "policy_repository": object(),
+        "governance_eval_repository": object(),
     }
     for attr, value in sentinels.items():
         setattr(app.state, attr, value)

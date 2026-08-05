@@ -127,6 +127,10 @@ export type ReadinessComponentResponse = RequireFields<
 >
 export type ReadinessIssueResponse = Schemas['ReadinessIssueResponse']
 export type GovernanceVersionSummaryResponse = Schemas['GovernanceVersionSummaryResponse']
+export type GovernanceEvalRunResponse = RequireFields<
+  Schemas['GovernanceEvalRunResponse'],
+  'affected_alert_ids' | 'affected_case_ids'
+>
 export type GovernancePendingApprovalResponse = Schemas['GovernancePendingApprovalResponse']
 export type GovernanceFeedbackTrendResponse = RequireFields<
   Schemas['GovernanceFeedbackTrendResponse'],
@@ -136,10 +140,11 @@ export type GovernanceReleaseBlockerResponse = Schemas['GovernanceReleaseBlocker
 export type GovernanceReportResponse = Omit<
   RequireFields<
     Schemas['GovernanceReportResponse'],
-    'production_versions' | 'pending_approvals' | 'release_blockers'
+    'eval_runs' | 'production_versions' | 'pending_approvals' | 'release_blockers'
   >,
-  'feedback_trends'
+  'eval_runs' | 'feedback_trends'
 > & {
+  eval_runs: GovernanceEvalRunResponse[]
   feedback_trends: GovernanceFeedbackTrendResponse
 }
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
