@@ -122,6 +122,74 @@ const domainFeatures: DomainFeatures = {
   roles: {},
 }
 
+const knowledgeBases = {
+  items: [
+    {
+      id: 'kb-1',
+      name: 'CMS Fraud KB',
+      description: 'Medicare fraud workspace',
+      domain: 'medicare_fraud',
+      document_count: 3,
+      status: 'ready',
+      created_at: '2026-08-05T12:00:00Z',
+      updated_at: '2026-08-05T12:00:00Z',
+    },
+  ],
+  total: 1,
+}
+
+const capabilityRegistry = {
+  items: [
+    {
+      capability_id: 'rag.query',
+      version: 'v1',
+      module: 'rag',
+      label: 'Scoped RAG query',
+      description: 'Query knowledge base context with explicit scope and citations.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          scope: { type: 'object' },
+        },
+      },
+      output_schema: {
+        type: 'object',
+        properties: {
+          answer: { type: 'string' },
+          citation_refs: { type: 'array' },
+        },
+      },
+      side_effect_class: 'read',
+      permission: {
+        required_roles: ['viewer'],
+        requires_audit: false,
+        required_scopes: [],
+      },
+      domain_compatibility: {
+        supported_domains: ['medicare_fraud'],
+        unsupported_domains: [],
+        environment_tags: ['dev', 'test', 'production'],
+      },
+      health: {
+        status: 'healthy',
+        last_checked_at: null,
+        details: null,
+      },
+      examples: [
+        {
+          name: 'Alert context query',
+          input: { query: 'Why is this provider unusual?' },
+          output: { answer: 'Peer billing is elevated.' },
+        },
+      ],
+    },
+  ],
+  total: 1,
+  limit: 100,
+  offset: 0,
+}
+
 const packList: PackListResponse = {
   packs: [
     {
@@ -220,6 +288,10 @@ beforeEach(() => {
         return Promise.resolve(domainSchema)
       case '/config/packs':
         return Promise.resolve(packList)
+      case '/knowledgebases':
+        return Promise.resolve(knowledgeBases)
+      case '/knowledgebases/kb-1/capabilities?limit=100&offset=0':
+        return Promise.resolve(capabilityRegistry)
       default:
         return Promise.reject(new Error(`Unexpected apiFetch call: ${path}`))
     }
@@ -608,5 +680,21 @@ describe('active pack editor', () => {
     expect(
       within(capabilitiesRow.closest('details') as HTMLElement).getByText(/Graph clustering/),
     ).toBeInTheDocument()
+  })
+
+  it('shows the active KB capability registry with permissions, schema, domain, health and examples', async () => {
+    renderPage(['analyst'])
+
+    const browser = await screen.findByTestId('capability-registry-browser')
+
+    expect(within(browser).getByText('CMS Fraud KB')).toBeInTheDocument()
+    expect(within(browser).getByText('Scoped RAG query')).toBeInTheDocument()
+    expect(within(browser).getByText('viewer')).toBeInTheDocument()
+    expect(within(browser).getByText('No audit')).toBeInTheDocument()
+    expect(within(browser).getByText('medicare_fraud')).toBeInTheDocument()
+    expect(within(browser).getByText('healthy')).toBeInTheDocument()
+    expect(within(browser).getByText('query, scope')).toBeInTheDocument()
+    expect(within(browser).getByText('answer, citation_refs')).toBeInTheDocument()
+    expect(within(browser).getByText('Alert context query')).toBeInTheDocument()
   })
 })

@@ -1,0 +1,117 @@
+.capability-browser {
+  display: grid;
+  gap: 1rem;
+}
+
+.capability-browser__header {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.capability-browser__header h2 {
+  font-size: 1.1rem;
+  margin: 0.2rem 0 0;
+}
+
+.capability-browser__header strong {
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  min-width: 2.5rem;
+  padding: 0.35rem 0.65rem;
+  text-align: center;
+}
+
+.capability-browser__list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.capability-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.capability-row__main {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.capability-row__main h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.capability-row__main p {
+  color: var(--text-muted);
+  margin: 0.25rem 0 0;
+}
+
+.capability-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.capability-row__chips span {
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+}
+
+.capability-row__meta {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: 0;
+}
+
+.capability-row__meta div {
+  min-width: 0;
+}
+
+.capability-row__meta dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.capability-row__meta dd {
+  margin: 0.18rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.capability-row__examples {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.75rem;
+}
+
+.capability-row__examples summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.capability-row__examples ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
+
+@media (max-width: 720px) {
+  .capability-browser__header,
+  .capability-row__main {
+    display: grid;
+  }
+
+  .capability-row__chips {
+    justify-content: flex-start;
+  }
+}

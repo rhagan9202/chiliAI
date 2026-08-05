@@ -1,5 +1,6 @@
 import { useDomainConfig, useDomainConfigSchema, useDomainFeatures } from '../api/config'
 import { ActivePackEditor } from '../components/config/ActivePackEditor'
+import { CapabilityRegistryBrowser } from '../components/capabilities/CapabilityRegistryBrowser'
 import { ExpandableCount } from '../components/config/ExpandableCount'
 import { SchemaBrowser } from '../components/config/SchemaBrowser'
 import { PackSwitcher } from '../components/config/PackSwitcher'
@@ -8,6 +9,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useSession } from '../contexts/sessionContextValue'
+import { useKnowledgeBases } from '../api/knowledgebases'
 import './pages.css'
 
 /** Capability keys are internal; these are what an operator reads (UXA-301). */
@@ -29,6 +31,7 @@ export function ConfigurationPage() {
   const domainConfig = useDomainConfig()
   const domainFeatures = useDomainFeatures()
   const domainConfigSchema = useDomainConfigSchema()
+  const knowledgeBases = useKnowledgeBases()
   const entityLabels = (domainConfig.data?.entities ?? []).map(
     (entity) => entity.display_label || entity.name,
   )
@@ -42,6 +45,7 @@ export function ConfigurationPage() {
   const navigationLabels = (domainConfig.data?.ui?.navigation?.pages ?? []).map(
     (page) => page.label,
   )
+  const activeKnowledgeBase = knowledgeBases.data?.items[0] ?? null
 
   if (domainConfig.isLoading) {
     return <LoadingState label="Loading domain configuration" />
@@ -119,6 +123,12 @@ export function ConfigurationPage() {
           </div>
         </Card>
       </div>
+      <SectionHeader
+        eyebrow="Workflow registry"
+        subtitle="Registered capabilities available to workflow authors and agents for the active knowledge base."
+        title="Capability registry"
+      />
+      <CapabilityRegistryBrowser knowledgeBase={activeKnowledgeBase} />
       {isAdmin ? (
         <>
           <SectionHeader

@@ -27,9 +27,9 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1, 2, and 3.
-- Completed verification in this pass: focused capability/workflow/API tests, full non-integration backend tests, Ruff, Pyright, OpenAPI export, API codegen, frontend build, migration replay, and whitespace checks.
-- Remaining work: Tasks 4 and 5.
+- Completed in this pass: Tasks 1, 2, 3, 4, and 5.
+- Completed verification in this pass: focused capability/workflow/API tests, full non-integration backend tests, Ruff, Pyright, OpenAPI export, API codegen, focused frontend tests, full frontend test suite, frontend build, migration replay, and whitespace checks.
+- Remaining work: final verified commit.
 
 ---
 
@@ -291,10 +291,10 @@ git commit -m "feat: validate workflows with capability registry"
 - Modify: `backend/capabilities/models.py`
 - Test: `backend/tests/capabilities/test_registry.py`
 
-- [ ] **Step 1: Write failing tests for role denial and typed envelopes**
-- [ ] **Step 2: Add `authorize()` and `CapabilityExecutionEnvelope` helpers**
-- [ ] **Step 3: Run focused capability tests**
-- [ ] **Step 4: Commit**
+- [x] **Step 1: Write failing tests for role denial and typed envelopes**
+- [x] **Step 2: Add `authorize()` and `CapabilityExecutionEnvelope` helpers**
+- [x] **Step 3: Run focused capability tests**
+- [x] **Step 4: Commit** - batched into the final verified sprint-slice commit.
 
 ### Task 5: Registry Browser UI
 
@@ -302,11 +302,11 @@ git commit -m "feat: validate workflows with capability registry"
 - Modify: `chili_app/src/**`
 - Test: relevant frontend tests or build gate
 
-- [ ] **Step 1: Locate the existing admin/workflow navigation surface**
-- [ ] **Step 2: Add generated API types after backend contract export**
-- [ ] **Step 3: Add a dense capability registry browser with schema, permission, domain, health, and example details**
-- [ ] **Step 4: Run frontend build and focused tests**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Locate the existing admin/workflow navigation surface**
+- [x] **Step 2: Add generated API types after backend contract export**
+- [x] **Step 3: Add a dense capability registry browser with schema, permission, domain, health, and example details**
+- [x] **Step 4: Run frontend build and focused tests**
+- [x] **Step 5: Commit** - batched into the final verified sprint-slice commit.
 
 ### Task 6: Final Verification
 
@@ -340,7 +340,7 @@ Run:
 npm run build
 ```
 
-- [ ] **Step 4: Commit final plan status**
+- [x] **Step 4: Commit final plan status** - batched into the final verified sprint-slice commit.
 
 Run:
 

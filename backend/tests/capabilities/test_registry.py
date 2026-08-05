@@ -50,3 +50,80 @@ def test_registry_rejects_duplicate_capability_ids() -> None:
 
     with pytest.raises(ValueError, match="Duplicate capability id"):
         service.register(manifest)
+
+
+def test_authorize_denies_role_without_required_permission() -> None:
+    service = create_default_capability_registry_service()
+
+    envelope = service.authorize(
+        "case.note.draft",
+        actor_roles=["viewer"],
+        domain_name="medicare_fraud",
+        environment_tag="production",
+    )
+
+    assert envelope.success is False
+    assert envelope.capability_id == "case.note.draft"
+    assert envelope.error_code == "capability_role_denied"
+    assert envelope.audit_required is True
+
+
+def test_authorize_allows_role_and_marks_side_effecting_audit_required() -> None:
+    service = create_default_capability_registry_service()
+
+    envelope = service.authorize(
+        "evidence.checklist.generate",
+        actor_roles=["analyst"],
+        domain_name="medicare_fraud",
+        environment_tag="production",
+    )
+
+    assert envelope.success is True
+    assert envelope.output == {
+        "authorized": True,
+        "side_effect_class": "write",
+    }
+    assert envelope.audit_required is True
+    assert envelope.error_code is None
+
+
+def test_authorize_denies_unsupported_domain() -> None:
+    service = create_default_capability_registry_service()
+
+    envelope = service.authorize(
+        "analytics.peer_context",
+        actor_roles=["viewer"],
+        domain_name="food_supply_chain",
+        environment_tag="production",
+    )
+
+    assert envelope.success is False
+    assert envelope.error_code == "capability_domain_denied"
+    assert envelope.error_message == (
+        "Capability 'analytics.peer_context' is not available for domain "
+        "'food_supply_chain'."
+    )
+
+
+def test_execution_envelope_helpers_attach_manifest_audit_requirement() -> None:
+    service = create_default_capability_registry_service()
+
+    success = service.execution_success(
+        "case.note.draft",
+        output={"draft_note": "Review provider billing.", "requires_human_approval": True},
+    )
+    failure = service.execution_failure(
+        "rag.query",
+        error_code="rag_timeout",
+        error_message="RAG query timed out.",
+    )
+
+    assert success.success is True
+    assert success.audit_required is True
+    assert success.output == {
+        "draft_note": "Review provider billing.",
+        "requires_human_approval": True,
+    }
+    assert failure.success is False
+    assert failure.audit_required is False
+    assert failure.output is None
