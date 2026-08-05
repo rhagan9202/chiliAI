@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
+from playbooks.models import PlaybookImportArtifact, PlaybookRef
 from shared.types import Entity
 
 
@@ -626,6 +627,288 @@ class ScoreRunListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+PlaybookStatusValue = Literal["draft", "published", "retired"]
+PlaybookSnapshotSourceValue = Literal["domain_config", "api_import", "api_publish"]
+
+
+class PlaybookEvidenceRequirementResponse(BaseModel):
+    """Evidence requirement configured for one fraud playbook."""
+
+    id: str
+    label: str
+    description: str = ""
+    source_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    required: bool = True
+
+
+class PlaybookWorkflowStepResponse(BaseModel):
+    """Workflow template step configured for one fraud playbook."""
+
+    id: str
+    label: str
+    capability_ref: str
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    requires_human_approval: bool = False
+
+
+class PlaybookRagPromptResponse(BaseModel):
+    """RAG prompt template configured for one fraud playbook."""
+
+    id: str
+    model_ref: str
+    prompt_version: str
+    system_prompt: str
+    user_prompt: str
+
+
+class PlaybookResponse(BaseModel):
+    """Config-authored fraud playbook definition."""
+
+    id: str
+    version: str
+    title: str
+    summary: str = ""
+    status: PlaybookStatusValue
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    evidence_requirements: list[PlaybookEvidenceRequirementResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookEvidenceRequirementResponse], [])
+    )
+    workflow_steps: list[PlaybookWorkflowStepResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookWorkflowStepResponse], [])
+    )
+    rag_prompts: list[PlaybookRagPromptResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookRagPromptResponse], [])
+    )
+    decision_guidance: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    export_tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class PlaybookSnapshotResponse(BaseModel):
+    """Immutable published playbook snapshot."""
+
+    snapshot_id: str
+    knowledge_base_id: str
+    domain_name: str
+    playbook_id: str
+    version: str
+    status: PlaybookStatusValue
+    definition: PlaybookResponse
+    source: PlaybookSnapshotSourceValue
+    published_by: str
+    published_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlaybookListResponse(BaseModel):
+    """KB-scoped playbook catalog page plus published snapshots."""
+
+    items: list[PlaybookResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookResponse], [])
+    )
+    published: list[PlaybookSnapshotResponse] = Field(
+        default_factory=lambda: cast(list[PlaybookSnapshotResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+    published_total: int = Field(ge=0)
+    published_limit: int = Field(ge=0)
+    published_offset: int = Field(ge=0)
+
+
+class PlaybookPublishRequestPayload(BaseModel):
+    """Payload for publishing a config-authored playbook seed."""
+
+    version: str = Field(default="v1", min_length=1)
+
+
+class PlaybookImportRequestPayload(BaseModel):
+    """Payload for importing portable domain playbooks."""
+
+    artifact: PlaybookImportArtifact
+
+
+class PlaybookImportResponse(BaseModel):
+    """Import result summary."""
+
+    domain_name: str
+    imported_count: int = Field(ge=0)
+    snapshot_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class PlaybookExportResponse(BaseModel):
+    """Portable playbook artifact wrapper."""
+
+    artifact: PlaybookImportArtifact
+
+
+WorkflowDefinitionStatusValue = Literal["draft", "approved", "retired"]
+WorkflowRunTargetTypeValue = Literal["alert", "entity", "case", "knowledge_base"]
+WorkflowFailureModeValue = Literal["fail_workflow", "continue", "require_approval"]
+WorkflowDefinitionInputValue = str | int | float | bool
+CapabilitySideEffectClassValue = Literal["read", "write", "external_call", "approval"]
+CapabilityHealthStatusValue = Literal["healthy", "degraded", "disabled"]
+
+
+class WorkflowStepDefinitionPayload(BaseModel):
+    """Payload for one executable step in a workflow definition."""
+
+    step_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    capability_ref: str = Field(min_length=1)
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    condition: str | None = None
+    retry_policy: dict[str, int] | None = None
+    requires_human_approval: bool = False
+    on_failure: WorkflowFailureModeValue = "fail_workflow"
+
+
+class WorkflowDefinitionCreatePayload(BaseModel):
+    """Payload for creating a draft workflow definition."""
+
+    definition_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    description: str | None = None
+    domain_name: str | None = None
+    allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    steps: list[WorkflowStepDefinitionPayload] = Field(min_length=1)
+
+
+class WorkflowDefinitionUpdatePayload(BaseModel):
+    """Payload for updating a draft workflow definition."""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    domain_name: str | None = None
+    allowed_capability_refs: list[str] | None = None
+    steps: list[WorkflowStepDefinitionPayload] | None = Field(default=None, min_length=1)
+
+
+class WorkflowDefinitionRunRequestPayload(BaseModel):
+    """Payload for requesting an approved workflow definition run."""
+
+    target_type: WorkflowRunTargetTypeValue
+    target_id: str = Field(min_length=1)
+    inputs: dict[str, WorkflowDefinitionInputValue] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, min_length=1)
+
+
+class WorkflowStepDefinitionResponse(BaseModel):
+    """One executable step in a workflow definition response."""
+
+    step_id: str
+    label: str
+    capability_ref: str
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    condition: str | None = None
+    retry_policy: dict[str, int] | None = None
+    requires_human_approval: bool = False
+    on_failure: WorkflowFailureModeValue
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    """KB-scoped workflow definition snapshot."""
+
+    snapshot_id: str
+    definition_id: str
+    knowledge_base_id: str
+    domain_name: str | None = None
+    name: str
+    description: str | None = None
+    version: str
+    status: WorkflowDefinitionStatusValue
+    allowed_capability_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    steps: list[WorkflowStepDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[WorkflowStepDefinitionResponse], [])
+    )
+    created_by: str
+    approved_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    approved_at: datetime | None = None
+    retired_at: datetime | None = None
+
+
+class WorkflowDefinitionListResponse(BaseModel):
+    """Page of KB-scoped workflow definition snapshots."""
+
+    items: list[WorkflowDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[WorkflowDefinitionResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class CapabilityPermissionResponse(BaseModel):
+    """Permission metadata for one registered capability."""
+
+    required_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    requires_audit: bool = False
+    required_scopes: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class CapabilityDomainCompatibilityResponse(BaseModel):
+    """Domain and environment metadata for one registered capability."""
+
+    supported_domains: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    unsupported_domains: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    environment_tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class CapabilityHealthResponse(BaseModel):
+    """Last-known health metadata for one registered capability."""
+
+    status: CapabilityHealthStatusValue
+    last_checked_at: datetime | None = None
+    details: str | None = None
+
+
+class CapabilityExampleResponse(BaseModel):
+    """Example input/output pair for a registered capability."""
+
+    name: str
+    input: dict[str, object] = Field(default_factory=lambda: cast(dict[str, object], {}))
+    output: dict[str, object] = Field(default_factory=lambda: cast(dict[str, object], {}))
+
+
+class CapabilityManifestResponse(BaseModel):
+    """Author-facing manifest for a registered capability."""
+
+    capability_id: str
+    version: str
+    module: str
+    label: str
+    description: str
+    input_schema: dict[str, object]
+    output_schema: dict[str, object]
+    side_effect_class: CapabilitySideEffectClassValue
+    permission: CapabilityPermissionResponse
+    domain_compatibility: CapabilityDomainCompatibilityResponse
+    health: CapabilityHealthResponse
+    examples: list[CapabilityExampleResponse] = Field(
+        default_factory=lambda: cast(list[CapabilityExampleResponse], [])
+    )
+
+
+class CapabilityListResponse(BaseModel):
+    """Page of registered capabilities available to one knowledge base."""
+
+    items: list[CapabilityManifestResponse] = Field(
+        default_factory=lambda: cast(list[CapabilityManifestResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -811,6 +1094,7 @@ class CaseSummaryResponse(BaseModel):
     assignee: str | None = None
     originating_alert_id: str | None = None
     evidence_pack_id: str | None = None
+    playbook_ref: PlaybookRef | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     updated_at: datetime
 
@@ -1511,6 +1795,8 @@ class HousingInstallationsResponse(BaseModel):
 class CaseCreateRequest(BaseModel):
     """Payload for creating a new case."""
 
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
@@ -1591,6 +1877,14 @@ __all__ = [
     "CaseListResponse",
     "CaseSummaryResponse",
     "CaseUpdateRequest",
+    "CapabilityDomainCompatibilityResponse",
+    "CapabilityExampleResponse",
+    "CapabilityHealthResponse",
+    "CapabilityHealthStatusValue",
+    "CapabilityListResponse",
+    "CapabilityManifestResponse",
+    "CapabilityPermissionResponse",
+    "CapabilitySideEffectClassValue",
     "ChatConversationCreateRequest",
     "ChatConversationResponse",
     "ChatMessageCreateRequest",
@@ -1641,6 +1935,18 @@ __all__ = [
     "PolicyItemListResponse",
     "PolicyItemSummaryResponse",
     "PolicyTriageRequest",
+    "PlaybookEvidenceRequirementResponse",
+    "PlaybookExportResponse",
+    "PlaybookImportRequestPayload",
+    "PlaybookImportResponse",
+    "PlaybookListResponse",
+    "PlaybookPublishRequestPayload",
+    "PlaybookRagPromptResponse",
+    "PlaybookResponse",
+    "PlaybookSnapshotResponse",
+    "PlaybookSnapshotSourceValue",
+    "PlaybookStatusValue",
+    "PlaybookWorkflowStepResponse",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskProjectionItemResponse",
@@ -1669,4 +1975,15 @@ __all__ = [
     "ScoreRunStartRequest",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
+    "WorkflowDefinitionCreatePayload",
+    "WorkflowDefinitionInputValue",
+    "WorkflowDefinitionListResponse",
+    "WorkflowDefinitionResponse",
+    "WorkflowDefinitionRunRequestPayload",
+    "WorkflowDefinitionStatusValue",
+    "WorkflowDefinitionUpdatePayload",
+    "WorkflowFailureModeValue",
+    "WorkflowRunTargetTypeValue",
+    "WorkflowStepDefinitionPayload",
+    "WorkflowStepDefinitionResponse",
 ]

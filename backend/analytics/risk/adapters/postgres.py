@@ -25,9 +25,11 @@ from analytics.risk.models import (
     RiskSignal,
 )
 from analytics.risk.projections import (
+    RiskProjectionLevel,
     RiskProjectionPage,
     RiskProjectionQuery,
     RiskProjectionRow,
+    RiskProjectionStatus,
 )
 from database.protocols import ConnectionProvider
 
@@ -530,7 +532,7 @@ def _projection_row_from_db(row: tuple[object, ...]) -> RiskProjectionRow:
         entity_id=str(row[1]),
         entity_type=str(row[2]),
         overall_score=float(cast(float, row[3])),
-        risk_level=cast(str, row[4]),
+        risk_level=cast(RiskProjectionLevel, row[4]),
         top_typology_ids=_json_list(row[5]),
         alert_ids=_json_list(row[6]),
         case_ids=_json_list(row[7]),
@@ -540,7 +542,7 @@ def _projection_row_from_db(row: tuple[object, ...]) -> RiskProjectionRow:
         catalog_version=str(row[11]),
         scored_at=cast(datetime, row[12]),
         updated_at=cast(datetime, row[13]),
-        status=cast(str, row[14]),
+        status=cast(RiskProjectionStatus, row[14]),
     )
 
 
@@ -555,7 +557,7 @@ def _projection_row_from_rebuild_source(
         entity_id=str(row[0]),
         entity_type=str(row[6]),
         overall_score=float(cast(float, row[1])),
-        risk_level=cast(str, row[2]),
+        risk_level=cast(RiskProjectionLevel, row[2]),
         top_typology_ids=_typology_ids_from_factor_json(row[3], feature_typology_index),
         alert_ids=_json_list(row[7]),
         case_ids=[],

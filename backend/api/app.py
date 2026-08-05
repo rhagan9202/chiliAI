@@ -20,6 +20,7 @@ from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.audit import router as audit_router
 from api.routers.auth import router as auth_router
+from api.routers.capabilities import router as capabilities_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
 from api.routers.dev_seed import router as dev_seed_router
@@ -32,10 +33,12 @@ from api.routers.identity import router as identity_router
 from api.routers.investigation import router as investigation_router
 from api.routers.knowledgebases import router as knowledgebases_router
 from api.routers.policy import router as policy_router
+from api.routers.playbooks import router as playbooks_router
 from api.routers.rag import router as rag_router
 from api.routers.records import router as records_router
 from api.routers.scorecards import router as scorecards_router
 from api.routers.score_runs import router as score_runs_router
+from api.routers.workflow_definitions import router as workflow_definitions_router
 from api.routers.workflows import router as workflows_router
 from api.routers.ws import router as ws_router
 from config.loader import load_config
@@ -129,6 +132,9 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(scorecards_router)
     app.include_router(score_runs_router)
+    app.include_router(capabilities_router)
+    app.include_router(workflow_definitions_router)
+    app.include_router(playbooks_router)
     app.include_router(housing_router)
     app.include_router(identity_router)
     app.include_router(policy_router)

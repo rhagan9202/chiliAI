@@ -1278,6 +1278,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Capabilities
+         * @description Return registered capabilities available to one knowledge base.
+         */
+        get: operations["list_capabilities_knowledgebases__knowledge_base_id__capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/documents": {
         parameters: {
             query?: never;
@@ -1405,6 +1425,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Playbooks
+         * @description Return config-authored playbooks and published snapshots for one KB.
+         */
+        get: operations["list_playbooks_knowledgebases__knowledge_base_id__playbooks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Playbooks
+         * @description Export published playbooks for one KB domain, falling back to seeds.
+         */
+        get: operations["export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Playbooks
+         * @description Import a portable playbook artifact for one KB domain.
+         */
+        post: operations["import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Playbook
+         * @description Publish a config-authored seed playbook as an immutable snapshot.
+         */
+        post: operations["publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Playbook Version
+         * @description Return one published playbook version or config-authored seed.
+         */
+        get: operations["get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/score-runs": {
         parameters: {
             query?: never;
@@ -1483,6 +1603,114 @@ export interface paths {
          * @description Create or return a replay run for failed score batches.
          */
         post: operations["replay_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Definitions
+         * @description Return workflow definitions for one knowledge base.
+         */
+        get: operations["list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get"];
+        put?: never;
+        /**
+         * Create Workflow Definition
+         * @description Create a draft workflow definition for one knowledge base.
+         */
+        post: operations["create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Definition
+         * @description Return one workflow definition snapshot.
+         */
+        get: operations["get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get"];
+        /**
+         * Update Workflow Definition
+         * @description Update one draft workflow definition snapshot.
+         */
+        put: operations["update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Workflow Definition
+         * @description Approve one draft workflow definition snapshot.
+         */
+        post: operations["approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Workflow Definition
+         * @description Retire one approved workflow definition snapshot.
+         */
+        post: operations["retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Workflow Definition
+         * @description Queue a run for one approved workflow definition snapshot.
+         */
+        post: operations["run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2323,6 +2551,112 @@ export interface components {
             timeseries: boolean;
         };
         /**
+         * CapabilityDomainCompatibilityResponse
+         * @description Domain and environment metadata for one registered capability.
+         */
+        CapabilityDomainCompatibilityResponse: {
+            /** Environment Tags */
+            environment_tags?: string[];
+            /** Supported Domains */
+            supported_domains?: string[];
+            /** Unsupported Domains */
+            unsupported_domains?: string[];
+        };
+        /**
+         * CapabilityExampleResponse
+         * @description Example input/output pair for a registered capability.
+         */
+        CapabilityExampleResponse: {
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * CapabilityHealthResponse
+         * @description Last-known health metadata for one registered capability.
+         */
+        CapabilityHealthResponse: {
+            /** Details */
+            details?: string | null;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "degraded" | "disabled";
+        };
+        /**
+         * CapabilityListResponse
+         * @description Page of registered capabilities available to one knowledge base.
+         */
+        CapabilityListResponse: {
+            /** Items */
+            items?: components["schemas"]["CapabilityManifestResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * CapabilityManifestResponse
+         * @description Author-facing manifest for a registered capability.
+         */
+        CapabilityManifestResponse: {
+            /** Capability Id */
+            capability_id: string;
+            /** Description */
+            description: string;
+            domain_compatibility: components["schemas"]["CapabilityDomainCompatibilityResponse"];
+            /** Examples */
+            examples?: components["schemas"]["CapabilityExampleResponse"][];
+            health: components["schemas"]["CapabilityHealthResponse"];
+            /** Input Schema */
+            input_schema: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
+            /** Module */
+            module: string;
+            /** Output Schema */
+            output_schema: {
+                [key: string]: unknown;
+            };
+            permission: components["schemas"]["CapabilityPermissionResponse"];
+            /**
+             * Side Effect Class
+             * @enum {string}
+             */
+            side_effect_class: "read" | "write" | "external_call" | "approval";
+            /** Version */
+            version: string;
+        };
+        /**
+         * CapabilityPermissionResponse
+         * @description Permission metadata for one registered capability.
+         */
+        CapabilityPermissionResponse: {
+            /** Required Roles */
+            required_roles?: string[];
+            /** Required Scopes */
+            required_scopes?: string[];
+            /**
+             * Requires Audit
+             * @default false
+             */
+            requires_audit: boolean;
+        };
+        /**
          * CaseAttachAlertRequest
          * @description Payload for attaching an alert to a case that already exists (UXA-405).
          */
@@ -2491,6 +2825,7 @@ export interface components {
             knowledge_base_id: string;
             /** Originating Alert Id */
             originating_alert_id?: string | null;
+            playbook_ref?: components["schemas"]["PlaybookRef"] | null;
             /**
              * Priority
              * @enum {string}
@@ -3057,6 +3392,7 @@ export interface components {
             monitoring: components["schemas"]["MonitoringConfig"] | null;
             /** @default null */
             peer_stats: components["schemas"]["PeerStatsConfig"] | null;
+            playbooks?: components["schemas"]["FraudPlaybookCatalogConfig"];
             /** Policy Rules */
             policy_rules?: components["schemas"]["PolicyRulePack"][];
             /** @default null */
@@ -3686,6 +4022,61 @@ export interface components {
             source_ref: string;
             /** Source Type */
             source_type: string;
+        };
+        /**
+         * FraudPlaybookCatalogConfig
+         * @description Versioned collection of domain-pack-authored fraud playbooks.
+         */
+        FraudPlaybookCatalogConfig: {
+            /** Items */
+            items?: components["schemas"]["FraudPlaybookConfig"][];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * FraudPlaybookConfig
+         * @description A versioned fraud investigation playbook authored in a domain pack.
+         */
+        FraudPlaybookConfig: {
+            /** Decision Guidance */
+            decision_guidance?: string[];
+            /** Evidence Requirements */
+            evidence_requirements?: components["schemas"]["PlaybookEvidenceRequirementConfig"][];
+            /** Export Tags */
+            export_tags?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Rag Prompts */
+            rag_prompts?: components["schemas"]["PlaybookRagPromptConfig"][];
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+            /** Workflow Steps */
+            workflow_steps?: components["schemas"]["PlaybookWorkflowStepConfig"][];
         };
         /**
          * FraudTypologyConfig
@@ -4810,6 +5201,304 @@ export interface components {
             cohorts?: components["schemas"]["PeerCohortDefinitionConfig"][];
             /** Metrics */
             metrics?: components["schemas"]["PeerMetricSpec"][];
+        };
+        /**
+         * PlaybookEvidenceRequirementConfig
+         * @description One evidence item a playbook expects before a decision.
+         */
+        PlaybookEvidenceRequirementConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Source Types */
+            source_types?: string[];
+        };
+        /**
+         * PlaybookEvidenceRequirementResponse
+         * @description Evidence requirement configured for one fraud playbook.
+         */
+        PlaybookEvidenceRequirementResponse: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Source Types */
+            source_types?: string[];
+        };
+        /**
+         * PlaybookExportResponse
+         * @description Portable playbook artifact wrapper.
+         */
+        PlaybookExportResponse: {
+            artifact: components["schemas"]["PlaybookImportArtifact"];
+        };
+        /**
+         * PlaybookImportArtifact
+         * @description Portable artifact containing validated domain playbooks.
+         */
+        PlaybookImportArtifact: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Domain Name */
+            domain_name: string;
+            /** Playbooks */
+            playbooks?: components["schemas"]["FraudPlaybookConfig"][];
+            /**
+             * Schema Version
+             * @default playbooks.v1
+             * @constant
+             */
+            schema_version: "playbooks.v1";
+        };
+        /**
+         * PlaybookImportRequestPayload
+         * @description Payload for importing portable domain playbooks.
+         */
+        PlaybookImportRequestPayload: {
+            artifact: components["schemas"]["PlaybookImportArtifact"];
+        };
+        /**
+         * PlaybookImportResponse
+         * @description Import result summary.
+         */
+        PlaybookImportResponse: {
+            /** Domain Name */
+            domain_name: string;
+            /** Imported Count */
+            imported_count: number;
+            /** Snapshot Ids */
+            snapshot_ids?: string[];
+        };
+        /**
+         * PlaybookListResponse
+         * @description KB-scoped playbook catalog page plus published snapshots.
+         */
+        PlaybookListResponse: {
+            /** Items */
+            items?: components["schemas"]["PlaybookResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Published */
+            published?: components["schemas"]["PlaybookSnapshotResponse"][];
+            /** Published Limit */
+            published_limit: number;
+            /** Published Offset */
+            published_offset: number;
+            /** Published Total */
+            published_total: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * PlaybookPublishRequestPayload
+         * @description Payload for publishing a config-authored playbook seed.
+         */
+        PlaybookPublishRequestPayload: {
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * PlaybookRagPromptConfig
+         * @description Prompt template metadata tied to a fraud playbook.
+         */
+        PlaybookRagPromptConfig: {
+            /** Id */
+            id: string;
+            /**
+             * Model Ref
+             * @default default
+             */
+            model_ref: string;
+            /**
+             * Prompt Version
+             * @default v1
+             */
+            prompt_version: string;
+            /** System Prompt */
+            system_prompt: string;
+            /** User Prompt */
+            user_prompt: string;
+        };
+        /**
+         * PlaybookRagPromptResponse
+         * @description RAG prompt template configured for one fraud playbook.
+         */
+        PlaybookRagPromptResponse: {
+            /** Id */
+            id: string;
+            /** Model Ref */
+            model_ref: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** System Prompt */
+            system_prompt: string;
+            /** User Prompt */
+            user_prompt: string;
+        };
+        /**
+         * PlaybookRef
+         * @description Historical reference to a playbook version.
+         */
+        PlaybookRef: {
+            /** Playbook Id */
+            playbook_id: string;
+            /** Playbook Version */
+            playbook_version: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * PlaybookResponse
+         * @description Config-authored fraud playbook definition.
+         */
+        PlaybookResponse: {
+            /** Decision Guidance */
+            decision_guidance?: string[];
+            /** Evidence Requirements */
+            evidence_requirements?: components["schemas"]["PlaybookEvidenceRequirementResponse"][];
+            /** Export Tags */
+            export_tags?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Rag Prompts */
+            rag_prompts?: components["schemas"]["PlaybookRagPromptResponse"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Title */
+            title: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /** Version */
+            version: string;
+            /** Workflow Steps */
+            workflow_steps?: components["schemas"]["PlaybookWorkflowStepResponse"][];
+        };
+        /**
+         * PlaybookSnapshotResponse
+         * @description Immutable published playbook snapshot.
+         */
+        PlaybookSnapshotResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["PlaybookResponse"];
+            /** Domain Name */
+            domain_name: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Playbook Id */
+            playbook_id: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Published By */
+            published_by: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "domain_config" | "api_import" | "api_publish";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "published" | "retired";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * PlaybookWorkflowStepConfig
+         * @description Data-only workflow template step for later execution engines.
+         */
+        PlaybookWorkflowStepConfig: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Id */
+            id: string;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+        };
+        /**
+         * PlaybookWorkflowStepResponse
+         * @description Workflow template step configured for one fraud playbook.
+         */
+        PlaybookWorkflowStepResponse: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Id */
+            id: string;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
         };
         /**
          * PolicyCitation
@@ -6361,6 +7050,122 @@ export interface components {
             uri: string | null;
         };
         /**
+         * WorkflowDefinitionCreatePayload
+         * @description Payload for creating a draft workflow definition.
+         */
+        WorkflowDefinitionCreatePayload: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[];
+            /** Definition Id */
+            definition_id: string;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Name */
+            name: string;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStepDefinitionPayload"][];
+            /** Version */
+            version: string;
+        };
+        /**
+         * WorkflowDefinitionListResponse
+         * @description Page of KB-scoped workflow definition snapshots.
+         */
+        WorkflowDefinitionListResponse: {
+            /** Items */
+            items?: components["schemas"]["WorkflowDefinitionResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * WorkflowDefinitionResponse
+         * @description KB-scoped workflow definition snapshot.
+         */
+        WorkflowDefinitionResponse: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[];
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Definition Id */
+            definition_id: string;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Name */
+            name: string;
+            /** Retired At */
+            retired_at?: string | null;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "approved" | "retired";
+            /** Steps */
+            steps?: components["schemas"]["WorkflowStepDefinitionResponse"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * WorkflowDefinitionRunRequestPayload
+         * @description Payload for requesting an approved workflow definition run.
+         */
+        WorkflowDefinitionRunRequestPayload: {
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Inputs */
+            inputs?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "alert" | "entity" | "case" | "knowledge_base";
+        };
+        /**
+         * WorkflowDefinitionUpdatePayload
+         * @description Payload for updating a draft workflow definition.
+         */
+        WorkflowDefinitionUpdatePayload: {
+            /** Allowed Capability Refs */
+            allowed_capability_refs?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Steps */
+            steps?: components["schemas"]["WorkflowStepDefinitionPayload"][] | null;
+        };
+        /**
          * WorkflowRunListResponse
          * @description Collection of workflow runs.
          */
@@ -6415,6 +7220,71 @@ export interface components {
          * @enum {string}
          */
         WorkflowRunStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+        /**
+         * WorkflowStepDefinitionPayload
+         * @description Payload for one executable step in a workflow definition.
+         */
+        WorkflowStepDefinitionPayload: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Condition */
+            condition?: string | null;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /**
+             * On Failure
+             * @default fail_workflow
+             * @enum {string}
+             */
+            on_failure: "fail_workflow" | "continue" | "require_approval";
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+            /** Retry Policy */
+            retry_policy?: {
+                [key: string]: number;
+            } | null;
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * WorkflowStepDefinitionResponse
+         * @description One executable step in a workflow definition response.
+         */
+        WorkflowStepDefinitionResponse: {
+            /** Capability Ref */
+            capability_ref: string;
+            /** Condition */
+            condition?: string | null;
+            /** Input Refs */
+            input_refs?: string[];
+            /** Label */
+            label: string;
+            /**
+             * On Failure
+             * @enum {string}
+             */
+            on_failure: "fail_workflow" | "continue" | "require_approval";
+            /** Output Refs */
+            output_refs?: string[];
+            /**
+             * Requires Human Approval
+             * @default false
+             */
+            requires_human_approval: boolean;
+            /** Retry Policy */
+            retry_policy?: {
+                [key: string]: number;
+            } | null;
+            /** Step Id */
+            step_id: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -8620,6 +9490,43 @@ export interface operations {
             };
         };
     };
+    list_capabilities_knowledgebases__knowledge_base_id__capabilities_get: {
+        parameters: {
+            query?: {
+                role?: string | null;
+                module?: string | null;
+                side_effect_class?: ("read" | "write" | "external_call" | "approval") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CapabilityListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_get: {
         parameters: {
             query?: {
@@ -8852,6 +9759,175 @@ export interface operations {
             };
         };
     };
+    list_playbooks_knowledgebases__knowledge_base_id__playbooks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookImportRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                playbook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookPublishRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookSnapshotResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                playbook_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_score_runs_knowledgebases__knowledge_base_id__score_runs_get: {
         parameters: {
             query?: {
@@ -9008,6 +10084,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionCreatePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionUpdatePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                definition_id: string;
+                version: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDefinitionRunRequestPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
                 };
             };
             /** @description Validation Error */

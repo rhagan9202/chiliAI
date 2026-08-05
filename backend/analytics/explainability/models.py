@@ -6,6 +6,7 @@ from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
+from playbooks.models import PlaybookRef
 from shared.types import Alert
 
 
@@ -18,6 +19,7 @@ class ExplanationLineage(BaseModel):
     model_version: str | None = None
     prompt_version: str | None = None
     transformation_version: str | None = None
+    playbook_ref: PlaybookRef | None = None
 
 
 class ExplanationItem(BaseModel):

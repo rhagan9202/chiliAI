@@ -7,6 +7,7 @@ from datetime import timedelta
 from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.models import AlertTriageEvent
+from monitoring.models import normalize_generation_metadata
 from shared.types import Alert
 from shared.utils import utc_now
 
@@ -88,7 +89,13 @@ class InMemoryAlertHistoryWriter:
             key = (record.knowledge_base_id, record.alert_id)
             if key in self._records:
                 continue
-            self._records[key] = record
+            self._records[key] = record.model_copy(
+                update={
+                    "generation_metadata": normalize_generation_metadata(
+                        record.generation_metadata
+                    )
+                }
+            )
             written += 1
         return written
 

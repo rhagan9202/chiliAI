@@ -104,6 +104,10 @@ from shared.kb_scope import resolve_kb_scope
 from cases.exceptions import AlertAlreadyAttachedError, CaseNotFoundError
 from cases.models import Case, CasePriority, CaseTimelineEvent
 from cases.service import CaseService, create_case_service
+from capabilities.service import (
+    CapabilityRegistryService,
+    create_default_capability_registry_service,
+)
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
 from policy.adapters.postgres import PostgresPolicyItemRepository
 from policy.adapters.protocols import PolicyItemRepository
@@ -190,6 +194,14 @@ from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from analytics.score_runs.service import ScoreRunService, create_score_run_service
+from playbooks.adapters.in_memory import InMemoryPlaybookRepository
+from playbooks.adapters.postgres import PostgresPlaybookRepository
+from playbooks.repository import PlaybookRepository
+from playbooks.service import PlaybookService
+from workflow_definitions.adapters.in_memory import InMemoryWorkflowDefinitionRepository
+from workflow_definitions.adapters.postgres import PostgresWorkflowDefinitionRepository
+from workflow_definitions.repository import WorkflowDefinitionRepository
+from workflow_definitions.service import WorkflowDefinitionService
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -339,6 +351,7 @@ __all__ = [
     "get_case_repository",
     "get_case_service",
     "get_case_update_payload",
+    "get_capability_registry_service",
     "get_chat_conversation_create_payload",
     "get_chat_conversation_payload",
     "get_chat_message_payload",
@@ -373,6 +386,8 @@ __all__ = [
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
+    "get_playbook_repository",
+    "get_playbook_service",
     "get_score_run_repository",
     "get_score_run_service",
     "get_scorecard_run_repository",
@@ -402,6 +417,8 @@ __all__ = [
     "get_vector_store",
     "get_vectorstore_service",
     "get_workflow_run_store",
+    "get_workflow_definition_repository",
+    "get_workflow_definition_service",
     "get_workflow_tracker",
     "resolve_event_bus_settings",
 ]
@@ -979,6 +996,7 @@ def _case_to_summary(case: Case) -> CaseSummaryResponse:
         assignee=case.assignee,
         originating_alert_id=case.originating_alert_id,
         evidence_pack_id=case.evidence_pack_id,
+        playbook_ref=case.playbook_ref,
         alert_ids=list(case.alert_ids),
         updated_at=case.updated_at,
     )
@@ -2678,6 +2696,56 @@ def get_score_run_repository(request: Request) -> ScoreRunRepositoryProtocol:
     )
 
 
+def get_playbook_repository(request: Request) -> PlaybookRepository:
+    """Return the playbook snapshot repository selected by database backend."""
+
+    def build() -> PlaybookRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryPlaybookRepository()
+        return PostgresPlaybookRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "playbook_repository",
+        build,
+        guard=lambda value: isinstance(value, PlaybookRepository),
+    )
+
+
+def get_playbook_service(
+    repository: PlaybookRepository = Depends(get_playbook_repository),
+    config: DomainConfig = Depends(get_domain_config),
+) -> PlaybookService:
+    """Return the playbook service for config seeds and published snapshots."""
+
+    return PlaybookService(repository=repository, domain_config=config)
+
+
+@lru_cache(maxsize=1)
+def get_capability_registry_service() -> CapabilityRegistryService:
+    """Return the typed capability registry for workflows and agents."""
+
+    return create_default_capability_registry_service()
+
+
+def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRepository:
+    """Return the workflow definition repository for API-authored drafts."""
+
+    def build() -> WorkflowDefinitionRepository:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryWorkflowDefinitionRepository()
+        return PostgresWorkflowDefinitionRepository(provider)
+
+    return _memoize_config_derived(
+        request.app,
+        "workflow_definition_repository",
+        build,
+        guard=lambda value: isinstance(value, WorkflowDefinitionRepository),
+    )
+
+
 def get_score_run_service(
     repository: ScoreRunRepositoryProtocol = Depends(get_score_run_repository),
     event_bus: EventBus = Depends(get_event_bus),
@@ -2935,6 +3003,7 @@ def _resolve_kb_scoped_alert(
         ),
         updated_at=record.updated_at,
         acknowledged=record.status == "acknowledged",
+        generation_metadata=dict(record.generation_metadata),
     )
 
 
@@ -3238,6 +3307,25 @@ def _create_workflow_run_store() -> WorkflowRunStoreProtocol:
     return create_workflow_run_store_from_env()
 
 
+def get_workflow_definition_service(
+    repository: WorkflowDefinitionRepository = Depends(
+        get_workflow_definition_repository
+    ),
+    run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
+    capability_registry: CapabilityRegistryService = Depends(
+        get_capability_registry_service
+    ),
+) -> WorkflowDefinitionService:
+    """Return the workflow definition service for KB-scoped definitions."""
+    return WorkflowDefinitionService(
+        repository,
+        run_store,
+        audit_service,
+        capability_registry=capability_registry,
+    )
+
+
 def get_agent_service(
     run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
     event_bus: EventBus = Depends(get_event_bus),
@@ -3333,6 +3421,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_document_status_store": get_document_status_store,
     "get_dlq_record_store": get_dlq_record_store,
     "get_derived_signal_store": get_derived_signal_store,
+    "get_identity_resolution_service": get_identity_resolution_service,
     "get_peer_analysis_service": get_peer_analysis_service,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,
@@ -3341,6 +3430,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_entity_metric_repository": get_entity_metric_repository,
     "get_knowledge_base_repository": get_knowledge_base_repository,
     "get_rag_service": get_rag_service,
+    "get_capability_registry_service": get_capability_registry_service,
 }
 """All ``@lru_cache`` singletons in this module, cleared together on swap."""
 
@@ -3358,6 +3448,8 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "policy_repository",
     "scorecard_run_repository",
     "score_run_repository",
+    "playbook_repository",
+    "workflow_definition_repository",
     "risk_projection_repository",
 )
 

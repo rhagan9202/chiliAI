@@ -1,67 +1,186 @@
+schema_version: '1.0'
 domain:
   name: medicare_fraud
-  display_name: "Medicare Fraud Detection"
-  description: "Fraud detection and investigator support for Medicare claims"
-
+  display_name: Medicare Fraud Detection
+  description: Fraud detection and investigator support for Medicare claims
 entities:
-  - name: provider
-    display_label: "Provider"
-    icon: stethoscope
-    properties:
-      npi: { type: string, display: "NPI", required: true, pattern: "^[0-9]{10}$" }
-      # The name an analyst recognises. `ui.display_fields` titles a provider by
-      # this and puts the NPI beneath it, so the alert feed, the workbench and
-      # the graph all say the same thing (UXA-304).
-      name: { type: string, display: "Provider Name" }
-      specialty: { type: string, display: "Specialty" }
-      state: { type: string, display: "State" }
-
-  - name: beneficiary
-    display_label: "Beneficiary"
-    icon: person
-    properties:
-      hic_number: { type: string, display: "HIC Number", required: true }
-      age: { type: integer, display: "Age", min_value: 0, max_value: 120 }
-      chronic_conditions: { type: list, display: "Chronic Conditions" }
-
-  - name: claim
-    display_label: "Claim"
-    icon: document
-    properties:
-      claim_id: { type: string, display: "Claim ID", required: true }
-      amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
-      service_date: { type: date, display: "Date of Service", required: true }
-      procedure_codes: { type: list, display: "Procedure Codes" }
-
-  - name: facility
-    display_label: "Facility"
-    icon: building
-    properties:
-      facility_id: { type: string, display: "Facility ID", required: true }
-      name: { type: string, display: "Name" }
-      type: { type: string, display: "Facility Type" }
-
+- name: provider
+  display_label: Provider
+  icon: stethoscope
+  properties:
+    npi:
+      type: string
+      display: NPI
+      required: true
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: ^[0-9]{10}$
+    name:
+      type: string
+      display: Provider Name
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    specialty:
+      type: string
+      display: Specialty
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    state:
+      type: string
+      display: State
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+  natural_key: []
+- name: beneficiary
+  display_label: Beneficiary
+  icon: person
+  properties:
+    hic_number:
+      type: string
+      display: HIC Number
+      required: true
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    age:
+      type: integer
+      display: Age
+      required: false
+      enum_values: null
+      min_value: 0.0
+      max_value: 120.0
+      min_length: null
+      max_length: null
+      pattern: null
+    chronic_conditions:
+      type: list
+      display: Chronic Conditions
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+  natural_key: []
+- name: claim
+  display_label: Claim
+  icon: document
+  properties:
+    claim_id:
+      type: string
+      display: Claim ID
+      required: true
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    amount:
+      type: decimal
+      display: Billed Amount
+      required: true
+      enum_values: null
+      min_value: 0.0
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    service_date:
+      type: date
+      display: Date of Service
+      required: true
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    procedure_codes:
+      type: list
+      display: Procedure Codes
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+  natural_key: []
+- name: facility
+  display_label: Facility
+  icon: building
+  properties:
+    facility_id:
+      type: string
+      display: Facility ID
+      required: true
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    name:
+      type: string
+      display: Name
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+    type:
+      type: string
+      display: Facility Type
+      required: false
+      enum_values: null
+      min_value: null
+      max_value: null
+      min_length: null
+      max_length: null
+      pattern: null
+  natural_key: []
 relationships:
-  - name: submitted_by
-    display_label: "Submitted By"
-    source: claim
-    target: provider
-
-  - name: billed_for
-    display_label: "Billed For"
-    source: claim
-    target: beneficiary
-
-  - name: performed_at
-    display_label: "Performed At"
-    source: claim
-    target: facility
-
-  - name: referred_by
-    display_label: "Referred By"
-    source: provider
-    target: provider
-
+- name: submitted_by
+  display_label: Submitted By
+  source: claim
+  target: provider
+- name: billed_for
+  display_label: Billed For
+  source: claim
+  target: beneficiary
+- name: performed_at
+  display_label: Performed At
+  source: claim
+  target: facility
+- name: referred_by
+  display_label: Referred By
+  source: provider
+  target: provider
 capabilities:
   timeseries: true
   gnn: true
@@ -69,221 +188,1122 @@ capabilities:
   rag_chat: true
   explainability: true
   structured_ingestion: true
-
+  peer_stats: false
 ingestion:
+  sources:
+  - type: file_upload
+    formats:
+    - pdf
+    - docx
+    - txt
+    - csv
+    - json
+    format: null
+    endpoint: null
+  - type: api_push
+    formats: null
+    format: json
+    endpoint: /ingest/claims
   chunking:
     strategy: recursive
     chunk_size: 1000
     chunk_overlap: 200
     min_chunk_size: 50
-  sources:
-    - type: file_upload
-      formats: [pdf, docx, txt, csv, json]
-    - type: api_push
-      format: json
-      endpoint: /ingest/claims
-
-records:
-  feeds:
-    - name: claims_feed
-      record_type: claim_record
-      source: file_upload
-      id_field: claim_id
-      record_schema:
-        claim_id: { type: string, display: "Claim ID", required: true }
-        provider_npi: { type: string, display: "Provider NPI", required: true, pattern: "^[0-9]{10}$" }
-        billed_amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
-        service_date: { type: date, display: "Date of Service", required: true }
-        anomaly_score: { type: decimal, display: "Anomaly Score", required: true, min_value: 0, max_value: 1 }
-      entities:
-        - entity_type: claim
-          id_field: claim_id
-          property_fields:
-            claim_id: claim_id
-            amount: billed_amount
-            service_date: service_date
-        - entity_type: provider
-          id_field: provider_npi
-          property_fields:
-            npi: provider_npi
-      relationships:
-        - relationship_type: submitted_by
-          source_entity_type: claim
-          target_entity_type: provider
-      observations:
-        - metric_name: claim_anomaly
-          entity_type: claim
-          score_field: anomaly_score
-          rationale: "Anomaly score derived from the structured claims feed."
-
-policy_rules:
-  - id: billing_thresholds
-    name: "Billing thresholds"
-    description: "Flag claims whose billed amount exceeds the configured ceiling."
-    thresholds:
-      max_billed_amount: 100
-    rules:
-      - id: claim_over_billed
-        title_template: "Claim {target_ref} exceeds the billing threshold"
-        severity: high
-        target_kind: entity
-        target_selector:
-          entity_type: claim
-        predicate:
-          field: properties.amount
-          op: gt
-          value:
-            config_ref: max_billed_amount
-        citations:
-          - citation_id: lcd-billing-001
-            title: "LCD billing-amount guidance"
-            source_ref: "policy://medicare/lcd/billing-001"
-            excerpt: "Claims above the LCD ceiling require documented justification."
-  - id: graph_scale
-    name: "Graph growth watch"
-    thresholds:
-      max_entities: 100000
-    rules:
-      - id: kb_entity_volume
-        title_template: "Knowledge base {target_ref} crossed the entity-volume watch line"
-        severity: medium
-        target_kind: metric
-        target_selector:
-          metric_name: entity_count
-        predicate:
-          field: metric.entity_count
-          op: gt
-          value:
-            config_ref: max_entities
-
+    record_template: null
 graph:
   backend: neo4j
   uri: bolt://neo4j:7687
   pool_size: 10
   auth_env_var: null
-
 vectorstore:
   backend: qdrant
   uri: http://qdrant:6333
   dimensions: 384
   distance_metric: cosine
-
 llm:
   provider: local
   model: local-default
   api_key_env_var: null
+  base_url: null
   temperature: 0.7
   max_tokens: 4096
-
+  fallback: null
 embeddings:
   provider: local
   model: local-default
   dimensions: 384
   batch_size: 32
   api_key_env_var: null
-
+  cache_enabled: true
+  cache_max_entries: 4096
 storage:
   backend: local
   endpoint_url: null
   bucket: null
   base_path: /app/data/objects
   credentials_env_var: null
-
 events:
   backend: redis
   uri: redis://redis:6379
   stream_prefix: chili
   consumer_group: chili-workers
-
+  stream_maxlen: null
+  reclaim_min_idle_ms: null
 database:
   backend: postgres
   dsn_env_var: DATABASE_URL
   pool_size: 10
   pool_max_overflow: 5
   statement_timeout_ms: 30000
-
-analytics:
-  metrics_recompute_min_interval_seconds: 300
-
 monitoring:
   evaluation_interval_seconds: 300
   dedup_window_seconds: 3600
   max_alerts_per_entity: 10
   max_alerts_per_evaluation: 100
   grouping_window_seconds: 300
-
+  medium_threshold: 0.6
+  high_threshold: 0.85
 rag:
   top_k: 5
   expansion_depth: 2
   reranking_enabled: false
-  system_prompt_template: "You are an expert assistant for {domain_name}. Use the provided context to answer questions about {entity_types}."
-
+  system_prompt_template: You are an expert assistant for {domain_name}. Use the provided
+    context to answer questions about {entity_types}.
+auth:
+  enabled: false
+  issuer_url: null
+  audience: null
+  jwks_uri: null
+  roles_claim: roles
+  knowledge_base_ids_claim: knowledge_base_ids
+  jwks_cache_seconds: 3600
+  client_id: null
+  client_secret_env_var: null
+  authorize_endpoint: null
+  token_endpoint: null
+  end_session_endpoint: null
+  scopes:
+  - openid
+  - email
+  - profile
+  redirect_uri: null
+  cookie_secure: true
+  cookie_domain: null
+  session_ttl_seconds: 3600
+validation:
+  max_file_size_mb: 512
+  allowed_content_types:
+  - text/plain
+  - text/csv
+  - text/html
+  - application/json
+  - application/pdf
+  - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  max_query_length: 10000
+  max_rag_question_length: 5000
+records:
+  feeds:
+  - name: claims_feed
+    record_type: claim_record
+    source: file_upload
+    id_field: claim_id
+    id_template: null
+    record_schema:
+      claim_id:
+        type: string
+        display: Claim ID
+        required: true
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      provider_npi:
+        type: string
+        display: Provider NPI
+        required: true
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: ^[0-9]{10}$
+      provider_specialty:
+        type: string
+        display: Provider Specialty
+        required: false
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      provider_state:
+        type: string
+        display: Provider State
+        required: false
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      service_category:
+        type: string
+        display: Service Category
+        required: false
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      billed_amount:
+        type: decimal
+        display: Billed Amount
+        required: true
+        enum_values: null
+        min_value: 0.0
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      service_date:
+        type: date
+        display: Date of Service
+        required: true
+        enum_values: null
+        min_value: null
+        max_value: null
+        min_length: null
+        max_length: null
+        pattern: null
+      anomaly_score:
+        type: decimal
+        display: Anomaly Score
+        required: true
+        enum_values: null
+        min_value: 0.0
+        max_value: 1.0
+        min_length: null
+        max_length: null
+        pattern: null
+    allow_extra_fields: false
+    accepted_formats:
+    - csv
+    - jsonl
+    entities:
+    - entity_type: claim
+      id_field: claim_id
+      property_fields:
+        claim_id: claim_id
+        amount: billed_amount
+        service_date: service_date
+    - entity_type: provider
+      id_field: provider_npi
+      property_fields:
+        npi: provider_npi
+    relationships:
+    - relationship_type: submitted_by
+      source_entity_type: claim
+      target_entity_type: provider
+    observations:
+    - metric_name: claim_anomaly
+      entity_type: claim
+      score_field: anomaly_score
+      score_max: null
+      rationale: Anomaly score derived from the structured claims feed.
+  analytics_trigger:
+    enabled: false
+    max_entities_per_batch: 25
+    min_interval_seconds: 600
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+  medium_risk_threshold: 0.5
+  high_risk_threshold: 0.8
+  narrative_backend: deterministic
+  attribution_backend: none
+gnn:
+  snapshot_max_nodes: 5000
+timeseries: null
+scorecards:
+  templates: []
+typologies:
+- id: dmepos_overutilization
+  label: DMEPOS overutilization
+  description: Provider, claim, or beneficiary patterns indicating unusually dense
+    DMEPOS billing.
+  entity_types:
+  - provider
+  - claim
+  - beneficiary
+  severity_hint: high
+  feature_ids:
+  - dmepos_code_exposure
+  - beneficiary_high_utilization_count
+  - repeated_procedure_code_density
+  - weekly_provider_claim_count_zscore
+  policy_rule_ids: []
+  playbook_ids: []
+- id: billing_spike
+  label: Billing spike
+  description: Provider billing volume or amount increased beyond peer and historical
+    norms.
+  entity_types:
+  - provider
+  - claim
+  severity_hint: high
+  feature_ids:
+  - weekly_provider_billing_zscore
+  - weekly_provider_claim_count_zscore
+  - service_date_burstiness
+  - anomalous_claim_score
+  policy_rule_ids:
+  - billing_thresholds.claim_over_billed
+  playbook_ids:
+  - provider_billing_spike_review
+- id: peer_outlier
+  label: Peer outlier
+  description: Provider or facility behavior sits outside expected specialty or facility
+    peer groups.
+  entity_types:
+  - provider
+  - facility
+  severity_hint: medium
+  feature_ids:
+  - specialty_peer_group_outlier
+  - facility_concentration_ratio
+  - weekly_provider_billing_zscore
+  policy_rule_ids: []
+  playbook_ids:
+  - peer_outlier_provider_review
+- id: referral_ring_exposure
+  label: Referral ring exposure
+  description: Referral graph structure suggests concentrated or reciprocal provider
+    activity.
+  entity_types:
+  - provider
+  - beneficiary
+  severity_hint: high
+  feature_ids:
+  - provider_referral_outdegree
+  - provider_referral_indegree
+  - shared_beneficiary_density
+  policy_rule_ids: []
+  playbook_ids: []
+- id: geographic_anomaly
+  label: Geographic anomaly
+  description: Billing or service patterns are unusual for the provider state or service
+    geography.
+  entity_types:
+  - provider
+  - claim
+  - facility
+  severity_hint: medium
+  feature_ids:
+  - geographic_state_outlier
+  - facility_concentration_ratio
+  - service_date_burstiness
+  policy_rule_ids: []
+  playbook_ids: []
+- id: enrollment_risk
+  label: Enrollment risk
+  description: Provider enrollment recency or age patterns elevate fraud-screening
+    concern.
+  entity_types:
+  - provider
+  severity_hint: medium
+  feature_ids:
+  - enrollment_age_risk
+  - specialty_peer_group_outlier
+  - evidence_pack_confidence
+  policy_rule_ids: []
+  playbook_ids: []
+- id: never_provided_service
+  label: Never provided service
+  description: Evidence indicates a billed service was not provided or lacks supporting
+    documentation.
+  entity_types:
+  - claim
+  - provider
+  - beneficiary
+  severity_hint: critical
+  feature_ids:
+  - never_provided_service_signal
+  - cross_kb_policy_citation_count
+  - evidence_pack_confidence
+  policy_rule_ids: []
+  playbook_ids: []
+- id: policy_threshold_exposure
+  label: Policy threshold exposure
+  description: Claim or provider activity triggers configured CMS policy thresholds.
+  entity_types:
+  - claim
+  - provider
+  severity_hint: high
+  feature_ids:
+  - claim_amount_threshold_exposure
+  - policy_billing_threshold_hits
+  - cross_kb_policy_citation_count
+  policy_rule_ids:
+  - billing_thresholds.claim_over_billed
+  playbook_ids: []
+- id: identity_mismatch
+  label: Identity mismatch
+  description: Source identity links need analyst review before the canonical entity
+    can be trusted.
+  entity_types:
+  - provider
+  - beneficiary
+  severity_hint: medium
+  feature_ids:
+  - identity_link_confidence
+  policy_rule_ids: []
+  playbook_ids:
+  - identity_mismatch_review
+feature_catalog:
+  version: cms-fraud-features-v1
+  features:
+  - id: weekly_provider_billing_zscore
+    label: Weekly provider billing z-score
+    description: Peer-normalized weekly billed amount for a provider.
+    value_type: decimal
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: peer_metric
+      source_ref: peer_stats.weekly_provider_billing
+      raw_fields:
+      - billed_amount
+      - service_date
+      - provider_npi
+    peer_dimensions:
+    - provider
+    threshold_hints:
+      high: 2.0
+      critical: 3.0
+    transformation_version: peerstats-zscore-v1
+    typology_ids:
+    - billing_spike
+    - peer_outlier
+  - id: weekly_provider_claim_count_zscore
+    label: Weekly provider claim-count z-score
+    description: Peer-normalized weekly claim count for a provider.
+    value_type: decimal
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: peer_metric
+      source_ref: peer_stats.weekly_provider_claim_count
+      raw_fields:
+      - claim_id
+      - service_date
+      - provider_npi
+    peer_dimensions:
+    - provider
+    threshold_hints:
+      high: 2.0
+      critical: 3.0
+    transformation_version: peerstats-zscore-v1
+    typology_ids:
+    - dmepos_overutilization
+    - billing_spike
+  - id: claim_amount_threshold_exposure
+    label: Claim amount threshold exposure
+    description: Claim billed amount compared with the configured policy threshold.
+    value_type: decimal
+    entity_types:
+    - claim
+    source_mappings:
+    - source_type: policy_rule
+      source_ref: policy_rules.billing_thresholds.claim_over_billed
+      raw_fields:
+      - claim_id
+      - billed_amount
+    peer_dimensions: []
+    threshold_hints:
+      high: 5000.0
+    transformation_version: policy-threshold-v1
+    typology_ids:
+    - policy_threshold_exposure
+  - id: anomalous_claim_score
+    label: Anomalous claim score
+    description: Normalized anomaly score supplied by the structured claims feed.
+    value_type: decimal
+    entity_types:
+    - claim
+    source_mappings:
+    - source_type: records_feed
+      source_ref: records.claims_feed.observations.claim_anomaly
+      raw_fields:
+      - claim_id
+      - anomaly_score
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.75
+      critical: 0.9
+    transformation_version: claim-anomaly-v1
+    typology_ids:
+    - billing_spike
+  - id: provider_referral_outdegree
+    label: Provider referral outdegree
+    description: Count of outgoing provider-to-provider referral relationships.
+    value_type: integer
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: graph_metric
+      source_ref: relationships.referred_by.outdegree
+      raw_fields:
+      - source_provider_npi
+      - target_provider_npi
+    peer_dimensions: []
+    threshold_hints:
+      high: 20.0
+      critical: 50.0
+    transformation_version: graph-degree-v1
+    typology_ids:
+    - referral_ring_exposure
+  - id: provider_referral_indegree
+    label: Provider referral indegree
+    description: Count of incoming provider-to-provider referral relationships.
+    value_type: integer
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: graph_metric
+      source_ref: relationships.referred_by.indegree
+      raw_fields:
+      - source_provider_npi
+      - target_provider_npi
+    peer_dimensions: []
+    threshold_hints:
+      high: 20.0
+      critical: 50.0
+    transformation_version: graph-degree-v1
+    typology_ids:
+    - referral_ring_exposure
+  - id: shared_beneficiary_density
+    label: Shared beneficiary density
+    description: Density of beneficiaries shared across connected providers.
+    value_type: decimal
+    entity_types:
+    - provider
+    - beneficiary
+    source_mappings:
+    - source_type: graph_metric
+      source_ref: relationships.billed_for.shared_beneficiaries
+      raw_fields:
+      - provider_npi
+      - hic_number
+      - claim_id
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.4
+      critical: 0.65
+    transformation_version: shared-beneficiary-density-v1
+    typology_ids:
+    - referral_ring_exposure
+  - id: geographic_state_outlier
+    label: Geographic state outlier
+    description: Provider or claim behavior outside expected state-level patterns.
+    value_type: decimal
+    entity_types:
+    - provider
+    - claim
+    - facility
+    source_mappings:
+    - source_type: derived_signal
+      source_ref: entity_derived_signals.geographic_state_outlier
+      raw_fields:
+      - state
+      - claim_id
+      - facility_id
+    peer_dimensions:
+    - state
+    threshold_hints:
+      high: 2.0
+      critical: 3.0
+    transformation_version: geo-outlier-v1
+    typology_ids:
+    - geographic_anomaly
+  - id: specialty_peer_group_outlier
+    label: Specialty peer group outlier
+    description: Provider score relative to peers in the same specialty.
+    value_type: decimal
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: derived_signal
+      source_ref: entity_derived_signals.specialty_peer_group_outlier
+      raw_fields:
+      - provider_npi
+      - specialty
+      - billed_amount
+    peer_dimensions:
+    - specialty
+    threshold_hints:
+      high: 2.0
+      critical: 3.0
+    transformation_version: specialty-peer-v1
+    typology_ids:
+    - peer_outlier
+    - enrollment_risk
+  - id: beneficiary_chronic_condition_complexity
+    label: Beneficiary chronic condition complexity
+    description: Count or normalized complexity of beneficiary chronic conditions.
+    value_type: decimal
+    entity_types:
+    - beneficiary
+    source_mappings:
+    - source_type: records_feed
+      source_ref: entities.beneficiary.properties.chronic_conditions
+      raw_fields:
+      - hic_number
+      - chronic_conditions
+    peer_dimensions: []
+    threshold_hints:
+      high: 6.0
+      critical: 10.0
+    transformation_version: chronic-condition-complexity-v1
+    typology_ids:
+    - dmepos_overutilization
+  - id: beneficiary_high_utilization_count
+    label: Beneficiary high-utilization count
+    description: Count of high-utilization claim events associated with a beneficiary.
+    value_type: integer
+    entity_types:
+    - beneficiary
+    source_mappings:
+    - source_type: graph_metric
+      source_ref: relationships.billed_for.claim_count
+      raw_fields:
+      - hic_number
+      - claim_id
+      - service_date
+    peer_dimensions: []
+    threshold_hints:
+      high: 12.0
+      critical: 24.0
+    transformation_version: beneficiary-utilization-v1
+    typology_ids:
+    - dmepos_overutilization
+  - id: facility_concentration_ratio
+    label: Facility concentration ratio
+    description: Share of provider or claim activity concentrated at a facility.
+    value_type: decimal
+    entity_types:
+    - facility
+    - provider
+    - claim
+    source_mappings:
+    - source_type: graph_metric
+      source_ref: relationships.performed_at.concentration
+      raw_fields:
+      - facility_id
+      - provider_npi
+      - claim_id
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.5
+      critical: 0.8
+    transformation_version: facility-concentration-v1
+    typology_ids:
+    - peer_outlier
+    - geographic_anomaly
+  - id: repeated_procedure_code_density
+    label: Repeated procedure-code density
+    description: Density of repeated procedure codes across a provider or beneficiary.
+    value_type: decimal
+    entity_types:
+    - provider
+    - beneficiary
+    - claim
+    source_mappings:
+    - source_type: records_feed
+      source_ref: records.claims_feed.procedure_code_density
+      raw_fields:
+      - claim_id
+      - provider_npi
+      - procedure_codes
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.35
+      critical: 0.6
+    transformation_version: procedure-density-v1
+    typology_ids:
+    - dmepos_overutilization
+  - id: service_date_burstiness
+    label: Service-date burstiness
+    description: Concentration of services in short date windows.
+    value_type: decimal
+    entity_types:
+    - provider
+    - claim
+    source_mappings:
+    - source_type: timeseries_metric
+      source_ref: timeseries.service_date_burstiness
+      raw_fields:
+      - provider_npi
+      - claim_id
+      - service_date
+    peer_dimensions: []
+    threshold_hints:
+      high: 2.0
+      critical: 3.0
+    transformation_version: service-date-burst-v1
+    typology_ids:
+    - billing_spike
+    - geographic_anomaly
+  - id: policy_billing_threshold_hits
+    label: Policy billing threshold hits
+    description: Count of claims matching configured billing threshold rules.
+    value_type: integer
+    entity_types:
+    - claim
+    - provider
+    source_mappings:
+    - source_type: policy_rule
+      source_ref: policy_rules.billing_thresholds
+      raw_fields:
+      - claim_id
+      - billed_amount
+    peer_dimensions: []
+    threshold_hints:
+      high: 1.0
+      critical: 3.0
+    transformation_version: policy-hit-count-v1
+    typology_ids:
+    - policy_threshold_exposure
+  - id: enrollment_age_risk
+    label: Enrollment age risk
+    description: Risk signal based on provider enrollment age or recency.
+    value_type: decimal
+    entity_types:
+    - provider
+    source_mappings:
+    - source_type: derived_signal
+      source_ref: entity_derived_signals.enrollment_age_risk
+      raw_fields:
+      - provider_npi
+      - enrollment_date
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.7
+      critical: 0.9
+    transformation_version: enrollment-age-v1
+    typology_ids:
+    - enrollment_risk
+  - id: never_provided_service_signal
+    label: Never-provided service signal
+    description: Evidence-backed indicator that a billed service was not provided.
+    value_type: boolean
+    entity_types:
+    - claim
+    - provider
+    - beneficiary
+    source_mappings:
+    - source_type: evidence_pack
+      source_ref: evidence.never_provided_service
+      raw_fields:
+      - claim_id
+      - provider_npi
+      - hic_number
+    peer_dimensions: []
+    threshold_hints:
+      high: 1.0
+      critical: 1.0
+    transformation_version: never-provided-service-v1
+    typology_ids:
+    - never_provided_service
+  - id: dmepos_code_exposure
+    label: DMEPOS code exposure
+    description: Share or count of DMEPOS-related procedure codes in claims.
+    value_type: decimal
+    entity_types:
+    - provider
+    - claim
+    - beneficiary
+    source_mappings:
+    - source_type: records_feed
+      source_ref: records.claims_feed.dmepos_code_exposure
+      raw_fields:
+      - claim_id
+      - provider_npi
+      - procedure_codes
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.4
+      critical: 0.7
+    transformation_version: dmepos-code-exposure-v1
+    typology_ids:
+    - dmepos_overutilization
+  - id: cross_kb_policy_citation_count
+    label: Cross-KB policy citation count
+    description: Count of relevant policy citations found across attached knowledge
+      bases.
+    value_type: integer
+    entity_types:
+    - claim
+    - provider
+    source_mappings:
+    - source_type: rag_evidence
+      source_ref: knowledgebases.policy_graph.citations
+      raw_fields:
+      - claim_id
+      - provider_npi
+      - citation_id
+    peer_dimensions: []
+    threshold_hints:
+      high: 2.0
+      critical: 5.0
+    transformation_version: cross-kb-citation-v1
+    typology_ids:
+    - never_provided_service
+    - policy_threshold_exposure
+  - id: evidence_pack_confidence
+    label: Evidence pack confidence
+    description: Normalized confidence score for the assembled investigator evidence
+      pack.
+    value_type: decimal
+    entity_types:
+    - provider
+    - claim
+    source_mappings:
+    - source_type: evidence_pack
+      source_ref: evidence.packs.confidence
+      raw_fields:
+      - entity_id
+      - claim_id
+      - citation_id
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.75
+      critical: 0.9
+    transformation_version: evidence-pack-confidence-v1
+    typology_ids:
+    - enrollment_risk
+    - never_provided_service
+  - id: identity_link_confidence
+    label: Identity link confidence
+    description: Confidence and review status for source-to-canonical identity links.
+    value_type: decimal
+    entity_types:
+    - provider
+    - beneficiary
+    source_mappings:
+    - source_type: identity_link
+      source_ref: identity.links.confidence
+      raw_fields:
+      - entity_id
+      - canonical_entity_id
+      - review_state
+    peer_dimensions: []
+    threshold_hints:
+      high: 0.65
+      critical: 0.35
+    transformation_version: identity-link-v1
+    typology_ids:
+    - identity_mismatch
+playbooks:
+  version: cms-playbooks-v1
+  items:
+  - id: provider_billing_spike_review
+    version: v1
+    title: Provider billing spike review
+    summary: Review provider billing acceleration against baseline, peers, policy,
+      and supporting records.
+    status: draft
+    typology_ids:
+    - billing_spike
+    feature_ids:
+    - weekly_provider_billing_zscore
+    - weekly_provider_claim_count_zscore
+    - anomalous_claim_score
+    policy_rule_ids:
+    - billing_thresholds.claim_over_billed
+    evidence_requirements:
+    - id: risk_projection
+      label: Risk projection
+      description: Current risk score, score age, and top contributing features.
+      source_types:
+      - risk_projection
+      - feature_value
+      required: true
+    - id: peer_context
+      label: Peer context
+      description: Peer cohort distribution and z-score summary.
+      source_types:
+      - peer_analysis
+      required: true
+    workflow_steps:
+    - id: review_risk_projection
+      label: Review risk projection
+      capability_ref: analytics.risk_projection.read
+      input_refs:
+      - knowledge_base_id
+      - entity_id
+      output_refs:
+      - risk_summary
+      requires_human_approval: false
+    - id: verify_policy_threshold
+      label: Verify policy threshold context
+      capability_ref: policy.rules.read
+      input_refs:
+      - knowledge_base_id
+      - entity_id
+      - policy_rule_id
+      output_refs:
+      - policy_context
+      requires_human_approval: false
+    rag_prompts:
+    - id: billing_spike_context
+      model_ref: default
+      prompt_version: v1
+      system_prompt: Answer with cited evidence only.
+      user_prompt: Summarize the billing spike evidence for {entity_id}.
+    decision_guidance:
+    - Open or attach a case when billing acceleration is corroborated by source records
+      and peer context.
+    - Record whether the policy threshold was triggered by claim amount or accumulated
+      billing behavior.
+    export_tags:
+    - cms
+    - billing
+    - provider
+  - id: peer_outlier_provider_review
+    version: v1
+    title: Peer outlier provider review
+    summary: Review provider behavior against configured specialty and geography peer
+      cohorts.
+    status: draft
+    typology_ids:
+    - peer_outlier
+    feature_ids:
+    - specialty_peer_group_outlier
+    - weekly_provider_billing_zscore
+    - facility_concentration_ratio
+    policy_rule_ids: []
+    evidence_requirements:
+    - id: peer_distribution
+      label: Peer distribution
+      description: Cohort membership, distribution, entity value, z-score, and percentile.
+      source_types:
+      - peer_analysis
+      required: true
+    - id: facility_context
+      label: Facility context
+      description: Facility concentration and related claim activity.
+      source_types:
+      - graph_metric
+      - feature_value
+      required: false
+    workflow_steps:
+    - id: gather_peer_context
+      label: Gather peer context
+      capability_ref: analytics.peer_analysis.read
+      input_refs:
+      - knowledge_base_id
+      - entity_id
+      output_refs:
+      - peer_summary
+      requires_human_approval: false
+    rag_prompts:
+    - id: peer_outlier_context
+      model_ref: default
+      prompt_version: v1
+      system_prompt: Answer with cited evidence only.
+      user_prompt: Explain why {entity_id} is an outlier compared with peers.
+    decision_guidance:
+    - Escalate only when the peer cohort is large enough and supporting evidence is
+      available.
+    - Compare peer outlier evidence with facility and claim context before assigning
+      severity.
+    export_tags:
+    - cms
+    - peer
+    - provider
+  - id: identity_mismatch_review
+    version: v1
+    title: Identity mismatch review
+    summary: Review source identities and merge or split history before relying on
+      the canonical entity.
+    status: draft
+    typology_ids:
+    - identity_mismatch
+    feature_ids:
+    - identity_link_confidence
+    policy_rule_ids: []
+    evidence_requirements:
+    - id: identity_links
+      label: Identity links
+      description: Canonical and source identity links with confidence and review
+        state.
+      source_types:
+      - identity_link
+      required: true
+    workflow_steps:
+    - id: inspect_identity_links
+      label: Inspect identity links
+      capability_ref: identity.canonical.read
+      input_refs:
+      - knowledge_base_id
+      - entity_id
+      output_refs:
+      - identity_summary
+      requires_human_approval: false
+    rag_prompts:
+    - id: identity_context
+      model_ref: default
+      prompt_version: v1
+      system_prompt: Answer with cited evidence only.
+      user_prompt: Summarize identity-link evidence and unresolved review states for
+        {entity_id}.
+    decision_guidance:
+    - Do not treat a low-confidence identity merge as decisive until a steward review
+      is complete.
+    - Preserve source identity evidence when opening or updating the case.
+    export_tags:
+    - cms
+    - identity
+policy_rules:
+- id: billing_thresholds
+  name: Billing thresholds
+  description: Flag claims whose billed amount exceeds the configured ceiling.
+  thresholds:
+    max_billed_amount: 100
+  rules:
+  - id: claim_over_billed
+    title_template: Claim {target_ref} exceeds the billing threshold
+    severity: high
+    target_kind: entity
+    target_selector:
+      entity_type: claim
+    predicate:
+      field: properties.amount
+      op: gt
+      value:
+        literal: null
+        config_ref: max_billed_amount
+    citations:
+    - citation_id: lcd-billing-001
+      title: LCD billing-amount guidance
+      source_ref: policy://medicare/lcd/billing-001
+      excerpt: Claims above the LCD ceiling require documented justification.
+- id: graph_scale
+  name: Graph growth watch
+  description: null
+  thresholds:
+    max_entities: 100000
+  rules:
+  - id: kb_entity_volume
+    title_template: Knowledge base {target_ref} crossed the entity-volume watch line
+    severity: medium
+    target_kind: metric
+    target_selector:
+      metric_name: entity_count
+    predicate:
+      field: metric.entity_count
+      op: gt
+      value:
+        literal: null
+        config_ref: max_entities
+    citations: []
 alerts:
   thresholds:
     provider:
       risk_score: 0.75
       anomaly_sigma: 2.5
     beneficiary:
-      risk_score: 0.80
+      risk_score: 0.8
     claim:
-      amount_percentile: 99
-
+      amount_percentile: 99.0
 ui:
   default_entity_type: provider
   navigation:
     pages:
-      - id: dashboard
-        label: Dashboard
-        route: /dashboard
-        capability: risk_scoring
-      - id: alerts
-        label: Alert Feed
-        route: /alerts
-      - id: investigation
-        label: Investigation Workbench
-        route: /investigation
-        capability: gnn
-      - id: cases
-        label: Case Management
-        route: /cases
-      - id: knowledge_bases
-        label: Knowledge Bases
-        route: /knowledge-bases
-      - id: policy
-        label: Policy Intelligence
-        route: /policy
-        capability: explainability
-      - id: rag_chat
-        label: RAG Chat
-        route: /rag-chat
-        capability: rag_chat
-      - id: configuration
-        label: Configuration
-        route: /configuration
+    - id: dashboard
+      label: Dashboard
+      route: /dashboard
+      capability: risk_scoring
+    - id: alerts
+      label: Alert Feed
+      route: /alerts
+      capability: null
+    - id: investigation
+      label: Investigation Workbench
+      route: /investigation
+      capability: gnn
+    - id: cases
+      label: Case Management
+      route: /cases
+      capability: null
+    - id: knowledge_bases
+      label: Knowledge Bases
+      route: /knowledge-bases
+      capability: null
+    - id: policy
+      label: Policy Intelligence
+      route: /policy
+      capability: explainability
+    - id: rag_chat
+      label: RAG Chat
+      route: /rag-chat
+      capability: rag_chat
+    - id: configuration
+      label: Configuration
+      route: /configuration
+      capability: null
   display_fields:
     provider:
       title: name
-      subtitle: npi
       subtitle: specialty
-      chips: [state]
+      chips:
+      - state
     beneficiary:
       title: hic_number
       subtitle: age
-      chips: [chronic_conditions]
+      chips:
+      - chronic_conditions
     claim:
       title: claim_id
       subtitle: service_date
-      chips: [procedure_codes]
+      chips:
+      - procedure_codes
     facility:
       title: name
       subtitle: type
-      chips: [facility_id]
+      chips:
+      - facility_id
   roles:
     analyst:
       landing_page: alerts
-      pages: [dashboard, alerts, investigation, cases, rag_chat, knowledge_bases]
-      permissions: [alerts:read, cases:write, feedback:write]
+      pages:
+      - dashboard
+      - alerts
+      - investigation
+      - cases
+      - rag_chat
+      - knowledge_bases
+      permissions:
+      - alerts:read
+      - cases:write
+      - feedback:write
     supervisor:
       landing_page: dashboard
-      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, rag_chat, configuration]
-      permissions: [alerts:read, cases:assign, feedback:read]
+      pages:
+      - dashboard
+      - alerts
+      - investigation
+      - cases
+      - policy
+      - knowledge_bases
+      - rag_chat
+      - configuration
+      permissions:
+      - alerts:read
+      - cases:assign
+      - feedback:read
+default_reference_kb_id: null

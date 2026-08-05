@@ -7,6 +7,7 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from playbooks.models import PlaybookRef
 from shared.utils import utc_now
 
 CaseStatus = Literal["open", "in_review", "closed"]
@@ -45,6 +46,7 @@ class Case(BaseModel):
     assignee: str | None = None
     originating_alert_id: str | None = None
     evidence_pack_id: str | None = None
+    playbook_ref: PlaybookRef | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     timeline: list[CaseTimelineEvent] = Field(
         default_factory=lambda: cast(list[CaseTimelineEvent], [])

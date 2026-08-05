@@ -69,6 +69,7 @@ def test_save_run_indexes_idempotency_and_returns_detached_copies() -> None:
         idempotency_key="score-all:kb-1:catalog-v1:model-v1",
     )
 
+    assert by_id is not None
     assert by_id.status == "queued"
     assert by_key is not None
     assert by_key.id == "score-run-1"

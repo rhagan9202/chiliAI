@@ -4,6 +4,7 @@ import {
   DEFAULT_RISK_QUESTION,
   buildRagChatUrl,
   buildRagMessageFilters,
+  buildRagScope,
   citationNavigationTarget,
   parseRagLaunchContext,
 } from '../ragContext'
@@ -115,6 +116,28 @@ describe('ragContext', () => {
       source_type: 'alert',
       alert_id: 'alert-1',
       evidence_pack_id: 'evidence-1',
+    })
+  })
+
+  it('creates a typed rag scope from launch context for route reloads and message filters', () => {
+    const scope = buildRagScope({
+      knowledgeBaseId: 'kb-1',
+      source: 'alert',
+      alertId: 'alert-1',
+      entityId: 'provider-204',
+      evidencePackId: 'evidence-1',
+    })
+
+    expect(scope).toEqual({
+      knowledgeBaseId: 'kb-1',
+      source: 'alert',
+      label: 'Alert alert-1',
+      filters: {
+        source_type: 'alert',
+        alert_id: 'alert-1',
+        entity_id: 'provider-204',
+        evidence_pack_id: 'evidence-1',
+      },
     })
   })
 

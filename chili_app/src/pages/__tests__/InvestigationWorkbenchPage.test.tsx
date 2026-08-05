@@ -47,10 +47,12 @@ const mocks = vi.hoisted(() => ({
     knowledge_base_id: string
     severity: string
     evidence_pack_id: string | null
+    generation_metadata?: Record<string, unknown>
   }>,
   useAlerts: vi.fn(),
   useCase: vi.fn(),
   useCaseDossier: vi.fn(),
+  usePlaybooks: vi.fn(),
   evidencePacks: {} as Record<string, EvidencePackResponse>,
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
@@ -216,6 +218,10 @@ vi.mock('../../api/alerts', () => ({
 vi.mock('../../api/cases', () => ({
   useCase: mocks.useCase,
   useCaseDossier: mocks.useCaseDossier,
+}))
+
+vi.mock('../../api/playbooks', () => ({
+  usePlaybooks: mocks.usePlaybooks,
 }))
 
 vi.mock('../../api/analytics', () => ({
@@ -450,6 +456,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.useAlerts.mockReset()
     mocks.useCase.mockReset()
     mocks.useCaseDossier.mockReset()
+    mocks.usePlaybooks.mockReset()
     mocks.evidencePacks = {}
     mocks.useAlerts.mockImplementation((filters?: { knowledgeBaseId?: string }) => {
       const items = filters?.knowledgeBaseId
@@ -470,6 +477,11 @@ describe('InvestigationWorkbenchPage', () => {
       isLoading: false,
       isError: false,
       data: undefined,
+    })
+    mocks.usePlaybooks.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [], published: [], total: 0, limit: 50, offset: 0 },
     })
     mocks.searchItems = []
     mocks.selectedEntity = null
@@ -731,6 +743,7 @@ describe('InvestigationWorkbenchPage', () => {
 
     renderInvestigationWorkbench()
 
+    expect(mocks.usePlaybooks).toHaveBeenCalledWith('kb-live', false)
     // The panel offers what to do about it; the reason (when there is one)
     // lives once in the dossier header (UXA-305).
     expect(screen.getByText(/Risk factors appear once analytics have scored this entity/i)).toBeInTheDocument()
@@ -885,6 +898,87 @@ describe('InvestigationWorkbenchPage', () => {
 
     expect(screen.getByText('Explicit cockpit evidence.')).toBeInTheDocument()
     expect(screen.queryByText('Fallback evidence.')).not.toBeInTheDocument()
+  })
+
+  it('renders a playbook badge from API data matching the selected alert reference', () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+        generation_metadata: {
+          playbook_ref: {
+            playbook_id: 'provider_velocity_review',
+            playbook_version: 'v2',
+            title: 'Snapshot title',
+          },
+        },
+      },
+    ]
+    mocks.usePlaybooks.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'provider_velocity_review',
+            title: 'Provider velocity review',
+            summary: 'Review unexpected billing velocity.',
+            version: 'v2',
+            status: 'published',
+            evidence_requirements: [
+              {
+                id: 'claims-history',
+                label: 'Claims history',
+                description: 'Recent and historical claims for the subject.',
+                required: true,
+                source_types: ['claims'],
+              },
+            ],
+            workflow_steps: [
+              {
+                id: 'review-peer-context',
+                label: 'Review peer context',
+                capability_ref: 'peer_stats',
+                input_refs: ['claims-history'],
+                output_refs: ['peer-review'],
+                requires_human_approval: true,
+              },
+            ],
+            rag_prompts: [
+              {
+                id: 'analyst-summary',
+                model_ref: 'default',
+                prompt_version: 'v1',
+                system_prompt: 'Summarize evidence.',
+                user_prompt: 'What changed?',
+              },
+            ],
+            decision_guidance: ['Escalate when peer deviation remains unexplained.'],
+          },
+        ],
+        published: [],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      },
+    })
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live&alert=alert-live')
+
+    expect(mocks.usePlaybooks).toHaveBeenCalledWith('kb-live', true)
+    const badge = screen.getByRole('group', { name: 'Playbook' })
+    expect(within(badge).getByText('Provider velocity review')).toBeInTheDocument()
+    expect(within(badge).getByText('v2')).toBeInTheDocument()
+    expect(within(badge).getByText('published')).toBeInTheDocument()
+    const detail = screen.getByRole('group', { name: 'Playbook detail' })
+    expect(within(detail).getByText('Claims history')).toBeInTheDocument()
+    expect(within(detail).getByText('Review peer context')).toBeInTheDocument()
+    expect(within(detail).getByText('analyst-summary')).toBeInTheDocument()
+    expect(within(detail).getByText('Escalate when peer deviation remains unexplained.')).toBeInTheDocument()
   })
 
   it('renders a compact redacted audit trail for the explicit cockpit case', () => {

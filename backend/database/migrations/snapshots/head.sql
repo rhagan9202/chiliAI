@@ -54,7 +54,8 @@ CREATE TABLE public.cases (
     timeline jsonb DEFAULT '[]'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    feedback_history jsonb DEFAULT '[]'::jsonb NOT NULL
+    feedback_history jsonb DEFAULT '[]'::jsonb NOT NULL,
+    playbook_ref jsonb
 );
 CREATE TABLE public.conversations (
     conversation_id text NOT NULL,
@@ -126,6 +127,21 @@ CREATE TABLE public.explanation_reviews (
     CONSTRAINT ck_explanation_reviews_state CHECK ((state = ANY (ARRAY['useful'::text, 'incomplete'::text, 'misleading'::text, 'unsupported'::text, 'approved'::text, 'rejected'::text, 'regeneration_requested'::text]))),
     CONSTRAINT ck_explanation_reviews_target_type CHECK ((target_type = ANY (ARRAY['narrative'::text, 'narrative_section'::text, 'feature_attribution'::text, 'evidence_item'::text, 'provenance_reference'::text]))),
     CONSTRAINT ck_explanation_reviews_update_count CHECK ((update_count >= 0))
+);
+CREATE TABLE public.fraud_playbook_snapshots (
+    domain_name text NOT NULL,
+    playbook_id text NOT NULL,
+    version text NOT NULL,
+    status text NOT NULL,
+    definition jsonb NOT NULL,
+    source text NOT NULL,
+    published_by text NOT NULL,
+    published_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    knowledge_base_id text NOT NULL,
+    CONSTRAINT ck_fraud_playbook_snapshots_source CHECK ((source = ANY (ARRAY['domain_config'::text, 'api_import'::text, 'api_publish'::text]))),
+    CONSTRAINT ck_fraud_playbook_snapshots_status CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'retired'::text])))
 );
 CREATE TABLE public.identity_links (
     id text NOT NULL,
@@ -261,6 +277,25 @@ CREATE TABLE public.timeseries_anomalies (
     correlation_id text NOT NULL,
     detected_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.workflow_definition_snapshots (
+    snapshot_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    domain_name text,
+    definition_id text NOT NULL,
+    version text NOT NULL,
+    status text NOT NULL,
+    name text NOT NULL,
+    description text,
+    allowed_capability_refs jsonb NOT NULL,
+    steps jsonb NOT NULL,
+    created_by text NOT NULL,
+    approved_by text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    approved_at timestamp with time zone,
+    retired_at timestamp with time zone,
+    CONSTRAINT ck_workflow_definition_snapshots_status CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'retired'::text])))
+);
 ALTER TABLE ONLY public.alert_history
     ADD CONSTRAINT alert_history_pkey PRIMARY KEY (knowledge_base_id, alert_id);
 ALTER TABLE ONLY public.audit_log
@@ -281,6 +316,8 @@ ALTER TABLE ONLY public.explanation_reviews
     ADD CONSTRAINT explanation_reviews_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.fraud_playbook_snapshots
+    ADD CONSTRAINT pk_fraud_playbook_snapshots PRIMARY KEY (knowledge_base_id, domain_name, playbook_id, version);
 ALTER TABLE ONLY public.identity_links
     ADD CONSTRAINT pk_identity_links PRIMARY KEY (knowledge_base_id, id);
 ALTER TABLE ONLY public.policy_items
@@ -303,6 +340,10 @@ ALTER TABLE ONLY public.timeseries_anomalies
     ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.explanation_reviews
     ADD CONSTRAINT uq_explanation_reviews_target UNIQUE (knowledge_base_id, evidence_pack_id, target_type, target_id);
+ALTER TABLE ONLY public.workflow_definition_snapshots
+    ADD CONSTRAINT uq_workflow_definition_snapshots_natural_key UNIQUE (knowledge_base_id, definition_id, version);
+ALTER TABLE ONLY public.workflow_definition_snapshots
+    ADD CONSTRAINT workflow_definition_snapshots_pkey PRIMARY KEY (snapshot_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
@@ -316,6 +357,7 @@ CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_histo
 CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_state_updated ON public.explanation_reviews USING btree (knowledge_base_id, state, updated_at DESC);
+CREATE INDEX ix_fraud_playbook_snapshots_domain_status ON public.fraud_playbook_snapshots USING btree (knowledge_base_id, domain_name, status, updated_at DESC);
 CREATE INDEX ix_identity_links_kb_canonical_updated ON public.identity_links USING btree (knowledge_base_id, canonical_entity_id, updated_at DESC);
 CREATE INDEX ix_identity_links_kb_review_state_updated ON public.identity_links USING btree (knowledge_base_id, review_state, updated_at DESC);
 CREATE INDEX ix_identity_links_kb_source_updated ON public.identity_links USING btree (knowledge_base_id, source_entity_id, updated_at DESC);
@@ -328,6 +370,7 @@ CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btre
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
+CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX observations_observed_at_idx ON public.observations USING btree (observed_at DESC);
 CREATE UNIQUE INDEX ux_policy_items_item_id ON public.policy_items USING btree (knowledge_base_id, item_id);
 -- timescaledb hypertables (hypertable_name|num_dimensions)

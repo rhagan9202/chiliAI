@@ -92,6 +92,31 @@ export type CaseStatus = Schemas['CaseSummaryResponse']['status']
 export type CasePriority = Schemas['CaseSummaryResponse']['priority']
 export type FeedbackLabel = Schemas['AnalystFeedbackResponse']['label']
 export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adequacy']
+export type PlaybookRef = Schemas['PlaybookRef']
+export type PlaybookEvidenceRequirementResponse = Schemas['PlaybookEvidenceRequirementResponse']
+export type PlaybookWorkflowStepResponse = Schemas['PlaybookWorkflowStepResponse']
+export type PlaybookRagPromptResponse = Schemas['PlaybookRagPromptResponse']
+export type PlaybookResponse = RequireFields<
+  Schemas['PlaybookResponse'],
+  'decision_guidance' | 'evidence_requirements' | 'rag_prompts' | 'workflow_steps'
+>
+export type PlaybookSnapshotResponse = Omit<Schemas['PlaybookSnapshotResponse'], 'definition'> & {
+  definition: PlaybookResponse
+}
+export type PlaybookListResponse = Omit<
+  RequireFields<Schemas['PlaybookListResponse'], 'items' | 'published'>,
+  'items' | 'published'
+> & {
+  items: PlaybookResponse[]
+  published: PlaybookSnapshotResponse[]
+}
+export type PlaybookPublishRequestPayload = Schemas['PlaybookPublishRequestPayload']
+export type PlaybookImportRequestPayload = Schemas['PlaybookImportRequestPayload']
+export type PlaybookImportResponse = RequireFields<Schemas['PlaybookImportResponse'], 'snapshot_ids'>
+export type PlaybookExportResponse = Schemas['PlaybookExportResponse']
+export type CapabilityListResponse = RequireFields<Schemas['CapabilityListResponse'], 'items'>
+export type CapabilityManifestResponse = Schemas['CapabilityManifestResponse']
+export type CapabilitySideEffectClass = Schemas['CapabilityManifestResponse']['side_effect_class']
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']

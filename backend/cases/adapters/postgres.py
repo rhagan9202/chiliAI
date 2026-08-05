@@ -20,16 +20,17 @@ from cases.models import (
     CaseTimelineEvent,
 )
 from database.protocols import ConnectionProvider, Row
+from playbooks.models import PlaybookRef
 
 _COLUMNS = (
     "knowledge_base_id, case_id, title, status, priority, assignee, "
     "originating_alert_id, evidence_pack_id, alert_ids, timeline, feedback_history, "
-    "created_at, updated_at"
+    "playbook_ref, created_at, updated_at"
 )
 
 _INSERT_SQL = f"""
     INSERT INTO cases ({_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)
     ON CONFLICT (knowledge_base_id, case_id) DO NOTHING
 """
 
@@ -44,7 +45,7 @@ _UPDATE_SQL = """
     SET title = %s, status = %s, priority = %s, assignee = %s,
         originating_alert_id = %s, evidence_pack_id = %s,
         alert_ids = %s::jsonb, timeline = %s::jsonb,
-        feedback_history = %s::jsonb, updated_at = %s
+        feedback_history = %s::jsonb, playbook_ref = %s::jsonb, updated_at = %s
     WHERE knowledge_base_id = %s AND case_id = %s
 """
 
@@ -129,6 +130,7 @@ class PostgresCaseRepository:
                         json.dumps(case.alert_ids, default=str),
                         _timeline_to_json(case.timeline),
                         _feedback_history_to_json(case.feedback_history),
+                        _playbook_ref_to_json(case.playbook_ref),
                         case.updated_at,
                         case.knowledge_base_id,
                         case.id,
@@ -166,6 +168,7 @@ class PostgresCaseRepository:
             json.dumps(case.alert_ids, default=str),
             _timeline_to_json(case.timeline),
             _feedback_history_to_json(case.feedback_history),
+            _playbook_ref_to_json(case.playbook_ref),
             case.created_at,
             case.updated_at,
         )
@@ -182,6 +185,12 @@ def _feedback_history_to_json(feedback_history: list[AnalystFeedback]) -> str:
         [feedback.model_dump(mode="json") for feedback in feedback_history],
         default=str,
     )
+
+
+def _playbook_ref_to_json(playbook_ref: PlaybookRef | None) -> str | None:
+    if playbook_ref is None:
+        return None
+    return json.dumps(playbook_ref.model_dump(mode="json"))
 
 
 def _row_to_case(row: Row) -> Case:
@@ -205,8 +214,9 @@ def _row_to_case(row: Row) -> Case:
         alert_ids=_decode_str_list(row[8]),
         timeline=_decode_timeline(row[9]),
         feedback_history=_decode_feedback_history(row[10]),
-        created_at=cast(datetime, row[11]),
-        updated_at=cast(datetime, row[12]),
+        playbook_ref=_decode_playbook_ref(row[11]),
+        created_at=cast(datetime, row[12]),
+        updated_at=cast(datetime, row[13]),
     )
 
 
@@ -237,6 +247,21 @@ def _decode_feedback_history(raw: object) -> list[AnalystFeedback]:
     if not isinstance(raw, list):
         raise CasePersistenceError("cases.feedback_history did not decode to a list.")
     return [AnalystFeedback.model_validate(item) for item in cast(list[object], raw)]
+
+
+def _decode_playbook_ref(raw: object) -> PlaybookRef | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise CasePersistenceError(
+                "cases.playbook_ref did not decode to an object."
+            ) from exc
+    if not isinstance(raw, dict):
+        raise CasePersistenceError("cases.playbook_ref did not decode to an object.")
+    return PlaybookRef.model_validate(raw)
 
 
 __all__ = ["PostgresCaseRepository"]

@@ -1204,6 +1204,236 @@
         "title": "CapabilitiesConfig",
         "type": "object"
       },
+      "CapabilityDomainCompatibilityResponse": {
+        "description": "Domain and environment metadata for one registered capability.",
+        "properties": {
+          "environment_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Environment Tags",
+            "type": "array"
+          },
+          "supported_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Domains",
+            "type": "array"
+          },
+          "unsupported_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unsupported Domains",
+            "type": "array"
+          }
+        },
+        "title": "CapabilityDomainCompatibilityResponse",
+        "type": "object"
+      },
+      "CapabilityExampleResponse": {
+        "description": "Example input/output pair for a registered capability.",
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "title": "Output",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CapabilityExampleResponse",
+        "type": "object"
+      },
+      "CapabilityHealthResponse": {
+        "description": "Last-known health metadata for one registered capability.",
+        "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "CapabilityHealthResponse",
+        "type": "object"
+      },
+      "CapabilityListResponse": {
+        "description": "Page of registered capabilities available to one knowledge base.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityManifestResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CapabilityListResponse",
+        "type": "object"
+      },
+      "CapabilityManifestResponse": {
+        "description": "Author-facing manifest for a registered capability.",
+        "properties": {
+          "capability_id": {
+            "title": "Capability Id",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "domain_compatibility": {
+            "$ref": "#/components/schemas/CapabilityDomainCompatibilityResponse"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityExampleResponse"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "health": {
+            "$ref": "#/components/schemas/CapabilityHealthResponse"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "title": "Input Schema",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "module": {
+            "title": "Module",
+            "type": "string"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/CapabilityPermissionResponse"
+          },
+          "side_effect_class": {
+            "enum": [
+              "read",
+              "write",
+              "external_call",
+              "approval"
+            ],
+            "title": "Side Effect Class",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability_id",
+          "version",
+          "module",
+          "label",
+          "description",
+          "input_schema",
+          "output_schema",
+          "side_effect_class",
+          "permission",
+          "domain_compatibility",
+          "health"
+        ],
+        "title": "CapabilityManifestResponse",
+        "type": "object"
+      },
+      "CapabilityPermissionResponse": {
+        "description": "Permission metadata for one registered capability.",
+        "properties": {
+          "required_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Roles",
+            "type": "array"
+          },
+          "required_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Scopes",
+            "type": "array"
+          },
+          "requires_audit": {
+            "default": false,
+            "title": "Requires Audit",
+            "type": "boolean"
+          }
+        },
+        "title": "CapabilityPermissionResponse",
+        "type": "object"
+      },
       "CaseAttachAlertRequest": {
         "description": "Payload for attaching an alert to a case that already exists (UXA-405).",
         "properties": {
@@ -1230,6 +1460,7 @@
         "type": "object"
       },
       "CaseCreateRequest": {
+        "additionalProperties": false,
         "description": "Payload for creating a new case.",
         "properties": {
           "alert_ids": {
@@ -1623,6 +1854,16 @@
               }
             ],
             "title": "Originating Alert Id"
+          },
+          "playbook_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "priority": {
             "enum": [
@@ -2879,6 +3120,9 @@
               }
             ],
             "default": null
+          },
+          "playbooks": {
+            "$ref": "#/components/schemas/FraudPlaybookCatalogConfig"
           },
           "policy_rules": {
             "items": {
@@ -4343,6 +4587,126 @@
           "source_ref"
         ],
         "title": "FeatureSourceMappingResponse",
+        "type": "object"
+      },
+      "FraudPlaybookCatalogConfig": {
+        "description": "Versioned collection of domain-pack-authored fraud playbooks.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FraudPlaybookConfig"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "FraudPlaybookCatalogConfig",
+        "type": "object"
+      },
+      "FraudPlaybookConfig": {
+        "description": "A versioned fraud investigation playbook authored in a domain pack.",
+        "properties": {
+          "decision_guidance": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Guidance",
+            "type": "array"
+          },
+          "evidence_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookEvidenceRequirementConfig"
+            },
+            "title": "Evidence Requirements",
+            "type": "array"
+          },
+          "export_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Export Tags",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "rag_prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookRagPromptConfig"
+            },
+            "title": "Rag Prompts",
+            "type": "array"
+          },
+          "status": {
+            "default": "draft",
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "title": "Version",
+            "type": "string"
+          },
+          "workflow_steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookWorkflowStepConfig"
+            },
+            "title": "Workflow Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "FraudPlaybookConfig",
         "type": "object"
       },
       "FraudTypologyConfig": {
@@ -6699,6 +7063,606 @@
           }
         },
         "title": "PeerStatsConfig",
+        "type": "object"
+      },
+      "PlaybookEvidenceRequirementConfig": {
+        "description": "One evidence item a playbook expects before a decision.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PlaybookEvidenceRequirementConfig",
+        "type": "object"
+      },
+      "PlaybookEvidenceRequirementResponse": {
+        "description": "Evidence requirement configured for one fraud playbook.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PlaybookEvidenceRequirementResponse",
+        "type": "object"
+      },
+      "PlaybookExportResponse": {
+        "description": "Portable playbook artifact wrapper.",
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/PlaybookImportArtifact"
+          }
+        },
+        "required": [
+          "artifact"
+        ],
+        "title": "PlaybookExportResponse",
+        "type": "object"
+      },
+      "PlaybookImportArtifact": {
+        "description": "Portable artifact containing validated domain playbooks.",
+        "properties": {
+          "catalog_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "domain_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "playbooks": {
+            "items": {
+              "$ref": "#/components/schemas/FraudPlaybookConfig"
+            },
+            "maxItems": 100,
+            "title": "Playbooks",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "playbooks.v1",
+            "default": "playbooks.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain_name",
+          "catalog_version"
+        ],
+        "title": "PlaybookImportArtifact",
+        "type": "object"
+      },
+      "PlaybookImportRequestPayload": {
+        "description": "Payload for importing portable domain playbooks.",
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/PlaybookImportArtifact"
+          }
+        },
+        "required": [
+          "artifact"
+        ],
+        "title": "PlaybookImportRequestPayload",
+        "type": "object"
+      },
+      "PlaybookImportResponse": {
+        "description": "Import result summary.",
+        "properties": {
+          "domain_name": {
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "imported_count": {
+            "minimum": 0.0,
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Snapshot Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain_name",
+          "imported_count"
+        ],
+        "title": "PlaybookImportResponse",
+        "type": "object"
+      },
+      "PlaybookListResponse": {
+        "description": "KB-scoped playbook catalog page plus published snapshots.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 0.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "published": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookSnapshotResponse"
+            },
+            "title": "Published",
+            "type": "array"
+          },
+          "published_limit": {
+            "minimum": 0.0,
+            "title": "Published Limit",
+            "type": "integer"
+          },
+          "published_offset": {
+            "minimum": 0.0,
+            "title": "Published Offset",
+            "type": "integer"
+          },
+          "published_total": {
+            "minimum": 0.0,
+            "title": "Published Total",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "published_total",
+          "published_limit",
+          "published_offset"
+        ],
+        "title": "PlaybookListResponse",
+        "type": "object"
+      },
+      "PlaybookPublishRequestPayload": {
+        "description": "Payload for publishing a config-authored playbook seed.",
+        "properties": {
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "PlaybookPublishRequestPayload",
+        "type": "object"
+      },
+      "PlaybookRagPromptConfig": {
+        "description": "Prompt template metadata tied to a fraud playbook.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "model_ref": {
+            "default": "default",
+            "minLength": 1,
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "prompt_version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "system_prompt": {
+            "minLength": 1,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "user_prompt": {
+            "minLength": 1,
+            "title": "User Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "system_prompt",
+          "user_prompt"
+        ],
+        "title": "PlaybookRagPromptConfig",
+        "type": "object"
+      },
+      "PlaybookRagPromptResponse": {
+        "description": "RAG prompt template configured for one fraud playbook.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model_ref": {
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "system_prompt": {
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "user_prompt": {
+            "title": "User Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model_ref",
+          "prompt_version",
+          "system_prompt",
+          "user_prompt"
+        ],
+        "title": "PlaybookRagPromptResponse",
+        "type": "object"
+      },
+      "PlaybookRef": {
+        "description": "Historical reference to a playbook version.",
+        "properties": {
+          "playbook_id": {
+            "minLength": 1,
+            "title": "Playbook Id",
+            "type": "string"
+          },
+          "playbook_version": {
+            "minLength": 1,
+            "title": "Playbook Version",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_id",
+          "playbook_version"
+        ],
+        "title": "PlaybookRef",
+        "type": "object"
+      },
+      "PlaybookResponse": {
+        "description": "Config-authored fraud playbook definition.",
+        "properties": {
+          "decision_guidance": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decision Guidance",
+            "type": "array"
+          },
+          "evidence_requirements": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookEvidenceRequirementResponse"
+            },
+            "title": "Evidence Requirements",
+            "type": "array"
+          },
+          "export_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Export Tags",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "rag_prompts": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookRagPromptResponse"
+            },
+            "title": "Rag Prompts",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "workflow_steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookWorkflowStepResponse"
+            },
+            "title": "Workflow Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "status"
+        ],
+        "title": "PlaybookResponse",
+        "type": "object"
+      },
+      "PlaybookSnapshotResponse": {
+        "description": "Immutable published playbook snapshot.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/PlaybookResponse"
+          },
+          "domain_name": {
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "published_by": {
+            "title": "Published By",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "domain_config",
+              "api_import",
+              "api_publish"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "published",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "knowledge_base_id",
+          "domain_name",
+          "playbook_id",
+          "version",
+          "status",
+          "definition",
+          "source",
+          "published_by",
+          "published_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlaybookSnapshotResponse",
+        "type": "object"
+      },
+      "PlaybookWorkflowStepConfig": {
+        "description": "Data-only workflow template step for later execution engines.",
+        "properties": {
+          "capability_ref": {
+            "minLength": 1,
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "PlaybookWorkflowStepConfig",
+        "type": "object"
+      },
+      "PlaybookWorkflowStepResponse": {
+        "description": "Workflow template step configured for one fraud playbook.",
+        "properties": {
+          "capability_ref": {
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "PlaybookWorkflowStepResponse",
         "type": "object"
       },
       "PolicyCitation": {
@@ -9936,6 +10900,365 @@
         "title": "VectorStoreConfig",
         "type": "object"
       },
+      "WorkflowDefinitionCreatePayload": {
+        "description": "Payload for creating a draft workflow definition.",
+        "properties": {
+          "allowed_capability_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Capability Refs",
+            "type": "array"
+          },
+          "definition_id": {
+            "minLength": 1,
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepDefinitionPayload"
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "name",
+          "version",
+          "steps"
+        ],
+        "title": "WorkflowDefinitionCreatePayload",
+        "type": "object"
+      },
+      "WorkflowDefinitionListResponse": {
+        "description": "Page of KB-scoped workflow definition snapshots.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "WorkflowDefinitionListResponse",
+        "type": "object"
+      },
+      "WorkflowDefinitionResponse": {
+        "description": "KB-scoped workflow definition snapshot.",
+        "properties": {
+          "allowed_capability_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Capability Refs",
+            "type": "array"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "definition_id": {
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "approved",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepDefinitionResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "definition_id",
+          "knowledge_base_id",
+          "name",
+          "version",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WorkflowDefinitionResponse",
+        "type": "object"
+      },
+      "WorkflowDefinitionRunRequestPayload": {
+        "description": "Payload for requesting an approved workflow definition run.",
+        "properties": {
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Inputs",
+            "type": "object"
+          },
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "alert",
+              "entity",
+              "case",
+              "knowledge_base"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "WorkflowDefinitionRunRequestPayload",
+        "type": "object"
+      },
+      "WorkflowDefinitionUpdatePayload": {
+        "description": "Payload for updating a draft workflow definition.",
+        "properties": {
+          "allowed_capability_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Capability Refs"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Name"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WorkflowStepDefinitionPayload"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          }
+        },
+        "title": "WorkflowDefinitionUpdatePayload",
+        "type": "object"
+      },
       "WorkflowRunListResponse": {
         "description": "Collection of workflow runs.",
         "properties": {
@@ -10047,6 +11370,165 @@
         ],
         "title": "WorkflowRunStatus",
         "type": "string"
+      },
+      "WorkflowStepDefinitionPayload": {
+        "description": "Payload for one executable step in a workflow definition.",
+        "properties": {
+          "capability_ref": {
+            "minLength": 1,
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "on_failure": {
+            "default": "fail_workflow",
+            "enum": [
+              "fail_workflow",
+              "continue",
+              "require_approval"
+            ],
+            "title": "On Failure",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "step_id": {
+            "minLength": 1,
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "label",
+          "capability_ref"
+        ],
+        "title": "WorkflowStepDefinitionPayload",
+        "type": "object"
+      },
+      "WorkflowStepDefinitionResponse": {
+        "description": "One executable step in a workflow definition response.",
+        "properties": {
+          "capability_ref": {
+            "title": "Capability Ref",
+            "type": "string"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "input_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "on_failure": {
+            "enum": [
+              "fail_workflow",
+              "continue",
+              "require_approval"
+            ],
+            "title": "On Failure",
+            "type": "string"
+          },
+          "output_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "requires_human_approval": {
+            "default": false,
+            "title": "Requires Human Approval",
+            "type": "boolean"
+          },
+          "retry_policy": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Policy"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "label",
+          "capability_ref",
+          "on_failure"
+        ],
+        "title": "WorkflowStepDefinitionResponse",
+        "type": "object"
       }
     }
   },
@@ -14093,6 +15575,128 @@
         ]
       }
     },
+    "/knowledgebases/{knowledge_base_id}/capabilities": {
+      "get": {
+        "description": "Return registered capabilities available to one knowledge base.",
+        "operationId": "list_capabilities_knowledgebases__knowledge_base_id__capabilities_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "module",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side_effect_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "read",
+                    "write",
+                    "external_call",
+                    "approval"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side Effect Class"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Capabilities",
+        "tags": [
+          "capabilities"
+        ]
+      }
+    },
     "/knowledgebases/{knowledge_base_id}/documents": {
       "get": {
         "description": "Return registered documents, enriched with the durable status projection.\n\n``status`` filters on the durable projection: documents without a\nprojected status row never match a filter.",
@@ -14506,6 +16110,291 @@
         ]
       }
     },
+    "/knowledgebases/{knowledge_base_id}/playbooks": {
+      "get": {
+        "description": "Return config-authored playbooks and published snapshots for one KB.",
+        "operationId": "list_playbooks_knowledgebases__knowledge_base_id__playbooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/export": {
+      "get": {
+        "description": "Export published playbooks for one KB domain, falling back to seeds.",
+        "operationId": "export_playbooks_knowledgebases__knowledge_base_id__playbooks_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/import": {
+      "post": {
+        "description": "Import a portable playbook artifact for one KB domain.",
+        "operationId": "import_playbooks_knowledgebases__knowledge_base_id__playbooks_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookImportRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Playbooks",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/publish": {
+      "post": {
+        "description": "Publish a config-authored seed playbook as an immutable snapshot.",
+        "operationId": "publish_playbook_knowledgebases__knowledge_base_id__playbooks__playbook_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookPublishRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Playbook",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/versions/{version}": {
+      "get": {
+        "description": "Return one published playbook version or config-authored seed.",
+        "operationId": "get_playbook_version_knowledgebases__knowledge_base_id__playbooks__playbook_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Playbook Version",
+        "tags": [
+          "playbooks"
+        ]
+      }
+    },
     "/knowledgebases/{knowledge_base_id}/score-runs": {
       "get": {
         "description": "Return recent score-all runs for a knowledge base.",
@@ -14786,6 +16675,446 @@
         "summary": "Replay Score Run",
         "tags": [
           "score-runs"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions": {
+      "get": {
+        "description": "Return workflow definitions for one knowledge base.",
+        "operationId": "list_workflow_definitions_knowledgebases__knowledge_base_id__workflow_definitions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflow Definitions",
+        "tags": [
+          "workflow-definitions"
+        ]
+      },
+      "post": {
+        "description": "Create a draft workflow definition for one knowledge base.",
+        "operationId": "create_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionCreatePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}": {
+      "get": {
+        "description": "Return one workflow definition snapshot.",
+        "operationId": "get_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      },
+      "put": {
+        "description": "Update one draft workflow definition snapshot.",
+        "operationId": "update_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionUpdatePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/approve": {
+      "post": {
+        "description": "Approve one draft workflow definition snapshot.",
+        "operationId": "approve_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/retire": {
+      "post": {
+        "description": "Retire one approved workflow definition snapshot.",
+        "operationId": "retire_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Workflow Definition",
+        "tags": [
+          "workflow-definitions"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/workflow-definitions/{definition_id}/versions/{version}/run": {
+      "post": {
+        "description": "Queue a run for one approved workflow definition snapshot.",
+        "operationId": "run_workflow_definition_knowledgebases__knowledge_base_id__workflow_definitions__definition_id__versions__version__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDefinitionRunRequestPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Workflow Definition",
+        "tags": [
+          "workflow-definitions"
         ]
       }
     },

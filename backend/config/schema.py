@@ -831,7 +831,7 @@ class FeatureSourceMappingConfig(BaseModel):
 
     source_type: str = Field(min_length=1)
     source_ref: str = Field(min_length=1)
-    raw_fields: list[str] = Field(default_factory=list)
+    raw_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class FeatureDefinitionConfig(BaseModel):
@@ -843,19 +843,25 @@ class FeatureDefinitionConfig(BaseModel):
     value_type: Literal[
         "boolean", "integer", "decimal", "string", "categorical"
     ] = "decimal"
-    entity_types: list[str] = Field(default_factory=list)
-    source_mappings: list[FeatureSourceMappingConfig] = Field(default_factory=list)
-    peer_dimensions: list[str] = Field(default_factory=list)
-    threshold_hints: dict[str, float] = Field(default_factory=dict)
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    source_mappings: list[FeatureSourceMappingConfig] = Field(
+        default_factory=lambda: cast(list[FeatureSourceMappingConfig], [])
+    )
+    peer_dimensions: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    threshold_hints: dict[str, float] = Field(
+        default_factory=lambda: cast(dict[str, float], {})
+    )
     transformation_version: str = Field(default="v1", min_length=1)
-    typology_ids: list[str] = Field(default_factory=list)
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class FeatureCatalogConfig(BaseModel):
     """Versioned collection of feature definitions for a domain."""
 
     version: str = Field(default="v1", min_length=1)
-    features: list[FeatureDefinitionConfig] = Field(default_factory=list)
+    features: list[FeatureDefinitionConfig] = Field(
+        default_factory=lambda: cast(list[FeatureDefinitionConfig], [])
+    )
 
     @model_validator(mode="after")
     def _validate_unique_feature_ids(self) -> FeatureCatalogConfig:
@@ -871,11 +877,106 @@ class FraudTypologyConfig(BaseModel):
     id: str = Field(min_length=1)
     label: str = Field(min_length=1)
     description: str = ""
-    entity_types: list[str] = Field(default_factory=list)
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
     severity_hint: Literal["low", "medium", "high", "critical"] | None = None
-    feature_ids: list[str] = Field(default_factory=list)
-    policy_rule_ids: list[str] = Field(default_factory=list)
-    playbook_ids: list[str] = Field(default_factory=list)
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    playbook_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+PlaybookStatusConfigValue = Literal["draft", "published", "retired"]
+
+
+class PlaybookEvidenceRequirementConfig(BaseModel):
+    """One evidence item a playbook expects before a decision."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    description: str = ""
+    source_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    required: bool = True
+
+
+class PlaybookWorkflowStepConfig(BaseModel):
+    """Data-only workflow template step for later execution engines."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    capability_ref: str = Field(min_length=1)
+    input_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    output_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    requires_human_approval: bool = False
+
+
+class PlaybookRagPromptConfig(BaseModel):
+    """Prompt template metadata tied to a fraud playbook."""
+
+    id: str = Field(min_length=1)
+    model_ref: str = Field(default="default", min_length=1)
+    prompt_version: str = Field(default="v1", min_length=1)
+    system_prompt: str = Field(min_length=1)
+    user_prompt: str = Field(min_length=1)
+
+
+class FraudPlaybookConfig(BaseModel):
+    """A versioned fraud investigation playbook authored in a domain pack."""
+
+    id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
+    version: str = Field(default="v1", min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
+    title: str = Field(min_length=1)
+    summary: str = ""
+    status: PlaybookStatusConfigValue = "draft"
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    evidence_requirements: list[PlaybookEvidenceRequirementConfig] = Field(
+        default_factory=lambda: cast(list[PlaybookEvidenceRequirementConfig], [])
+    )
+    workflow_steps: list[PlaybookWorkflowStepConfig] = Field(
+        default_factory=lambda: cast(list[PlaybookWorkflowStepConfig], [])
+    )
+    rag_prompts: list[PlaybookRagPromptConfig] = Field(
+        default_factory=lambda: cast(list[PlaybookRagPromptConfig], [])
+    )
+    decision_guidance: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    export_tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+    @model_validator(mode="after")
+    def _validate_unique_nested_ids(self) -> FraudPlaybookConfig:
+        for section_name, items in (
+            ("evidence_requirements", self.evidence_requirements),
+            ("workflow_steps", self.workflow_steps),
+            ("rag_prompts", self.rag_prompts),
+        ):
+            ids = [item.id for item in items]
+            if len(set(ids)) != len(ids):
+                raise ValueError(
+                    f"Playbook '{self.id}' {section_name} ids must be unique."
+                )
+        return self
+
+
+class FraudPlaybookCatalogConfig(BaseModel):
+    """Versioned collection of domain-pack-authored fraud playbooks."""
+
+    version: str = Field(default="v1", min_length=1)
+    items: list[FraudPlaybookConfig] = Field(
+        default_factory=lambda: cast(list[FraudPlaybookConfig], [])
+    )
+
+    @model_validator(mode="after")
+    def _validate_unique_playbook_versions(self) -> FraudPlaybookCatalogConfig:
+        pairs = [(item.id, item.version) for item in self.items]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError(
+                "FraudPlaybookCatalogConfig playbook id/version pairs must be unique."
+            )
+        ids = [item.id for item in self.items]
+        if len(set(ids)) != len(ids):
+            raise ValueError(
+                "FraudPlaybookCatalogConfig playbook ids must be unique per catalog."
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -913,8 +1014,13 @@ class DomainConfig(BaseModel):
     peer_stats: PeerStatsConfig | None = None
     timeseries: TimeseriesAnalyticsConfig | None = None
     scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
-    typologies: list[FraudTypologyConfig] = Field(default_factory=list)
+    typologies: list[FraudTypologyConfig] = Field(
+        default_factory=lambda: cast(list[FraudTypologyConfig], [])
+    )
     feature_catalog: FeatureCatalogConfig = Field(default_factory=FeatureCatalogConfig)
+    playbooks: FraudPlaybookCatalogConfig = Field(
+        default_factory=FraudPlaybookCatalogConfig
+    )
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
@@ -1015,6 +1121,7 @@ class DomainConfig(BaseModel):
             for pack in self.policy_rules
             for rule in pack.rules
         }
+        playbook_ids = {playbook.id for playbook in self.playbooks.items}
         for feature in self.feature_catalog.features:
             for entity_type in feature.entity_types:
                 if entity_type not in entity_name_set:
@@ -1027,6 +1134,26 @@ class DomainConfig(BaseModel):
                     errors.append(
                         f"Feature '{feature.id}' references unknown typology_id "
                         f"'{typology_id}'."
+                    )
+
+        for playbook in self.playbooks.items:
+            for typology_id in playbook.typology_ids:
+                if typology_id not in typology_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown typology_id "
+                        f"'{typology_id}'."
+                    )
+            for feature_id in playbook.feature_ids:
+                if feature_id not in feature_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown feature_id "
+                        f"'{feature_id}'."
+                    )
+            for policy_rule_id in playbook.policy_rule_ids:
+                if policy_rule_id not in policy_rule_ids:
+                    errors.append(
+                        f"Playbook '{playbook.id}' references unknown policy_rule_id "
+                        f"'{policy_rule_id}'."
                     )
 
         for typology in self.typologies:
@@ -1047,6 +1174,12 @@ class DomainConfig(BaseModel):
                     errors.append(
                         f"Typology '{typology.id}' references unknown policy_rule_id "
                         f"'{policy_rule_id}'."
+                    )
+            for playbook_id in typology.playbook_ids:
+                if playbook_id not in playbook_ids:
+                    errors.append(
+                        f"Typology '{typology.id}' references unknown playbook_id "
+                        f"'{playbook_id}'."
                     )
 
         # --- enum properties must declare enum_values ---
@@ -1355,6 +1488,8 @@ __all__ = [
     "FeatureCatalogConfig",
     "FeatureDefinitionConfig",
     "FeatureSourceMappingConfig",
+    "FraudPlaybookCatalogConfig",
+    "FraudPlaybookConfig",
     "FraudTypologyConfig",
     "GnnConfig",
     "GraphDbConfig",
@@ -1379,6 +1514,10 @@ __all__ = [
     "PolicyRulePack",
     "PeerMetricSpec",
     "PeerStatsConfig",
+    "PlaybookEvidenceRequirementConfig",
+    "PlaybookRagPromptConfig",
+    "PlaybookStatusConfigValue",
+    "PlaybookWorkflowStepConfig",
     "RagConfig",
     "RecordEntityMapping",
     "RecordFeedConfig",

@@ -92,7 +92,7 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*"]
+           "conversations*", "workflow_definitions*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -147,10 +147,12 @@ include = [
     "graph",
     "ingestion",
     "monitoring",
+    "playbooks",
     "policy",
     "records",
     "shared/metrics.py",
     "vectorstore",
+    "workflow_definitions",
     "tests/agent",
     "tests/conversations",
     "tests/analytics/gnn",
@@ -181,10 +183,12 @@ include = [
     "tests/monitoring/test_postgres_alert_history.py",
     "tests/monitoring/test_postgres_observation_store.py",
     "tests/monitoring/test_postgres_observation_source.py",
+    "tests/playbooks",
     "tests/policy",
     "tests/records",
     "tests/shared/test_metrics.py",
     "tests/vectorstore",
+    "tests/workflow_definitions",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
 

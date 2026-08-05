@@ -13,6 +13,7 @@ from cases.models import (
     EvidenceAdequacy,
     FeedbackLabel,
 )
+from playbooks.models import PlaybookRef
 from shared.types import Alert
 from shared.utils import generate_id, utc_now
 
@@ -41,6 +42,7 @@ class CaseService:
         assignee: str | None = None,
         alert_ids: list[str] | None = None,
         timeline: list[CaseTimelineEvent] | None = None,
+        playbook_ref: PlaybookRef | None = None,
     ) -> Case:
         case = Case(
             id=generate_id(),
@@ -49,6 +51,7 @@ class CaseService:
             status="open",
             priority=priority,
             assignee=assignee,
+            playbook_ref=playbook_ref,
             alert_ids=list(alert_ids or []),
             timeline=list(timeline or []),
         )
@@ -194,6 +197,7 @@ class CaseService:
             priority=_severity_to_priority(alert.severity),
             originating_alert_id=alert.id,
             evidence_pack_id=evidence_pack_id or alert.evidence_pack_id,
+            playbook_ref=_playbook_ref_from_alert(alert),
             alert_ids=[alert.id],
             timeline=list(timeline or []),
         )
@@ -202,6 +206,20 @@ class CaseService:
 
 def _severity_to_priority(severity: str) -> CasePriority:
     return _SEVERITY_TO_PRIORITY.get(severity.strip().lower(), "medium")
+
+
+def _playbook_ref_from_alert(alert: Alert) -> PlaybookRef | None:
+    raw_ref = alert.generation_metadata.get("playbook_ref")
+    if raw_ref is None:
+        return None
+    if isinstance(raw_ref, PlaybookRef):
+        return raw_ref
+    if not isinstance(raw_ref, dict):
+        return None
+    try:
+        return PlaybookRef.model_validate(raw_ref)
+    except ValueError:
+        return None
 
 
 def create_case_service(repository: CaseRepository) -> CaseService:

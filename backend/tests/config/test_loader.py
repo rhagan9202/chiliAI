@@ -247,6 +247,31 @@ def test_medicare_fraud_pack_declares_typologies_and_features() -> None:
     }
 
 
+def test_medicare_fraud_pack_declares_seed_playbooks() -> None:
+    cfg = load_config(DEFAULTS_DIR / "medicare_fraud.yaml")
+
+    seed_ids = {
+        "provider_billing_spike_review",
+        "peer_outlier_provider_review",
+        "identity_mismatch_review",
+    }
+    playbooks = {playbook.id: playbook for playbook in cfg.playbooks.items}
+    assert set(playbooks) >= seed_ids
+    referenced = {
+        playbook_id
+        for typology in cfg.typologies
+        for playbook_id in typology.playbook_ids
+    }
+    assert referenced <= set(playbooks)
+    for playbook_id in seed_ids:
+        playbook = playbooks[playbook_id]
+        assert playbook.evidence_requirements
+        assert playbook.workflow_steps
+        assert playbook.rag_prompts
+        assert playbook.decision_guidance
+        assert playbook.export_tags
+
+
 # ---------------------------------------------------------------------------
 # CHILI_CONFIG_OVERLAY_PATH env overlay wiring (BL-044, config.04)
 # ---------------------------------------------------------------------------

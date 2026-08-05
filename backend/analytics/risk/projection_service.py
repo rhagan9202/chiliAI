@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, Field
 
 from analytics.features.models import FeatureValueRecord
 from analytics.risk.projections import (
+    RiskProjectionLevel,
     RiskProjectionRepositoryProtocol,
     RiskProjectionRow,
     RiskProjectionStatus,
@@ -87,7 +88,7 @@ class RiskProjectionService:
                     "updated_at": existing.updated_at,
                 }
             )
-        if existing == row:
+        if existing is not None and existing == row:
             return RiskProjectionWriteResult(row=existing, changed=False, created=False)
         stored = self._repository.upsert(row)
         return RiskProjectionWriteResult(
@@ -133,7 +134,7 @@ def _row_from_request(request: RiskProjectionWriteRequest) -> RiskProjectionRow:
         entity_id=assessment.entity_id,
         entity_type=request.entity_type,
         overall_score=assessment.overall_score,
-        risk_level=assessment.risk_level,
+        risk_level=cast(RiskProjectionLevel, assessment.risk_level),
         top_typology_ids=_typology_ids_for_entity(
             assessment=assessment,
             entity_type=request.entity_type,

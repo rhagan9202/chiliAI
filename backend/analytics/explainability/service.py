@@ -28,6 +28,7 @@ from shared.types import (
     FeatureAttribution,
 )
 from shared.utils import generate_id
+from playbooks.models import PlaybookRef
 
 _PROVENANCE_TRANSFORMATION_VERSION = "explainability-provenance-v1"
 _PROVENANCE_SNIPPET_MAX_CHARS = 160
@@ -182,6 +183,7 @@ def _build_provenance(
     transformation_version = (
         context.lineage.transformation_version or _PROVENANCE_TRANSFORMATION_VERSION
     )
+    playbook_ref = context.lineage.playbook_ref
 
     for index, item in enumerate(selected_items):
         _append_reference(
@@ -193,12 +195,15 @@ def _build_provenance(
             confidence=item.score,
             route_target=_route_target_for_item(context, item),
             transformation_version=transformation_version,
-            metadata={
-                "source_id": item.source_id,
-                "quote_length": len(item.quote),
-                "rationale_snippet": _snippet(item.rationale),
-                "rationale_length": len(item.rationale),
-            },
+            metadata=_with_playbook_ref_metadata(
+                {
+                    "source_id": item.source_id,
+                    "quote_length": len(item.quote),
+                    "rationale_snippet": _snippet(item.rationale),
+                    "rationale_length": len(item.rationale),
+                },
+                playbook_ref,
+            ),
         )
 
     for node_id in context.subgraph.node_ids:
@@ -232,7 +237,7 @@ def _build_provenance(
         confidence=context.confidence,
         route_target=_entity_route(context.knowledge_base_id, context.alert.entity_id),
         transformation_version=transformation_version,
-        metadata=dict(context.scores),
+        metadata=_with_playbook_ref_metadata(dict(context.scores), playbook_ref),
     )
 
     for feature in attribution:
@@ -243,11 +248,14 @@ def _build_provenance(
             reference_id=feature.feature_name,
             label=feature.feature_name,
             transformation_version=transformation_version,
-            metadata={
-                "contribution": feature.contribution,
-                "rationale_snippet": _snippet(feature.rationale),
-                "rationale_length": len(feature.rationale),
-            },
+            metadata=_with_playbook_ref_metadata(
+                {
+                    "contribution": feature.contribution,
+                    "rationale_snippet": _snippet(feature.rationale),
+                    "rationale_length": len(feature.rationale),
+                },
+                playbook_ref,
+            ),
         )
 
     for index, section in enumerate(narrative_sections):
@@ -258,10 +266,13 @@ def _build_provenance(
             reference_id=f"section:{index}:{section.heading}",
             label=section.heading,
             transformation_version=transformation_version,
-            metadata={
-                "body_length": len(section.body),
-                "evidence_refs": list(section.evidence_refs),
-            },
+            metadata=_with_playbook_ref_metadata(
+                {
+                    "body_length": len(section.body),
+                    "evidence_refs": list(section.evidence_refs),
+                },
+                playbook_ref,
+            ),
         )
 
     _append_lineage_reference(
@@ -298,6 +309,17 @@ def _build_provenance(
     )
 
     return refs
+
+
+def _with_playbook_ref_metadata(
+    metadata: dict[str, object], playbook_ref: PlaybookRef | None
+) -> dict[str, object]:
+    if playbook_ref is None:
+        return metadata
+    return {
+        **metadata,
+        "playbook_ref": playbook_ref.model_dump(mode="json"),
+    }
 
 
 def _append_lineage_reference(

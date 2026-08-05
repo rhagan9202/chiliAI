@@ -326,6 +326,33 @@ describe('CaseManagementPage', () => {
     )
   })
 
+  it('renders a playbook badge from the active case reference', () => {
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          ...caseSummary,
+          playbook_ref: {
+            playbook_id: 'provider_velocity_review',
+            playbook_version: 'v2',
+            title: 'Provider velocity review',
+          },
+        },
+        alerts: [{ ...alert, evidence_pack_id: 'alert-evidence-should-not-be-used' }],
+        evidence_pack: null,
+        entity_timeline: [],
+        feedback_history: [],
+      },
+    })
+
+    renderPage()
+
+    const badge = screen.getByRole('group', { name: 'Playbook' })
+    expect(within(badge).getByText('Provider velocity review')).toBeInTheDocument()
+    expect(within(badge).getByText('v2')).toBeInTheDocument()
+  })
+
   it('keeps the cockpit link alert, entity, and evidence from one usable case alert', () => {
     mocks.useCase.mockReturnValue({
       isLoading: false,

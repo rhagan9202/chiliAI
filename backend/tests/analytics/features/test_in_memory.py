@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -24,7 +25,7 @@ def _record(
     score_run_id: str | None = "score-run-1",
     observed_at: datetime | None = None,
 ) -> FeatureValueRecord:
-    kwargs: dict[str, object] = {}
+    kwargs: dict[str, Any] = {}
     if observed_at is not None:
         kwargs["observed_at"] = observed_at
     return FeatureValueRecord(

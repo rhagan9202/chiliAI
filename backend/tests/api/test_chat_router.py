@@ -108,6 +108,26 @@ class _CitationRagService:
         )
 
 
+class _CaptureRagService:
+    def __init__(self) -> None:
+        self.stream_requests: list[RagQueryRequest] = []
+
+    def answer(self, request: RagQueryRequest) -> RagQueryResponse:
+        raise NotImplementedError
+
+    def answer_question(
+        self,
+        *,
+        knowledge_base_ids: list[str],
+        question: str,
+    ) -> RagAnswer:
+        raise NotImplementedError
+
+    def stream_answer(self, request: RagQueryRequest) -> Iterator[RagStreamChunk]:
+        self.stream_requests.append(request)
+        yield RagStreamChunk(chunk_text="", is_final=True, citations=[])
+
+
 def test_send_message_returns_full_conversation() -> None:
     """Non-streaming POST returns the Phase 5 ChatConversationResponse contract."""
     client = TestClient(create_app())
@@ -276,6 +296,46 @@ def test_stream_message_final_event_citations_match_contract() -> None:
             "highlight",
             "entity_id",
         }.issubset(citation)
+
+
+def test_stream_message_forwards_filters_and_graph_context_flag() -> None:
+    app = create_app()
+    service = _CaptureRagService()
+    state = ApiState()
+    object.__setattr__(
+        state,
+        "_rag_service",
+        cast(RagServiceProtocol, service),
+    )
+    app.dependency_overrides[get_api_state] = lambda: state
+    client = TestClient(app)
+    conversation_id = _new_conversation_id(client)
+
+    with client.stream(
+        "POST",
+        f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1", "stream": "true"},
+        json={
+            "content": "Explain this alert",
+            "include_graph_context": False,
+            "filters": {
+                "source_type": "alert",
+                "alert_id": "alert-1",
+                "entity_id": "provider-204",
+            },
+        },
+    ) as response:
+        assert response.status_code == 200
+        _ = b"".join(response.iter_bytes())
+
+    assert len(service.stream_requests) == 1
+    request = service.stream_requests[0]
+    assert request.filters == {
+        "source_type": "alert",
+        "alert_id": "alert-1",
+        "entity_id": "provider-204",
+    }
+    assert request.include_graph_context is False
 
 
 def test_stream_message_404_for_unknown_conversation() -> None:

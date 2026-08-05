@@ -14,6 +14,13 @@ export type RagLaunchContext = {
   question?: string | null
 }
 
+export type RagScope = {
+  knowledgeBaseId: string | null
+  source: RagLaunchSource | null
+  label: string
+  filters: Record<string, string | number | boolean>
+}
+
 type NavigationTarget = {
   pathname: string
   search: string
@@ -65,18 +72,46 @@ export function parseRagLaunchContext(params: URLSearchParams): Required<RagLaun
   }
 }
 
+function scopeLabel(context: RagLaunchContext): string {
+  if (context.source === 'alert' && nonEmpty(context.alertId)) {
+    return `Alert ${context.alertId}`
+  }
+  if (context.source === 'case' && nonEmpty(context.caseId)) {
+    return `Case ${context.caseId}`
+  }
+  if (context.source === 'entity' && nonEmpty(context.entityId)) {
+    return `Entity ${context.entityId}`
+  }
+  if (context.source === 'housing' && nonEmpty(context.installationId)) {
+    return `Installation ${context.installationId}`
+  }
+  if (context.source != null) {
+    return context.source
+  }
+  return 'Knowledge base'
+}
+
+export function buildRagScope(context: RagLaunchContext): RagScope {
+  return {
+    knowledgeBaseId: context.knowledgeBaseId ?? null,
+    source: context.source ?? null,
+    label: scopeLabel(context),
+    filters: Object.fromEntries(
+      [
+        ['source_type', context.source],
+        ['alert_id', context.alertId],
+        ['entity_id', context.entityId],
+        ['case_id', context.caseId],
+        ['evidence_pack_id', context.evidencePackId],
+        ['installation_id', context.installationId],
+        ['scorecard_run_id', context.scorecardRunId],
+      ].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0),
+    ),
+  }
+}
+
 export function buildRagMessageFilters(context: RagLaunchContext): Record<string, string | number | boolean> {
-  return Object.fromEntries(
-    [
-      ['source_type', context.source],
-      ['alert_id', context.alertId],
-      ['entity_id', context.entityId],
-      ['case_id', context.caseId],
-      ['evidence_pack_id', context.evidencePackId],
-      ['installation_id', context.installationId],
-      ['scorecard_run_id', context.scorecardRunId],
-    ].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0),
-  )
+  return buildRagScope(context).filters
 }
 
 export function citationNavigationTarget(

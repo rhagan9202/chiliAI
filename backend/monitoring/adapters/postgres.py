@@ -19,6 +19,7 @@ from monitoring.models import (
     AlertTriageEvent,
     MonitoringBatch,
     MonitoringObservation,
+    normalize_generation_metadata,
 )
 
 _INSERT_SQL = """
@@ -496,7 +497,7 @@ def _encode_triage_history(events: list[AlertTriageEvent]) -> str:
 
 
 def _encode_generation_metadata(metadata: dict[str, Any]) -> str:
-    return json.dumps(metadata)
+    return json.dumps(normalize_generation_metadata(metadata))
 
 
 def _decode_generation_metadata(value: object) -> dict[str, Any]:

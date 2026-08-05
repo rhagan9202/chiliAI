@@ -121,6 +121,11 @@ class TestOpenApiSchema:
             "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}",
             "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/cancel",
             "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/replay",
+            "/knowledgebases/{knowledge_base_id}/playbooks",
+            "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/versions/{version}",
+            "/knowledgebases/{knowledge_base_id}/playbooks/{playbook_id}/publish",
+            "/knowledgebases/{knowledge_base_id}/playbooks/import",
+            "/knowledgebases/{knowledge_base_id}/playbooks/export",
             "/alerts",
             "/alerts/{alert_id}",
             "/alerts/{alert_id}/acknowledge",
@@ -164,6 +169,7 @@ class TestOpenApiSchema:
             "chat",
             "analytics",
             "score-runs",
+            "playbooks",
             "identity",
         }.issubset(tags)
 
