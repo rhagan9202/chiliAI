@@ -31,6 +31,9 @@ CHALLENGED_REVIEW_STATES: frozenset[ExplanationReviewState] = frozenset(
         "regeneration_requested",
     }
 )
+_PLAYBOOK_PAGE_LIMIT = 100
+_WORKFLOW_PAGE_LIMIT = 100
+_REVIEW_PAGE_LIMIT = 200
 
 
 class GovernanceReportService:
@@ -77,61 +80,71 @@ class GovernanceReportService:
     def _playbook_versions(
         self, *, knowledge_base_id: str, domain_name: str
     ) -> list[GovernanceVersionSummary]:
-        page = self._playbook_repository.list_snapshots(
-            knowledge_base_id=knowledge_base_id,
-            domain_name=domain_name,
-            limit=100,
-            offset=0,
-        )
-        return [
-            GovernanceVersionSummary(
-                component_kind="playbook",
-                component_id=snapshot.playbook_id,
-                version=snapshot.version,
-                status=snapshot.status,
-                source=snapshot.source,
-                approved_by=snapshot.published_by,
-                approved_at=snapshot.published_at,
+        versions: list[GovernanceVersionSummary] = []
+        offset = 0
+        while True:
+            page = self._playbook_repository.list_snapshots(
+                knowledge_base_id=knowledge_base_id,
+                domain_name=domain_name,
+                limit=_PLAYBOOK_PAGE_LIMIT,
+                offset=offset,
             )
-            for snapshot in page.items
-            if snapshot.status == "published"
-        ]
+            versions.extend(
+                GovernanceVersionSummary(
+                    component_kind="playbook",
+                    component_id=snapshot.playbook_id,
+                    version=snapshot.version,
+                    status=snapshot.status,
+                    source=snapshot.source,
+                    approved_by=snapshot.published_by,
+                    approved_at=snapshot.published_at,
+                )
+                for snapshot in page.items
+                if snapshot.status == "published"
+            )
+            offset += len(page.items)
+            if offset >= page.total or not page.items:
+                return versions
 
     def _workflow_versions(
         self, *, knowledge_base_id: str
     ) -> tuple[list[GovernanceVersionSummary], list[GovernancePendingApproval]]:
-        page = self._workflow_definition_repository.list_definitions(
-            knowledge_base_id=knowledge_base_id,
-            limit=100,
-            offset=0,
-        )
         versions: list[GovernanceVersionSummary] = []
         pending: list[GovernancePendingApproval] = []
-        for definition in page.items:
-            if definition.status == "approved":
-                versions.append(
-                    GovernanceVersionSummary(
-                        component_kind="workflow_definition",
-                        component_id=definition.definition_id,
-                        version=definition.version,
-                        status=definition.status,
-                        source="workflow_definition",
-                        approved_by=definition.approved_by,
-                        approved_at=definition.approved_at,
+        offset = 0
+        while True:
+            page = self._workflow_definition_repository.list_definitions(
+                knowledge_base_id=knowledge_base_id,
+                limit=_WORKFLOW_PAGE_LIMIT,
+                offset=offset,
+            )
+            for definition in page.items:
+                if definition.status == "approved":
+                    versions.append(
+                        GovernanceVersionSummary(
+                            component_kind="workflow_definition",
+                            component_id=definition.definition_id,
+                            version=definition.version,
+                            status=definition.status,
+                            source="workflow_definition",
+                            approved_by=definition.approved_by,
+                            approved_at=definition.approved_at,
+                        )
                     )
-                )
-            elif definition.status == "draft":
-                pending.append(
-                    GovernancePendingApproval(
-                        approval_kind="workflow_definition",
-                        resource_id=definition.definition_id,
-                        version=definition.version,
-                        status=definition.status,
-                        requested_by=definition.created_by,
-                        updated_at=definition.updated_at,
+                elif definition.status == "draft":
+                    pending.append(
+                        GovernancePendingApproval(
+                            approval_kind="workflow_definition",
+                            resource_id=definition.definition_id,
+                            version=definition.version,
+                            status=definition.status,
+                            requested_by=definition.created_by,
+                            updated_at=definition.updated_at,
+                        )
                     )
-                )
-        return versions, pending
+            offset += len(page.items)
+            if offset >= page.total_items or not page.items:
+                return versions, pending
 
     def _feedback_trends(self, *, knowledge_base_id: str) -> GovernanceFeedbackTrend:
         page = self._list_all_reviews(knowledge_base_id=knowledge_base_id)
@@ -152,12 +165,34 @@ class GovernanceReportService:
         )
 
     def _list_all_reviews(self, *, knowledge_base_id: str) -> ExplanationReviewPage:
-        return self._explanation_review_service.list_reviews(
+        first_page = self._explanation_review_service.list_reviews(
             ExplanationReviewQuery(
                 knowledge_base_id=knowledge_base_id,
-                limit=200,
+                limit=_REVIEW_PAGE_LIMIT,
                 offset=0,
             )
+        )
+        if len(first_page.items) >= first_page.total:
+            return first_page
+        items = list(first_page.items)
+        offset = len(first_page.items)
+        while offset < first_page.total:
+            page = self._explanation_review_service.list_reviews(
+                ExplanationReviewQuery(
+                    knowledge_base_id=knowledge_base_id,
+                    limit=_REVIEW_PAGE_LIMIT,
+                    offset=offset,
+                )
+            )
+            items.extend(page.items)
+            offset += len(page.items)
+            if not page.items:
+                break
+        return ExplanationReviewPage(
+            items=items,
+            total=first_page.total,
+            limit=first_page.limit,
+            offset=0,
         )
 
     @staticmethod
@@ -208,4 +243,7 @@ class GovernanceReportService:
         return blockers
 
 
-__all__ = ["CHALLENGED_REVIEW_STATES", "GovernanceReportService"]
+__all__ = [
+    "CHALLENGED_REVIEW_STATES",
+    "GovernanceReportService",
+]

@@ -165,6 +165,99 @@ def test_report_blocks_release_without_published_playbook_baseline() -> None:
     assert report.release_ready is False
 
 
+def test_report_inventory_reads_beyond_first_repository_pages() -> None:
+    playbook_snapshots = [
+        _playbook_snapshot(playbook_id=f"playbook-{index:03}", version="v1")
+        for index in range(101)
+    ]
+    workflow_definitions = [
+        _workflow_definition(
+            definition_id=f"approved-{index:03}",
+            version="v1",
+            status="approved",
+            approved_by="supervisor-1",
+        )
+        for index in range(100)
+    ]
+    workflow_definitions.append(
+        _workflow_definition(
+            definition_id="draft-after-first-page",
+            version="v2",
+            status="draft",
+        )
+    )
+    service = _service(
+        playbook_snapshots=playbook_snapshots,
+        workflow_definitions=workflow_definitions,
+    )
+
+    report = service.build_report(knowledge_base_id=KB_ID, domain_name=DOMAIN_NAME)
+
+    assert any(
+        item.component_kind == "playbook" and item.component_id == "playbook-100"
+        for item in report.production_versions
+    )
+    assert any(
+        item.approval_kind == "workflow_definition"
+        and item.resource_id == "draft-after-first-page"
+        for item in report.pending_approvals
+    )
+    assert any(
+        blocker.code == "pending_workflow_approval"
+        and blocker.resource_id == "draft-after-first-page:v2"
+        for blocker in report.release_blockers
+    )
+
+
+def test_feedback_trends_count_reviews_beyond_first_page() -> None:
+    review_service = ExplanationReviewService(
+        InMemoryExplanationReviewRepository(),
+        clock=lambda: BASE_TIME,
+    )
+    for index in range(200):
+        review_service.record_review(
+            ExplanationReviewCreate(
+                knowledge_base_id=KB_ID,
+                evidence_pack_id=f"pack-approved-{index:03}",
+                target=ExplanationReviewTarget(
+                    target_type="narrative",
+                    target_id="narrative",
+                ),
+                state="approved",
+                actor_user_id="supervisor-1",
+            )
+        )
+    review_service.record_review(
+        ExplanationReviewCreate(
+            knowledge_base_id=KB_ID,
+            evidence_pack_id="pack-challenged-after-page",
+            target=ExplanationReviewTarget(
+                target_type="narrative",
+                target_id="narrative",
+            ),
+            state="misleading",
+            reasons=["contradicts_evidence"],
+            actor_user_id="analyst-1",
+        )
+    )
+    service = _service(
+        playbook_snapshots=[
+            _playbook_snapshot(playbook_id="billing-review", version="v1"),
+        ],
+        explanation_review_service=review_service,
+    )
+
+    report = service.build_report(knowledge_base_id=KB_ID, domain_name=DOMAIN_NAME)
+
+    assert report.feedback_trends.total_reviews == 201
+    assert report.feedback_trends.approved_reviews == 200
+    assert report.feedback_trends.challenged_reviews == 1
+    assert report.feedback_trends.state_counts == {"approved": 200, "misleading": 1}
+    assert [blocker.code for blocker in report.release_blockers] == [
+        "challenged_explanations"
+    ]
+
+
 def _service(
     *,
     playbook_snapshots: list[PlaybookSnapshot] | None = None,
