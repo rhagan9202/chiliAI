@@ -214,7 +214,7 @@ git commit -m "style: tighten enterprise visual guardrails"
 - Modify: `chili_app/README.md`
 - Modify: `docs/architecture.md`
 
-- [ ] **Step 1: Write documentation update**
+- [x] **Step 1: Write documentation update**
 
 Document:
 
@@ -223,7 +223,7 @@ Document:
 - Cards and framed repeated items use 8px or smaller radii.
 - New route work should prefer existing `SectionHeader`, `FilterGroup`, `Tabs`, `Card`, `Chip`, and `StatusPill` before adding page-specific styling.
 
-- [ ] **Step 2: Verify documentation references**
+- [x] **Step 2: Verify documentation references**
 
 Run:
 
@@ -232,7 +232,7 @@ rg -n "StatusPill|status pill|8px|Chip remains" chili_app/README.md docs/archite
 git diff --check
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 

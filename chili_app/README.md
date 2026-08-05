@@ -872,6 +872,25 @@ The smallest labels that carry real meaning were also raised off 10px
 (`risk-badge__label`, `chart-frame__eyebrow` → 11px; `kpi-card__sublabel` →
 12px): small text needs more contrast, not less.
 
+## Operational UI primitives
+
+Stateful operational metadata uses `StatusPill`
+(`src/components/ui/StatusPill.tsx`), not raw text and not a generic `Chip`.
+Use it for state, severity, priority, SLA, readiness, and freshness values; set
+`context` so screen readers get names like "Case status: open" instead of a
+bare "open". `src/components/ui/statusPill.ts` owns the reusable
+state/priority tone mapping.
+
+Chip remains for counts, tags, short labels, and other metadata that is not a
+state. New pages should prefer the existing `SectionHeader`, `FilterGroup`,
+`Tabs`, `Card`, `Chip`, and `StatusPill` primitives before adding page-specific
+styling.
+
+Cards and framed repeated items use an 8px maximum radius. Pill-shaped controls
+may keep `999px`; card-like containers, filter strips, message bubbles, inputs,
+and action buttons stay at 8px or less so dense analyst pages read as one
+enterprise product rather than separate demos.
+
 ## Responsive layout: container queries, not viewport breakpoints
 
 The shell reserves a fixed 248px sidebar and a 340px AI panel, so the content
