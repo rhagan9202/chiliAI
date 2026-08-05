@@ -340,6 +340,12 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Advanced Pain Specialists')).toBeInTheDocument()
   })
 
+  it('exposes the dashboard workflow state as a semantic status pill', () => {
+    renderDashboard()
+
+    expect(screen.getByLabelText('Workflow state: running')).toBeInTheDocument()
+  })
+
   it('answers whether the queue is keeping up, in time not just counts', async () => {
     renderDashboard()
 

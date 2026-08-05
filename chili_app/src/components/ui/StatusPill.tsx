@@ -13,6 +13,7 @@ import type { StatusPillTone } from './statusPill'
 import './ui.css'
 
 type StatusPillProps = {
+  ariaLabel?: string
   className?: string
   compact?: boolean
   context?: string
@@ -30,6 +31,7 @@ const TONE_ICONS = {
 } as const satisfies Record<StatusPillTone, typeof Circle>
 
 export function StatusPill({
+  ariaLabel,
   className,
   compact = false,
   context,
@@ -53,7 +55,7 @@ export function StatusPill({
 
   return (
     <span
-      aria-label={context ? `${context}: ${label}` : label}
+      aria-label={ariaLabel ?? (context ? `${context}: ${label}` : label)}
       className={classes.join(' ')}
       style={style}
     >

@@ -24,6 +24,13 @@ describe('StatusPill', () => {
 
     expect(screen.getByLabelText('SLA current')).toHaveClass('status-pill--compact')
   })
+
+  it('can keep visible copy separate from the state label', () => {
+    render(<StatusPill ariaLabel="Score freshness: fresh" label="Fresh score" tone="success" />)
+
+    expect(screen.getByText('Fresh score')).toBeInTheDocument()
+    expect(screen.getByLabelText('Score freshness: fresh')).toBeInTheDocument()
+  })
 })
 
 describe('status pill tone helpers', () => {

@@ -245,6 +245,12 @@
   text-align: left;
 }
 
+.case-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .page-textarea {
   min-height: 110px;
   width: 100%;

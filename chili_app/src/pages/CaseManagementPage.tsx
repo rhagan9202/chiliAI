@@ -26,6 +26,8 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { FilterGroup } from '../components/ui/FilterGroup'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { StatusPill } from '../components/ui/StatusPill'
+import { priorityToneForValue, statusToneForValue } from '../components/ui/statusPill'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
@@ -384,8 +386,9 @@ export function CaseManagementPage() {
                 type="button"
               >
                 <strong>{caseItem.title}</strong>
-                <span className="metric-row__label">
-                  {caseItem.status} · {caseItem.priority}
+                <span className="case-status-strip">
+                  <StatusPill compact context="Case status" label={caseItem.status} tone={statusToneForValue(caseItem.status)} />
+                  <StatusPill compact context="Case priority" label={caseItem.priority} tone={priorityToneForValue(caseItem.priority)} />
                 </span>
               </button>
             ))}
@@ -454,8 +457,8 @@ export function CaseManagementPage() {
             <div className="metric-stack">
               <strong>{caseQuery.data.case.title}</strong>
               <div className="alert-row-card__meta">
-                <Chip label={caseQuery.data.case.status} tone="info" />
-                <Chip label={caseQuery.data.case.priority} tone="warning" />
+                <StatusPill context="Case status" label={caseQuery.data.case.status} tone={statusToneForValue(caseQuery.data.case.status)} />
+                <StatusPill context="Case priority" label={caseQuery.data.case.priority} tone={priorityToneForValue(caseQuery.data.case.priority)} />
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
               {caseQuery.data.case.playbook_ref ? (

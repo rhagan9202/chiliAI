@@ -18,7 +18,9 @@ import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { StatusPill } from '../components/ui/StatusPill'
 import { Tabs } from '../components/ui/Tabs'
+import { statusToneForValue } from '../components/ui/statusPill'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { flagLabelFor } from '../utils/flagLabel'
 import { backlogTrend, queueHealth } from '../utils/queueHealth'
@@ -76,6 +78,13 @@ function formatRiskProjectionLabel({
     `Scored ${new Date(scoredAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+function primaryWorkflowState(workflows: { status: string }[]): string {
+  if (workflows.some((workflow) => workflow.status === 'running')) return 'running'
+  if (workflows.some((workflow) => workflow.status === 'failed')) return 'failed'
+  if (workflows.some((workflow) => workflow.status === 'queued')) return 'queued'
+  return workflows[0]?.status ?? 'idle'
 }
 
 function DashboardTabPanel({
@@ -169,6 +178,7 @@ export function DashboardPage() {
     failed: workflows.filter((workflow) => workflow.status === 'failed').length,
     completed: workflows.filter((workflow) => workflow.status === 'completed').length,
   }
+  const workflowState = primaryWorkflowState(workflows)
   const riskProjections = riskProjectionsQuery.data?.items ?? []
   const clusters = gnnClustersQuery.data?.clusters ?? []
   const metricTrend = (metricTimeseriesQuery.data?.points ?? []).map((point) => ({
@@ -246,7 +256,7 @@ export function DashboardPage() {
                 <ConfidenceBar color="#ff4040" value={leadAlert ? Math.round(leadAlert.confidence * 100) : 0} />
                 <div className="metric-row">
                   <span className="metric-row__label">Workflow state</span>
-                  <Chip label={workflows[0]?.status ?? 'idle'} tone={workflows[0]?.status === 'running' ? 'warning' : 'success'} />
+                  <StatusPill context="Workflow state" label={workflowState} tone={statusToneForValue(workflowState)} />
                 </div>
                 <Link className="metric-row" style={{ color: 'inherit', textDecoration: 'none' }} to="/cases">
                   <span className="metric-row__label">Open cases</span>
@@ -350,19 +360,19 @@ export function DashboardPage() {
                 <h4 className="dashboard-panel__heading">Pipeline activity</h4>
                 <div className="metric-row">
                   <span className="metric-row__label">Queued workflows</span>
-                  <Chip label={String(workflowCounts.queued)} tone="default" />
+                  <StatusPill context="Queued workflows" label={String(workflowCounts.queued)} tone="default" />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Running workflows</span>
-                  <Chip label={String(workflowCounts.running)} tone={countTone(workflowCounts.running, 'warning')} />
+                  <StatusPill context="Running workflows" label={String(workflowCounts.running)} tone={countTone(workflowCounts.running, 'warning')} />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Failed workflows</span>
-                  <Chip label={String(workflowCounts.failed)} tone={countTone(workflowCounts.failed, 'danger')} />
+                  <StatusPill context="Failed workflows" label={String(workflowCounts.failed)} tone={countTone(workflowCounts.failed, 'danger')} />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Completed workflows</span>
-                  <Chip label={String(workflowCounts.completed)} tone={countTone(workflowCounts.completed, 'success')} />
+                  <StatusPill context="Completed workflows" label={String(workflowCounts.completed)} tone={countTone(workflowCounts.completed, 'success')} />
                 </div>
               </div>
             </Card>

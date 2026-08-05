@@ -270,6 +270,8 @@ describe('CaseManagementPage', () => {
 
     expect(screen.getByText('Case Management')).toBeInTheDocument()
     expect(screen.getAllByText('Redwood DME escalation')).toHaveLength(2)
+    expect(screen.getAllByLabelText('Case status: open').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByLabelText('Case priority: high').length).toBeGreaterThanOrEqual(2)
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark in review' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close case' }))

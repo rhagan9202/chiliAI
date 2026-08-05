@@ -110,7 +110,7 @@ git commit -m "feat: add operational status pill"
 - Test: `chili_app/src/pages/__tests__/AlertFeedPage.test.tsx`
 - Test: `chili_app/src/pages/__tests__/CaseManagementPage.test.tsx`
 
-- [ ] **Step 1: Write failing page tests**
+- [x] **Step 1: Write failing page tests**
 
 Add assertions that:
 
@@ -118,7 +118,7 @@ Add assertions that:
 - Alert Feed exposes per-row `Alert severity: critical`, `Alert status: open`, `Score freshness: fresh`, and `SLA state: SLA current` badge labels.
 - Case Management exposes case list metadata as separate badges and case detail labels `Case status: open` and `Case priority: high`.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run:
 
@@ -128,7 +128,7 @@ npm run test:run -- src/pages/__tests__/DashboardPage.test.tsx src/pages/__tests
 
 Expected: FAIL because the current pages use generic chip text or plain `status · priority` text without those accessible names.
 
-- [ ] **Step 3: Refactor status metadata to `StatusPill`**
+- [x] **Step 3: Refactor status metadata to `StatusPill`**
 
 Use:
 
@@ -139,7 +139,7 @@ import { priorityToneForValue, statusToneForValue } from '../components/ui/statu
 
 Replace generic operational `Chip` instances for workflow status, alert severity/status/freshness/SLA, and case status/priority with `StatusPill`. Keep count chips as `Chip`; they are metrics, not statuses.
 
-- [ ] **Step 4: Run focused GREEN**
+- [x] **Step 4: Run focused GREEN**
 
 Run:
 
@@ -148,7 +148,7 @@ npm run test:run -- src/pages/__tests__/DashboardPage.test.tsx src/pages/__tests
 npm run build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
