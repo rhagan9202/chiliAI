@@ -340,6 +340,7 @@ def _validate_with_records(records_payload: dict[str, object]) -> None:
     base = load_config()
     payload = base.model_dump()
     payload["records"] = records_payload
+    payload["peer_stats"] = None
     base.__class__.model_validate(payload)
 
 

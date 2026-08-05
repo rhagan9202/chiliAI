@@ -93,7 +93,7 @@ def list_playbooks(
         domain_config,
     )
     try:
-        seeds = service.list_seed_playbooks(
+        definitions = service.list_config_playbooks(
             domain_name=domain_name,
             limit=limit,
             offset=offset,
@@ -112,11 +112,11 @@ def list_playbooks(
         raise _not_found("Knowledge base", knowledge_base_id) from exc
 
     return PlaybookListResponse(
-        items=[_playbook_response(item) for item in seeds.items],
+        items=[_playbook_response(item) for item in definitions.items],
         published=[_snapshot_response(snapshot) for snapshot in published.items],
-        total=seeds.total,
-        limit=seeds.limit,
-        offset=seeds.offset,
+        total=definitions.total,
+        limit=definitions.limit,
+        offset=definitions.offset,
         published_total=published.total,
         published_limit=published.limit,
         published_offset=published.offset,
@@ -190,15 +190,15 @@ def get_playbook_version(
         return _playbook_response(snapshot.definition)
 
     try:
-        seed = service.get_seed_playbook(
+        definition = service.get_config_playbook(
             domain_name=domain_name,
             playbook_id=playbook_id,
             version=version,
         )
     except KeyError as exc:
         raise _not_found("Knowledge base", knowledge_base_id) from exc
-    if seed is not None:
-        return _playbook_response(seed)
+    if definition is not None:
+        return _playbook_response(definition)
     raise _not_found("Playbook", f"{playbook_id}:{version}")
 
 
@@ -225,7 +225,7 @@ def publish_playbook(
         domain_config,
     )
     try:
-        snapshot = service.publish_seed_playbook(
+        snapshot = service.publish_config_playbook(
             PlaybookPublishRequest(
                 domain_name=domain_name,
                 knowledge_base_id=knowledge_base_id,

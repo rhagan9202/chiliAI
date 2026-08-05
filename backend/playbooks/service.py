@@ -25,41 +25,41 @@ class PlaybookService:
         self._repository = repository
         self._domain_config = domain_config
 
-    def list_seed_playbooks(
+    def list_config_playbooks(
         self, *, domain_name: str, limit: int = 50, offset: int = 0
     ) -> PlaybookPage:
         self._require_active_domain(domain_name)
-        seeds = [
+        definitions = [
             playbook.model_copy(deep=True)
             for playbook in self._domain_config.playbooks.items
         ]
         if limit <= 0 or offset < 0:
             items: list[FraudPlaybookConfig] = []
         else:
-            items = seeds[offset : offset + limit]
+            items = definitions[offset : offset + limit]
         return PlaybookPage(
             items=items,
-            total=len(seeds),
+            total=len(definitions),
             limit=max(limit, 1),
             offset=max(offset, 0),
         )
 
-    def get_seed_playbook(
+    def get_config_playbook(
         self, *, domain_name: str, playbook_id: str, version: str
     ) -> FraudPlaybookConfig | None:
         """Return one config-authored playbook by natural key."""
-        return self._find_seed(
+        return self._find_config_playbook(
             domain_name=domain_name,
             playbook_id=playbook_id,
             version=version,
         )
 
-    def publish_seed_playbook(self, request: PlaybookPublishRequest) -> PlaybookSnapshot:
+    def publish_config_playbook(self, request: PlaybookPublishRequest) -> PlaybookSnapshot:
         self.adopt_legacy_snapshots(
             knowledge_base_id=request.knowledge_base_id,
             domain_name=request.domain_name,
         )
-        seed = self._seed_by_id(
+        definition = self._config_playbook_by_id(
             domain_name=request.domain_name,
             playbook_id=request.playbook_id,
             version=request.version,
@@ -67,7 +67,7 @@ class PlaybookService:
         snapshot = self._snapshot_from_definition(
             knowledge_base_id=request.knowledge_base_id,
             domain_name=request.domain_name,
-            definition=seed,
+            definition=definition,
             source="domain_config",
             actor_user_id=request.actor_user_id,
         )
@@ -214,19 +214,19 @@ class PlaybookService:
         if self._domain_config.domain.name != domain_name:
             raise KeyError(domain_name)
 
-    def _seed_by_id(
+    def _config_playbook_by_id(
         self, *, domain_name: str, playbook_id: str, version: str
     ) -> FraudPlaybookConfig:
-        seed = self._find_seed(
+        definition = self._find_config_playbook(
             domain_name=domain_name,
             playbook_id=playbook_id,
             version=version,
         )
-        if seed is not None:
-            return seed
+        if definition is not None:
+            return definition
         raise KeyError(f"{domain_name}:{playbook_id}:{version}")
 
-    def _find_seed(
+    def _find_config_playbook(
         self, *, domain_name: str, playbook_id: str, version: str
     ) -> FraudPlaybookConfig | None:
         self._require_active_domain(domain_name)
@@ -239,12 +239,12 @@ class PlaybookService:
         return None
 
     def _validate_import_snapshot(self, snapshot: PlaybookSnapshot) -> None:
-        seed = self._find_seed(
+        definition = self._find_config_playbook(
             domain_name=snapshot.domain_name,
             playbook_id=snapshot.playbook_id,
             version=snapshot.version,
         )
-        if seed is not None and not _same_definition(seed, snapshot.definition):
+        if definition is not None and not _same_definition(definition, snapshot.definition):
             raise ValueError(
                 f"Imported playbook snapshot '{snapshot.snapshot_id}' conflicts "
                 "with config-authored seed."

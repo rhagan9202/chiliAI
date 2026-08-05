@@ -3401,6 +3401,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_document_status_store": get_document_status_store,
     "get_dlq_record_store": get_dlq_record_store,
     "get_derived_signal_store": get_derived_signal_store,
+    "get_identity_resolution_service": get_identity_resolution_service,
     "get_peer_analysis_service": get_peer_analysis_service,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,

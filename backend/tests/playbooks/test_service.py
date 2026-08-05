@@ -31,10 +31,10 @@ def _repository_service() -> tuple[InMemoryPlaybookRepository, PlaybookService]:
     )
 
 
-def test_list_seed_playbooks_returns_config_authored_definitions() -> None:
+def test_list_config_playbooks_returns_config_authored_definitions() -> None:
     service = _service()
 
-    page = service.list_seed_playbooks(domain_name="medicare_fraud", limit=50, offset=0)
+    page = service.list_config_playbooks(domain_name="medicare_fraud", limit=50, offset=0)
 
     assert page.total >= 3
     assert {item.id for item in page.items} >= {
@@ -44,10 +44,10 @@ def test_list_seed_playbooks_returns_config_authored_definitions() -> None:
     }
 
 
-def test_publish_seed_playbook_creates_immutable_snapshot() -> None:
+def test_publish_config_playbook_creates_immutable_snapshot() -> None:
     service = _service()
 
-    first = service.publish_seed_playbook(
+    first = service.publish_config_playbook(
         PlaybookPublishRequest(
             knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
@@ -56,7 +56,7 @@ def test_publish_seed_playbook_creates_immutable_snapshot() -> None:
             actor_user_id="admin-1",
         )
     )
-    second = service.publish_seed_playbook(
+    second = service.publish_config_playbook(
         PlaybookPublishRequest(
             knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
@@ -73,7 +73,7 @@ def test_publish_seed_playbook_creates_immutable_snapshot() -> None:
 
 def test_import_export_round_trips_playbooks() -> None:
     service = _service()
-    service.publish_seed_playbook(
+    service.publish_config_playbook(
         PlaybookPublishRequest(
             knowledge_base_id=_KB_ID,
             domain_name="medicare_fraud",
@@ -396,7 +396,7 @@ def test_publish_seed_rejects_conflicting_existing_snapshot() -> None:
     )
 
     with pytest.raises(ValueError, match="already exists with different definition"):
-        service.publish_seed_playbook(
+        service.publish_config_playbook(
             PlaybookPublishRequest(
                 knowledge_base_id=_KB_ID,
                 domain_name="medicare_fraud",
@@ -439,7 +439,7 @@ def test_publish_unknown_seed_playbook_raises_key_error() -> None:
     service = _service()
 
     with pytest.raises(KeyError):
-        service.publish_seed_playbook(
+        service.publish_config_playbook(
             PlaybookPublishRequest(
                 knowledge_base_id=_KB_ID,
                 domain_name="medicare_fraud",
