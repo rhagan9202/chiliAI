@@ -92,7 +92,7 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*", "workflow_definitions*"]
+           "conversations*", "connectors*", "workflow_definitions*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -129,6 +129,7 @@ include = [
     "analytics/peerstats",
     "analytics/risk",
     "analytics/timeseries",
+    "connectors",
     "embeddings",
     "api/_kb_projection.py",
     "api/_workflow_projection.py",
@@ -155,6 +156,7 @@ include = [
     "workflow_definitions",
     "tests/agent",
     "tests/conversations",
+    "tests/connectors",
     "tests/analytics/gnn",
     "tests/analytics/metrics",
     "tests/analytics/peerstats",
