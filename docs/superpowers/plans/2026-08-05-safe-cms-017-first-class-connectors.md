@@ -28,8 +28,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 4.
-- Remaining work: Task 5.
+- Completed in this pass: Tasks 1 through 5.
+- Remaining work: none.
 
 ---
 
@@ -328,7 +328,7 @@ git commit -m "feat: add connector status capability adapter"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-05-safe-cms-017-first-class-connectors.md`
 
-- [ ] **Step 1: Run backend gates**
+- [x] **Step 1: Run backend gates**
 
 Run:
 
@@ -339,7 +339,7 @@ uv run --project backend ruff check backend
 uv run --project backend pyright
 ```
 
-- [ ] **Step 2: Run frontend gates after API contract work**
+- [x] **Step 2: Run frontend gates after API contract work**
 
 Run:
 
@@ -348,7 +348,7 @@ npm run test:run
 npm run build
 ```
 
-- [ ] **Step 3: Run migration/schema and whitespace gates**
+- [x] **Step 3: Run migration/schema and whitespace gates**
 
 Run:
 
@@ -357,7 +357,7 @@ scripts/ci_migration_check.sh
 git diff --check
 ```
 
-- [ ] **Step 4: Commit final plan status**
+- [x] **Step 4: Commit final plan status**
 
 Run:
 
