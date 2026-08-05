@@ -768,6 +768,10 @@ ui:
         label: Policy Intelligence
         route: /policy
         capability: explainability
+      - id: governance
+        label: Governance
+        route: /governance
+        capability: explainability
       - id: rag_chat
         label: RAG Chat
         route: /rag-chat
@@ -796,5 +800,5 @@ ui:
       permissions: [alerts:read, cases:write, feedback:write]
     supervisor:
       landing_page: dashboard
-      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, rag_chat, configuration]
+      pages: [dashboard, alerts, investigation, cases, policy, governance, knowledge_bases, rag_chat, configuration]
       permissions: [alerts:read, cases:assign, feedback:read]

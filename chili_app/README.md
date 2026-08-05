@@ -51,6 +51,7 @@ indicator, and a bounded list of rejected-row reasons.
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, capability-gated dossier tabs (Signals, Network, Policy, Evidence) |
 | **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
 | **Policy Intelligence** | Review policy items and triage accepted/rejected/deferred/escalated outcomes |
+| **Governance** | Supervisor release-readiness report over published versions, pending approvals, challenged explanation feedback, and blockers |
 | **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |
 | **Configuration** | Config Manager — active-config summary, domain pack switcher, and active-pack YAML editor with dry-run validation and hot-swap apply (see "Config Manager" below) |
 
@@ -92,6 +93,7 @@ under the wrong domain.
 | `/cases` | Case management queue |
 | `/knowledge-bases` | Knowledge Bases — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory, ingestion wizard |
 | `/policy` | Policy intelligence item queue |
+| `/governance` | Governance release-readiness report for the active knowledge base |
 | `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
 | `/scorecards/:runId?kb=<kbId>` | Scorecard run viewer — graded sections, metric health/completeness chips, citations, JSON/Markdown export (see "Housing dashboard" below) |
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |

@@ -255,7 +255,7 @@ Result:
 - `npm run build`: passed.
 - `npm run lint`: passed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -263,6 +263,10 @@ Run:
 git add chili_app/openapi.json chili_app/src/lib/api/schema.ts chili_app/src/api/governance.ts chili_app/src/api/__tests__/governance.test.ts chili_app/src/pages/GovernancePage.tsx chili_app/src/pages/__tests__/GovernancePage.test.tsx chili_app/src/app/router.tsx chili_app/src/app/access.ts chili_app/src/components/layout/Sidebar.tsx
 git commit -m "feat: add governance dashboard"
 ```
+
+Result:
+
+- Commit `31aa0a7 feat: add governance dashboard`.
 
 ### Task 4: Config And Documentation Wiring
 
@@ -274,7 +278,7 @@ git commit -m "feat: add governance dashboard"
 - Modify: `chili_app/README.md`
 - Modify: `docs/architecture.md`
 
-- [ ] **Step 1: Write failing config test**
+- [x] **Step 1: Write failing config test**
 
 Add a test that loads both CMS packs and asserts:
 
@@ -282,7 +286,7 @@ Add a test that loads both CMS packs and asserts:
 - Supervisor roles include `governance`.
 - Analyst roles do not include `governance`.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run:
 
@@ -292,11 +296,15 @@ uv run --project backend pytest backend/tests/config/test_schema.py -q
 
 Expected: FAIL because the CMS packs do not expose the governance page.
 
-- [ ] **Step 3: Update CMS pack navigation and docs**
+Result:
+
+- `uv run --project backend pytest backend/tests/config/test_schema.py::test_cms_packs_expose_governance_to_supervisors_only -q`: failed for both CMS packs with `KeyError: 'governance'`.
+
+- [x] **Step 3: Update CMS pack navigation and docs**
 
 Add the governance page to the Medicare fraud and CMS DESynPUF packs with a supervisor-only role assignment. Document the new backend module, API route, and frontend dashboard in the relevant README/architecture sections.
 
-- [ ] **Step 4: Run focused GREEN**
+- [x] **Step 4: Run focused GREEN**
 
 Run:
 
@@ -305,6 +313,12 @@ uv run --project backend pytest backend/tests/config/test_schema.py -q
 PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright
 rg -n "governance|SAFE-CMS-020|/governance" backend/README.md chili_app/README.md docs/architecture.md
 ```
+
+Result:
+
+- `uv run --project backend pytest backend/tests/config/test_schema.py::test_cms_packs_expose_governance_to_supervisors_only backend/tests/config/test_loader.py::test_all_defaults_load_successfully -q`: 6 passed.
+- `uv run --project backend ruff check --no-cache backend/tests/config/test_schema.py`: passed.
+- `PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright`: first sandboxed run failed on uv cache filesystem access; escalated rerun found optional-member test issues; after explicit assertions, rerun passed with 0 errors, 0 warnings.
 
 - [ ] **Step 5: Commit**
 
