@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from capabilities.models import CapabilityQuery
@@ -24,6 +26,29 @@ def test_default_registry_exposes_safe_cms_015_derisking_capabilities() -> None:
     assert peer_context.output_schema["type"] == "object"
     assert peer_context.permission.required_roles == ["viewer"]
     assert peer_context.domain_compatibility.supported_domains == ["medicare_fraud"]
+    connector_status = service.get_required("connector.sync.status")
+    connector_output_properties = cast(
+        dict[str, object],
+        connector_status.output_schema["properties"],
+    )
+    assert connector_status.module == "connectors.status_adapter"
+    assert connector_output_properties == {
+        "connector_id": {"type": "string"},
+        "knowledge_base_id": {"type": "string"},
+        "connector_name": {"type": "string"},
+        "source_type": {"type": "string"},
+        "connector_status": {"type": "string"},
+        "sync_status": {"type": "string"},
+        "run_id": {"type": ["string", "null"]},
+        "last_synced_at": {"type": ["string", "null"]},
+        "started_at": {"type": ["string", "null"]},
+        "updated_at": {"type": ["string", "null"]},
+        "counters": {"type": "object"},
+        "source_cursor": {"type": ["string", "null"]},
+        "ingest_correlation_id": {"type": ["string", "null"]},
+        "error_message": {"type": ["string", "null"]},
+    }
+    assert "credentials_ref" not in connector_output_properties
 
 
 def test_registry_filters_by_role_domain_and_side_effect_class() -> None:

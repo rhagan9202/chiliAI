@@ -107,7 +107,7 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
         CapabilityManifest(
             capability_id="connector.sync.status",
             version="v1",
-            module="connectors.status",
+            module="connectors.status_adapter",
             label="Connector sync status",
             description="Return the last-known synchronization status for configured connectors.",
             input_schema=_object_schema(
@@ -119,8 +119,19 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
             output_schema=_object_schema(
                 {
                     "connector_id": {"type": "string"},
-                    "status": {"type": "string"},
-                    "last_synced_at": {"type": "string"},
+                    "knowledge_base_id": {"type": "string"},
+                    "connector_name": {"type": "string"},
+                    "source_type": {"type": "string"},
+                    "connector_status": {"type": "string"},
+                    "sync_status": {"type": "string"},
+                    "run_id": {"type": ["string", "null"]},
+                    "last_synced_at": {"type": ["string", "null"]},
+                    "started_at": {"type": ["string", "null"]},
+                    "updated_at": {"type": ["string", "null"]},
+                    "counters": {"type": "object"},
+                    "source_cursor": {"type": ["string", "null"]},
+                    "ingest_correlation_id": {"type": ["string", "null"]},
+                    "error_message": {"type": ["string", "null"]},
                 }
             ),
             side_effect_class="read",
@@ -133,8 +144,24 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
                     input={"knowledge_base_id": "kb-cms", "connector_id": "cms-claims"},
                     output={
                         "connector_id": "cms-claims",
-                        "status": "healthy",
+                        "knowledge_base_id": "kb-cms",
+                        "connector_name": "CMS Claims",
+                        "source_type": "filesystem",
+                        "connector_status": "active",
+                        "sync_status": "completed",
+                        "run_id": "run-123",
                         "last_synced_at": "2026-08-05T12:00:00Z",
+                        "started_at": "2026-08-05T11:58:00Z",
+                        "updated_at": "2026-08-05T12:00:00Z",
+                        "counters": {
+                            "pulled": 250,
+                            "accepted": 245,
+                            "quarantined": 4,
+                            "failed": 1,
+                        },
+                        "source_cursor": "claims.csv:250",
+                        "ingest_correlation_id": "ingest-123",
+                        "error_message": None,
                     },
                 )
             ],

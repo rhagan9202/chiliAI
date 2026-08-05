@@ -28,8 +28,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 3.
-- Remaining work: Tasks 4 and 5.
+- Completed in this pass: Tasks 1 through 4.
+- Remaining work: Task 5.
 
 ---
 
@@ -289,21 +289,21 @@ git commit -m "feat: expose connector management api"
 - Test: `backend/tests/connectors/test_status_adapter.py`
 - Test: `backend/tests/capabilities/test_registry.py`
 
-- [ ] **Step 1: Write failing status adapter tests**
+- [x] **Step 1: Write failing status adapter tests**
 
 Add tests proving `connector.sync.status` returns latest run status, counters, source cursor, and audit-safe connector metadata through `CapabilityExecutionEnvelope`.
 
-- [ ] **Step 2: Run focused red tests**
+- [x] **Step 2: Run focused red tests**
 
 Run: `uv run --project backend pytest backend/tests/connectors/test_status_adapter.py -q`
 
 Expected: FAIL because `connectors.status_adapter` does not exist.
 
-- [ ] **Step 3: Implement status adapter and manifest schema update**
+- [x] **Step 3: Implement status adapter and manifest schema update**
 
 Use the connector service/repository to resolve latest run for a connector and return a read-only envelope. Keep `credentials_ref` out of the output.
 
-- [ ] **Step 4: Run focused green tests**
+- [x] **Step 4: Run focused green tests**
 
 Run:
 
@@ -314,7 +314,7 @@ uv run --project backend ruff check backend/connectors backend/capabilities back
 
 Expected: PASS and Ruff clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
