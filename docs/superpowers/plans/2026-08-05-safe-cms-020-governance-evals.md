@@ -35,8 +35,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Task 1 implementation, focused verification, and pagination review fix.
-- Remaining work: Task 1 review checkpoint, then Tasks 2 through 6.
+- Completed in this pass: Tasks 1 and 2 implementation with focused verification.
+- Remaining work: Task 2 review checkpoint, then Tasks 3 through 6.
 
 ---
 
@@ -123,7 +123,7 @@ Result:
 - Modify: `backend/api/dependencies.py`
 - Test: `backend/tests/api/test_governance_router.py`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Create route tests that assert:
 
@@ -131,7 +131,7 @@ Create route tests that assert:
 - An out-of-scope user receives `404`.
 - The response includes a blocking `missing_playbook_baseline` blocker when no playbook snapshot exists.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run:
 
@@ -141,7 +141,11 @@ uv run --project backend pytest backend/tests/api/test_governance_router.py -q
 
 Expected: FAIL with `404 Not Found` or import failure because the route is not registered.
 
-- [ ] **Step 3: Implement route, contracts, and DI**
+Result:
+
+- `uv run --project backend pytest backend/tests/api/test_governance_router.py -q`: failed with authorized governance report requests returning `404 Not Found`.
+
+- [x] **Step 3: Implement route, contracts, and DI**
 
 Add Pydantic response contracts mirroring the governance models. Add a viewer-gated router at:
 
@@ -151,7 +155,7 @@ GET /knowledgebases/{knowledge_base_id}/governance/report
 
 Resolve the KB using the same authorization pattern as playbooks/workflow definitions, derive `domain_name` from the KB, call `GovernanceReportService`, and project the report into `GovernanceReportResponse`.
 
-- [ ] **Step 4: Run focused GREEN**
+- [x] **Step 4: Run focused GREEN**
 
 Run:
 
@@ -160,7 +164,13 @@ uv run --project backend pytest backend/tests/api/test_governance_router.py back
 PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright
 ```
 
-- [ ] **Step 5: Commit**
+Result:
+
+- `uv run --project backend pytest backend/tests/api/test_governance_router.py backend/tests/governance/test_service.py -q`: 9 passed.
+- `uv run --project backend ruff check --no-cache backend/governance backend/api/routers/governance.py backend/tests/governance backend/tests/api/test_governance_router.py`: passed.
+- `PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright`: 0 errors, 0 warnings.
+
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -168,6 +178,10 @@ Run:
 git add backend/api/contracts.py backend/api/routers/governance.py backend/api/app.py backend/api/dependencies.py backend/tests/api/test_governance_router.py
 git commit -m "feat: expose governance report API"
 ```
+
+Result:
+
+- Commit `5206036 feat: expose governance report API`.
 
 ### Task 3: Frontend Governance API And Dashboard
 
