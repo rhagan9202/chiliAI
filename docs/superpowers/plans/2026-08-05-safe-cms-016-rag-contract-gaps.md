@@ -25,8 +25,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Task 1.
-- Remaining work: Tasks 2 through 5.
+- Completed in this pass: Tasks 1 and 2.
+- Remaining work: Tasks 3 through 5.
 
 ---
 
@@ -146,7 +146,7 @@ git commit -m "fix: preserve rag streaming filters"
 - Modify: `chili_app/src/lib/ragContext.ts`
 - Test: `chili_app/src/lib/__tests__/ragContext.test.ts`
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 Add tests proving one helper can create both route params and chat filters:
 
@@ -170,23 +170,23 @@ it('creates a typed rag scope from launch context for route reloads and message 
 })
 ```
 
-- [ ] **Step 2: Run focused red test**
+- [x] **Step 2: Run focused red test**
 
 Run: `npm run test:run -- src/lib/__tests__/ragContext.test.ts -t "typed rag scope"`
 
 Expected: FAIL because `buildRagScope` does not exist.
 
-- [ ] **Step 3: Implement `RagScope` and `buildRagScope()`**
+- [x] **Step 3: Implement `RagScope` and `buildRagScope()`**
 
 Add a `RagScope` type with `knowledgeBaseId`, `source`, `filters`, and `label`; make `buildRagMessageFilters()` delegate to `buildRagScope(context).filters`.
 
-- [ ] **Step 4: Run focused green tests**
+- [x] **Step 4: Run focused green tests**
 
 Run: `npm run test:run -- src/lib/__tests__/ragContext.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
