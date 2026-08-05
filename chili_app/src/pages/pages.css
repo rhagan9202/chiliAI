@@ -5,7 +5,7 @@
   overflow: hidden;
   background: var(--c-s2);
   border: 1px solid var(--c-b0);
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .page-placeholder__accent {
@@ -180,7 +180,7 @@
   color: var(--c-text);
   background: rgba(0, 212, 255, 0.08);
   border: 1px solid rgba(0, 212, 255, 0.22);
-  border-radius: 10px;
+  border-radius: 8px;
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -258,7 +258,7 @@
   color: var(--c-text);
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
   resize: vertical;
 }
 
@@ -270,7 +270,7 @@
   color: var(--c-text);
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .page-input--file {
@@ -289,7 +289,7 @@
   padding: 14px;
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .chat-bubble--assistant {
@@ -363,7 +363,7 @@
   padding: 14px;
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .knowledge-base-timeline__item {
@@ -372,7 +372,7 @@
   padding: 14px;
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .ingestion-studio-layout {
@@ -557,7 +557,7 @@
   color: var(--c-text);
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .chat-page__thread {
@@ -706,7 +706,7 @@
   padding: 14px;
   background: var(--c-s3);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .housing-kpis {
@@ -847,7 +847,7 @@
   padding: 12px 14px;
   background: var(--c-s2);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .housing-filter-group {
@@ -1569,7 +1569,7 @@ a.housing-run-link:hover {
   color: var(--c-dim);
   background: rgba(255, 176, 32, 0.08);
   border: 1px solid rgba(255, 176, 32, 0.28);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 /* Filter dimensions stack; the controls and result line sit under them. */
@@ -1579,7 +1579,7 @@ a.housing-run-link:hover {
   padding: 14px;
   background: var(--c-s2);
   border: 1px solid var(--c-b0);
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .alert-filter-strip__controls {
@@ -1610,7 +1610,7 @@ a.housing-run-link:hover {
   color: var(--c-dim);
   background: var(--c-s2);
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .alert-bulk-bar__select-all {

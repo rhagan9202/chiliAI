@@ -165,7 +165,7 @@ git commit -m "feat: unify core page status badges"
 - Modify: `chili_app/src/theme/tokens.ts`
 - Modify: `chili_app/src/theme/__tests__/contrast.test.ts`
 
-- [ ] **Step 1: Write failing visual guardrail tests**
+- [x] **Step 1: Write failing visual guardrail tests**
 
 Extend `contrast.test.ts` to assert:
 
@@ -176,7 +176,7 @@ expect(radii.md).toBe('8px')
 
 Also assert all `STATUS_PILL_TONES` colors meet AA normal text contrast on `s2` and `s3`.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run:
 
@@ -186,11 +186,11 @@ npm run test:run -- src/theme/__tests__/contrast.test.ts
 
 Expected: FAIL because `radii.md` is `9px` and `radii.lg` is `12px`.
 
-- [ ] **Step 3: Apply compact enterprise guardrails**
+- [x] **Step 3: Apply compact enterprise guardrails**
 
 Change shared card and feedback-state radii to 8px or less, reduce overlarge page placeholder radius, keep buttons and fixed-format controls at stable min-heights, and ensure `.status-pill` uses stable dimensions and wrapping-safe text.
 
-- [ ] **Step 4: Run focused GREEN**
+- [x] **Step 4: Run focused GREEN**
 
 Run:
 
@@ -199,7 +199,7 @@ npm run test:run -- src/theme/__tests__/contrast.test.ts
 npm run build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

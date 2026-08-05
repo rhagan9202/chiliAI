@@ -3,7 +3,7 @@
   overflow: hidden;
   background: var(--c-s2);
   border: 1px solid var(--c-b0);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 22px;
 }
 
@@ -248,7 +248,7 @@
   gap: 8px;
   padding: 16px;
   border: 1px solid var(--c-b0);
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--c-dim);
   background: var(--c-s3);
 }

@@ -34,8 +34,8 @@ export const spacing = {
 
 export const radii = {
   sm: '6px',
-  md: '9px',
-  lg: '12px',
+  md: '8px',
+  lg: '8px',
   pill: '999px',
 } as const
 

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { contrastRatio } from '../contrast'
 import { CHIP_TONE_COLORS } from '../../components/ui/chipTones'
-import { colors } from '../tokens'
+import { STATUS_PILL_TONES } from '../../components/ui/statusPill'
+import { colors, radii } from '../tokens'
 
 /** Surfaces any text token can legitimately sit on. */
 const SURFACES = ['bg', 's1', 's2', 's3'] as const
@@ -90,5 +91,23 @@ describe('theme token contrast', () => {
     expect(contrastRatio(colors.muted, colors.bg)).toBeLessThan(
       contrastRatio(colors.dim, colors.bg),
     )
+  })
+
+  it('renders every status pill tone as readable operational text', () => {
+    for (const tone of STATUS_PILL_TONES) {
+      for (const surface of ['s2', 's3'] as const) {
+        const value = CHIP_TONE_COLORS[tone]
+        const ratio = contrastRatio(value, colors[surface])
+        expect(
+          ratio,
+          `status pill tone '${tone}' (${value}) on --c-${surface} is ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT)
+      }
+    }
+  })
+
+  it('keeps enterprise cards at an 8px maximum radius', () => {
+    expect(radii.md).toBe('8px')
+    expect(radii.lg).toBe('8px')
   })
 })
