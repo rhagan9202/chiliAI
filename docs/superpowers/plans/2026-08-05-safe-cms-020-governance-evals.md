@@ -35,8 +35,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 and 2 implementation, focused verification, and Task 2 contract review fix.
-- Remaining work: Task 2 review re-check, then Tasks 3 through 6.
+- Completed in this pass: Tasks 1 through 3 implementation, focused verification, Task 2 contract review fix, and frontend governance dashboard wiring.
+- Remaining work: Tasks 4 through 6.
 
 ---
 
@@ -197,7 +197,7 @@ Result:
 - Modify: `chili_app/src/app/access.ts`
 - Modify: `chili_app/src/components/layout/Sidebar.tsx`
 
-- [ ] **Step 1: Regenerate frontend contracts**
+- [x] **Step 1: Regenerate frontend contracts**
 
 Run:
 
@@ -206,7 +206,12 @@ PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chi
 cd chili_app && npm run codegen:api
 ```
 
-- [ ] **Step 2: Write failing frontend tests**
+Result:
+
+- Completed during Task 2 review fix in commit `1265473 fix: close governance API contract gates`.
+- Verified generated route and schema references with `rg -n "governance/report|GovernanceReportResponse|GovernanceFeedbackTrendResponse" chili_app/openapi.json chili_app/src/lib/api/schema.ts backend/api/contracts.py backend/pyproject.toml`.
+
+- [x] **Step 2: Write failing frontend tests**
 
 Add tests that assert:
 
@@ -215,7 +220,7 @@ Add tests that assert:
 - `GovernancePage` renders no-KB, loading, error, and populated report states.
 - The populated page exposes accessible labels for `Release readiness: blocked`, `Published versions`, `Pending approvals`, and `Challenged explanations`.
 
-- [ ] **Step 3: Run focused RED**
+- [x] **Step 3: Run focused RED**
 
 Run:
 
@@ -225,11 +230,15 @@ npm run test:run -- src/api/__tests__/governance.test.ts src/pages/__tests__/Gov
 
 Expected: FAIL because the API helper and page do not exist.
 
-- [ ] **Step 4: Implement API helper, page, route, and navigation mapping**
+Result:
+
+- `npm run test:run -- src/api/__tests__/governance.test.ts src/pages/__tests__/GovernancePage.test.tsx`: failed because `../governance` and `../GovernancePage` did not exist.
+
+- [x] **Step 4: Implement API helper, page, route, and navigation mapping**
 
 Implement `useGovernanceReport(knowledgeBaseId)`. Build `GovernancePage` using `SectionHeader`, `Card`, `StatusPill`, `Chip`, `EmptyState`, `LoadingState`, and `ErrorState`. Keep it dense: no hero, no nested cards, no marketing copy.
 
-- [ ] **Step 5: Run focused GREEN**
+- [x] **Step 5: Run focused GREEN**
 
 Run:
 
@@ -237,6 +246,14 @@ Run:
 npm run test:run -- src/api/__tests__/governance.test.ts src/pages/__tests__/GovernancePage.test.tsx src/app/__tests__/access.test.ts src/components/layout/__tests__/AppShell.test.tsx
 npm run build
 ```
+
+Result:
+
+- First focused run failed on two red gates: `access.test.ts` expected list did not include governance for admin, and duplicate accessible labels made `Release readiness: blocked` ambiguous.
+- Fixed both gates by updating the expected admin page set and making repeated section count labels unique.
+- `npm run test:run -- src/api/__tests__/governance.test.ts src/pages/__tests__/GovernancePage.test.tsx src/app/__tests__/access.test.ts src/components/layout/__tests__/AppShell.test.tsx`: 43 passed.
+- `npm run build`: passed.
+- `npm run lint`: passed.
 
 - [ ] **Step 6: Commit**
 

@@ -19,6 +19,7 @@ const PACK_PAGE_ROUTES: ReadonlyMap<string, string> = new Map([
   ['/cases', 'cases'],
   ['/knowledge-bases', 'knowledge_bases'],
   ['/policy', 'policy'],
+  ['/governance', 'governance'],
   ['/housing', 'housing'],
   ['/rag-chat', 'rag_chat'],
   ['/configuration', 'configuration'],

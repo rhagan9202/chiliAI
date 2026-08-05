@@ -126,6 +126,22 @@ export type ReadinessComponentResponse = RequireFields<
   'blockers' | 'warnings'
 >
 export type ReadinessIssueResponse = Schemas['ReadinessIssueResponse']
+export type GovernanceVersionSummaryResponse = Schemas['GovernanceVersionSummaryResponse']
+export type GovernancePendingApprovalResponse = Schemas['GovernancePendingApprovalResponse']
+export type GovernanceFeedbackTrendResponse = RequireFields<
+  Schemas['GovernanceFeedbackTrendResponse'],
+  'state_counts'
+>
+export type GovernanceReleaseBlockerResponse = Schemas['GovernanceReleaseBlockerResponse']
+export type GovernanceReportResponse = Omit<
+  RequireFields<
+    Schemas['GovernanceReportResponse'],
+    'production_versions' | 'pending_approvals' | 'release_blockers'
+  >,
+  'feedback_trends'
+> & {
+  feedback_trends: GovernanceFeedbackTrendResponse
+}
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']
