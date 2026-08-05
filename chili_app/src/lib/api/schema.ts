@@ -1493,6 +1493,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/governance/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Governance Report
+         * @description Return release-readiness evidence for one knowledge base.
+         */
+        get: operations["get_governance_report_knowledgebases__knowledge_base_id__governance_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/playbooks": {
         parameters: {
             query?: never;
@@ -4458,6 +4478,112 @@ export interface components {
              * @default 5000
              */
             snapshot_max_nodes: number;
+        };
+        /**
+         * GovernanceFeedbackTrendResponse
+         * @description Explanation-review feedback trend summary for release evaluation.
+         */
+        GovernanceFeedbackTrendResponse: {
+            /** Approved Reviews */
+            approved_reviews: number;
+            /** Challenged Reviews */
+            challenged_reviews: number;
+            /** State Counts */
+            state_counts?: {
+                [key: string]: number;
+            };
+            /** Total Reviews */
+            total_reviews: number;
+        };
+        /**
+         * GovernancePendingApprovalResponse
+         * @description One artifact awaiting governance approval.
+         */
+        GovernancePendingApprovalResponse: {
+            /**
+             * Approval Kind
+             * @constant
+             */
+            approval_kind: "workflow_definition";
+            /** Requested By */
+            requested_by: string;
+            /** Resource Id */
+            resource_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * GovernanceReleaseBlockerResponse
+         * @description One release-readiness blocker or warning.
+         */
+        GovernanceReleaseBlockerResponse: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Resource Id */
+            resource_id: string;
+            /** Resource Type */
+            resource_type: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "blocking" | "warning";
+        };
+        /**
+         * GovernanceReportResponse
+         * @description KB-scoped governance and release-readiness report.
+         */
+        GovernanceReportResponse: {
+            /** Domain Name */
+            domain_name: string;
+            feedback_trends: components["schemas"]["GovernanceFeedbackTrendResponse"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Pending Approvals */
+            pending_approvals?: components["schemas"]["GovernancePendingApprovalResponse"][];
+            /** Production Versions */
+            production_versions?: components["schemas"]["GovernanceVersionSummaryResponse"][];
+            /** Release Blockers */
+            release_blockers?: components["schemas"]["GovernanceReleaseBlockerResponse"][];
+            /** Release Ready */
+            release_ready: boolean;
+        };
+        /**
+         * GovernanceVersionSummaryResponse
+         * @description One versioned artifact in the governance production inventory.
+         */
+        GovernanceVersionSummaryResponse: {
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /** Component Id */
+            component_id: string;
+            /**
+             * Component Kind
+             * @enum {string}
+             */
+            component_kind: "playbook" | "workflow_definition";
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Version */
+            version: string;
         };
         /**
          * GraphDbConfig
@@ -10314,6 +10440,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_governance_report_knowledgebases__knowledge_base_id__governance_report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceReportResponse"];
                 };
             };
             /** @description Validation Error */

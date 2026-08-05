@@ -1364,6 +1364,67 @@ class CaseDossierExportResponse(BaseModel):
     content: str
 
 
+class GovernanceVersionSummaryResponse(BaseModel):
+    """One versioned artifact in the governance production inventory."""
+
+    component_kind: Literal["playbook", "workflow_definition"]
+    component_id: str
+    version: str
+    status: str
+    source: str
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+
+
+class GovernancePendingApprovalResponse(BaseModel):
+    """One artifact awaiting governance approval."""
+
+    approval_kind: Literal["workflow_definition"]
+    resource_id: str
+    version: str
+    status: str
+    requested_by: str
+    updated_at: datetime
+
+
+class GovernanceFeedbackTrendResponse(BaseModel):
+    """Explanation-review feedback trend summary for release evaluation."""
+
+    total_reviews: int = Field(ge=0)
+    challenged_reviews: int = Field(ge=0)
+    approved_reviews: int = Field(ge=0)
+    state_counts: dict[str, int] = Field(default_factory=lambda: cast(dict[str, int], {}))
+
+
+class GovernanceReleaseBlockerResponse(BaseModel):
+    """One release-readiness blocker or warning."""
+
+    severity: Literal["blocking", "warning"]
+    code: str
+    message: str
+    resource_type: str
+    resource_id: str
+
+
+class GovernanceReportResponse(BaseModel):
+    """KB-scoped governance and release-readiness report."""
+
+    knowledge_base_id: str
+    domain_name: str
+    generated_at: datetime
+    production_versions: list[GovernanceVersionSummaryResponse] = Field(
+        default_factory=lambda: cast(list[GovernanceVersionSummaryResponse], [])
+    )
+    pending_approvals: list[GovernancePendingApprovalResponse] = Field(
+        default_factory=lambda: cast(list[GovernancePendingApprovalResponse], [])
+    )
+    feedback_trends: GovernanceFeedbackTrendResponse
+    release_blockers: list[GovernanceReleaseBlockerResponse] = Field(
+        default_factory=lambda: cast(list[GovernanceReleaseBlockerResponse], [])
+    )
+    release_ready: bool
+
+
 class ChatCitationResponse(BaseModel):
     """Rich citation payload returned alongside an assistant chat message.
 
@@ -2118,6 +2179,11 @@ __all__ = [
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
+    "GovernanceFeedbackTrendResponse",
+    "GovernancePendingApprovalResponse",
+    "GovernanceReleaseBlockerResponse",
+    "GovernanceReportResponse",
+    "GovernanceVersionSummaryResponse",
     "HousingExecutiveKpiResponse",
     "HousingInstallationMapPointResponse",
     "HousingInstallationResponse",

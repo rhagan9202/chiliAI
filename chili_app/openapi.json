@@ -5453,6 +5453,235 @@
         "title": "GnnConfig",
         "type": "object"
       },
+      "GovernanceFeedbackTrendResponse": {
+        "description": "Explanation-review feedback trend summary for release evaluation.",
+        "properties": {
+          "approved_reviews": {
+            "minimum": 0.0,
+            "title": "Approved Reviews",
+            "type": "integer"
+          },
+          "challenged_reviews": {
+            "minimum": 0.0,
+            "title": "Challenged Reviews",
+            "type": "integer"
+          },
+          "state_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "State Counts",
+            "type": "object"
+          },
+          "total_reviews": {
+            "minimum": 0.0,
+            "title": "Total Reviews",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_reviews",
+          "challenged_reviews",
+          "approved_reviews"
+        ],
+        "title": "GovernanceFeedbackTrendResponse",
+        "type": "object"
+      },
+      "GovernancePendingApprovalResponse": {
+        "description": "One artifact awaiting governance approval.",
+        "properties": {
+          "approval_kind": {
+            "const": "workflow_definition",
+            "title": "Approval Kind",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_kind",
+          "resource_id",
+          "version",
+          "status",
+          "requested_by",
+          "updated_at"
+        ],
+        "title": "GovernancePendingApprovalResponse",
+        "type": "object"
+      },
+      "GovernanceReleaseBlockerResponse": {
+        "description": "One release-readiness blocker or warning.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "blocking",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "message",
+          "resource_type",
+          "resource_id"
+        ],
+        "title": "GovernanceReleaseBlockerResponse",
+        "type": "object"
+      },
+      "GovernanceReportResponse": {
+        "description": "KB-scoped governance and release-readiness report.",
+        "properties": {
+          "domain_name": {
+            "title": "Domain Name",
+            "type": "string"
+          },
+          "feedback_trends": {
+            "$ref": "#/components/schemas/GovernanceFeedbackTrendResponse"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "pending_approvals": {
+            "items": {
+              "$ref": "#/components/schemas/GovernancePendingApprovalResponse"
+            },
+            "title": "Pending Approvals",
+            "type": "array"
+          },
+          "production_versions": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceVersionSummaryResponse"
+            },
+            "title": "Production Versions",
+            "type": "array"
+          },
+          "release_blockers": {
+            "items": {
+              "$ref": "#/components/schemas/GovernanceReleaseBlockerResponse"
+            },
+            "title": "Release Blockers",
+            "type": "array"
+          },
+          "release_ready": {
+            "title": "Release Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "domain_name",
+          "generated_at",
+          "feedback_trends",
+          "release_ready"
+        ],
+        "title": "GovernanceReportResponse",
+        "type": "object"
+      },
+      "GovernanceVersionSummaryResponse": {
+        "description": "One versioned artifact in the governance production inventory.",
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "component_kind": {
+            "enum": [
+              "playbook",
+              "workflow_definition"
+            ],
+            "title": "Component Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_kind",
+          "component_id",
+          "version",
+          "status",
+          "source"
+        ],
+        "title": "GovernanceVersionSummaryResponse",
+        "type": "object"
+      },
       "GraphDbConfig": {
         "description": "Configuration for selecting the graph database backend.",
         "properties": {
@@ -17203,6 +17432,49 @@
         "summary": "Get Feature Catalog",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/governance/report": {
+      "get": {
+        "description": "Return release-readiness evidence for one knowledge base.",
+        "operationId": "get_governance_report_knowledgebases__knowledge_base_id__governance_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernanceReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Governance Report",
+        "tags": [
+          "governance"
         ]
       }
     },

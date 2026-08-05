@@ -1365,6 +1365,33 @@ def test_domain_config_defaults_analytics_section() -> None:
     assert config.analytics.metrics_recompute_min_interval_seconds == 300
 
 
+@pytest.mark.parametrize(
+    "config_name",
+    ["medicare_fraud.yaml", "medicare_fraud_cms_desynpuf.yaml"],
+)
+def test_cms_packs_expose_governance_to_supervisors_only(config_name: str) -> None:
+    from pathlib import Path
+
+    from config.loader import load_config
+
+    config = load_config(
+        Path(__file__).resolve().parents[2] / "config" / "defaults" / config_name
+    )
+
+    assert config.ui is not None
+    assert config.ui.navigation is not None
+    assert config.ui.roles is not None
+    navigation_pages = {
+        page.id: page for page in config.ui.navigation.pages
+    }
+
+    assert navigation_pages["governance"].label == "Governance"
+    assert navigation_pages["governance"].route == "/governance"
+    assert navigation_pages["governance"].capability == "explainability"
+    assert "governance" not in config.ui.roles["analyst"].pages
+    assert "governance" in config.ui.roles["supervisor"].pages
+
+
 class TestAnalyticsExplainabilityBackends:
     def test_defaults_are_deterministic_and_none(self) -> None:
         config = AnalyticsConfig()

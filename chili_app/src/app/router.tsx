@@ -9,6 +9,7 @@ import { AlertFeedPage } from '../pages/AlertFeedPage'
 import { CaseManagementPage } from '../pages/CaseManagementPage'
 import { ConfigurationPage } from '../pages/ConfigurationPage'
 import { DashboardPage } from '../pages/DashboardPage'
+import { GovernancePage } from '../pages/GovernancePage'
 import { HousingExecutivePage } from '../pages/HousingExecutivePage'
 import { InvestigationWorkbenchPage } from '../pages/InvestigationWorkbenchPage'
 import { KnowledgeBaseManagerPage } from '../pages/KnowledgeBaseManagerPage'
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
       { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseManagerPage />) },
       { path: 'knowledgebases', element: <Navigate to="/knowledge-bases" replace /> },
       { path: 'policy', element: withPageBoundary(<PolicyIntelligencePage />) },
+      { path: 'governance', element: withPageBoundary(<GovernancePage />) },
       { path: 'rag-chat', element: withPageBoundary(<RagChatPage />) },
       { path: 'configuration', element: withPageBoundary(<ConfigurationPage />) },
       // Catch-all inside the authenticated shell. It covers both a domain pack

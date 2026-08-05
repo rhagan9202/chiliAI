@@ -21,7 +21,7 @@ const features: DomainFeatures = {
   },
   default_entity_type: 'provider',
   default_role: 'analyst',
-  enabled_pages: ['dashboard', 'alerts', 'cases', 'investigation', 'configuration'],
+  enabled_pages: ['dashboard', 'alerts', 'cases', 'investigation', 'configuration', 'governance'],
   roles: {
     viewer: { landing_page: 'dashboard', pages: ['dashboard', 'alerts'], permissions: [] },
     analyst: {
@@ -31,7 +31,7 @@ const features: DomainFeatures = {
     },
     admin: {
       landing_page: 'configuration',
-      pages: ['dashboard', 'alerts', 'cases', 'investigation', 'configuration'],
+      pages: ['dashboard', 'alerts', 'cases', 'investigation', 'configuration', 'governance'],
       permissions: ['acknowledge_alert', 'edit_config'],
     },
   },
@@ -45,6 +45,7 @@ const domainConfig = {
         { id: 'alerts', label: 'Alerts', route: '/alerts' },
         { id: 'cases', label: 'Cases', route: '/cases' },
         { id: 'investigation', label: 'Investigation', route: '/investigation' },
+        { id: 'governance', label: 'Governance', route: '/governance' },
         { id: 'configuration', label: 'Config', route: '/configuration' },
       ],
     },
@@ -101,7 +102,7 @@ describe('getAllowedPageIds', () => {
 
   it('returns intersection for admin (includes configuration)', () => {
     expect(getAllowedPageIds(features, 'admin').sort()).toEqual(
-      ['alerts', 'cases', 'configuration', 'dashboard', 'investigation'],
+      ['alerts', 'cases', 'configuration', 'dashboard', 'governance', 'investigation'],
     )
   })
 })
@@ -163,6 +164,15 @@ describe('isRouteAllowed', () => {
 
   it('blocks an undeclared page for every role, not just restricted ones', () => {
     expect(isRouteAllowed(domainConfig, features, 'admin', '/housing')).toBe(false)
+  })
+
+  it('blocks governance for roles not granted release approval pages', () => {
+    expect(isRouteAllowed(domainConfig, features, 'analyst', '/governance')).toBe(false)
+    expect(getRouteBlockReason(domainConfig, features, 'analyst', '/governance')).toBe('role')
+  })
+
+  it('allows governance for release supervisors', () => {
+    expect(isRouteAllowed(domainConfig, features, 'admin', '/governance')).toBe(true)
   })
 
   it('allows a page the active pack does declare', () => {

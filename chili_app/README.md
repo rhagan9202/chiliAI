@@ -51,6 +51,7 @@ indicator, and a bounded list of rejected-row reasons.
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, capability-gated dossier tabs (Signals, Network, Policy, Evidence) |
 | **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
 | **Policy Intelligence** | Review policy items and triage accepted/rejected/deferred/escalated outcomes |
+| **Governance** | Supervisor release-readiness report over published versions, pending approvals, challenged explanation feedback, and blockers |
 | **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |
 | **Configuration** | Config Manager — active-config summary, domain pack switcher, and active-pack YAML editor with dry-run validation and hot-swap apply (see "Config Manager" below) |
 
@@ -92,6 +93,7 @@ under the wrong domain.
 | `/cases` | Case management queue |
 | `/knowledge-bases` | Knowledge Bases — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory, ingestion wizard |
 | `/policy` | Policy intelligence item queue |
+| `/governance` | Governance release-readiness report for the active knowledge base |
 | `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
 | `/scorecards/:runId?kb=<kbId>` | Scorecard run viewer — graded sections, metric health/completeness chips, citations, JSON/Markdown export (see "Housing dashboard" below) |
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |
@@ -291,6 +293,7 @@ not on mutable status, so they are order-independent.
 | `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
 | `policy-intelligence.spec.ts` | Rule-generated policy queue renders from the real API; server-side multi-status filtering (`?status=` repeated) unions rather than replaces, survives a reload, and clears |
 | `policy-triage.spec.ts` | Escalating the seeded policy item creates a case via the real triage endpoint |
+| `governance.spec.ts` | Supervisor-only governance dashboard renders the real KB-scoped release-readiness report |
 | `ingestion-document-warnings.spec.ts` | Ragged-CSV upload surfaces worker-persisted parser warnings in the document inventory |
 | `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
 | `air-force-housing-context.spec.ts` | Stack-adaptive housing follow-up surfaces: scorecard viewer guard states (missing `?kb=`, unknown run), dashboard run link → viewer with graded sections/health chips + real JSON export download + back-link round trip, "Why this status" drivers pinned to the API's `status_reasons`, filter strip narrowing map markers + ranking rows + status counts together (clear restores), and a zero-failed-runs probe over every housing-domain KB's workflow history |

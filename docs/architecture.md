@@ -245,6 +245,7 @@ backend/
 │       ├── auth.py             # /auth/login, /auth/logout, /auth/me
 │       ├── _oidc_client.py     # OIDC client helpers used by auth router
 │       ├── policy.py           # Policy Intelligence items/triage (BL-011)
+│       ├── governance.py       # Release-readiness report (SAFE-CMS-020)
 │       └── config.py           # Domain configuration endpoints
 ├── ingestion/                  # Document parsing & entity extraction
 │   ├── __init__.py
@@ -463,6 +464,9 @@ policy/                         # Durable, KB-scoped policy intelligence (BL-011
         ├── protocols.py        # PolicyItemRepository (upsert/get/list/update/delete_by_kb)
         ├── in_memory.py        # InMemoryPolicyItemRepository
         └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
+governance/                     # KB-scoped release readiness (SAFE-CMS-020)
+    ├── models.py               # version inventory, approvals, feedback trends, blockers
+    └── service.py              # GovernanceReportService over playbooks/workflows/reviews
 scorecards/                     # Config-driven statutory scorecard runs (af_housing)
     ├── evaluation.py           # Pure evaluate_template() over SourceRecords; no I/O
     ├── service.py              # ScorecardService + ScorecardSourceRecordLoader protocol
@@ -527,6 +531,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 | `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
+| `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews | `policy`, `agent`, `analytics.explainability` model/repository protocols | `api`, persistence adapters, worker internals |
 | `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
 | `scorecards` | Config-driven scorecard evaluation (`evaluate_template`), durable run persistence, JSON/Markdown exports | `config` (ScorecardTemplateConfig), `shared`, `database.ConnectionProvider`; feed records arrive through the `ScorecardSourceRecordLoader` protocol implemented at the gateway | `records`, `api`, `ingestion` internals — never imports the records module directly |
 

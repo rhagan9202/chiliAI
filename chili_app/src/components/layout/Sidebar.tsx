@@ -9,6 +9,7 @@ import {
   GitBranch,
   LayoutDashboard,
   MapPinned,
+  Scale,
   ShieldCheck,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
@@ -35,6 +36,7 @@ const DEFAULT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   cases: BriefcaseBusiness,
   knowledge_bases: Database,
   policy: ShieldCheck,
+  governance: Scale,
   rag_chat: Bot,
   configuration: FileCog,
 }
@@ -48,6 +50,7 @@ const DEFAULT_NAV: NavItem[] = [
   { id: 'cases', label: 'Cases', to: '/cases', icon: BriefcaseBusiness },
   { id: 'knowledge_bases', label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database },
   { id: 'policy', label: 'Policy Intelligence', to: '/policy', icon: ShieldCheck, capability: 'explainability' },
+  { id: 'governance', label: 'Governance', to: '/governance', icon: Scale, capability: 'explainability' },
   { id: 'rag_chat', label: 'RAG Chat', to: '/rag-chat', icon: Bot, capability: 'rag_chat' },
   { id: 'configuration', label: 'Configuration', to: '/configuration', icon: FileCog },
 ]
