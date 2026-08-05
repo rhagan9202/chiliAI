@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 
 import type {
@@ -119,6 +119,20 @@ function reviewForTarget(
   ) ?? null
 }
 
+function reviewControlKey(
+  target: ReviewTarget,
+  currentReview: ExplanationReviewResponse | null,
+): string {
+  return [
+    target.target_type,
+    target.target_id,
+    currentReview?.id ?? 'unreviewed',
+    currentReview?.state ?? 'useful',
+    currentReview?.comment ?? '',
+    currentReview?.reasons?.join(',') ?? '',
+  ].join(':')
+}
+
 function ExplanationReviewControl({
   currentReview,
   disabled,
@@ -145,19 +159,6 @@ function ExplanationReviewControl({
   const [error, setError] = useState<string | null>(null)
   const requiresReason = NEGATIVE_REVIEW_STATES.has(state)
   const controlDisabled = disabled || !knowledgeBaseId || createReview.isPending
-
-  useEffect(() => {
-    if (!currentReview) return
-    setState(currentReview.state)
-    setReason(currentReview.reasons?.[0] ?? '')
-    setComment(currentReview.comment ?? '')
-    setError(null)
-  }, [
-    currentReview?.id,
-    currentReview?.state,
-    currentReview?.comment,
-    currentReview?.reasons,
-  ])
 
   const submitReview = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -404,6 +405,11 @@ export function EvidencePackViewer({
   const reviewsQuery = useEvidencePackReviews(pack.id, knowledgeBaseId)
   const reviews = reviewsQuery.data?.items ?? []
   const canReview = Boolean(knowledgeBaseId)
+  const narrativeTarget: ReviewTarget = {
+    target_type: 'narrative',
+    target_id: 'narrative',
+  }
+  const narrativeReview = reviewForTarget(reviews, narrativeTarget)
 
   return (
     <Card>
@@ -435,16 +441,14 @@ export function EvidencePackViewer({
             {pack.reasoning}
           </p>
           <ExplanationReviewControl
-            currentReview={reviewForTarget(reviews, {
-              target_type: 'narrative',
-              target_id: 'narrative',
-            })}
+            currentReview={narrativeReview}
             disabled={!canReview}
             evidencePackId={pack.id}
+            key={reviewControlKey(narrativeTarget, narrativeReview)}
             knowledgeBaseId={knowledgeBaseId}
             label="Narrative review"
             submitLabel="Save narrative review"
-            target={{ target_type: 'narrative', target_id: 'narrative' }}
+            target={narrativeTarget}
           />
           {narrativeSections.map((section) => (
             <div className="metric-row metric-row--stacked" key={section.heading + section.body}>
@@ -491,12 +495,13 @@ export function EvidencePackViewer({
                 target_type: 'feature_attribution',
                 target_id: item.feature_name,
               }
+              const currentReview = reviewForTarget(reviews, target)
               return (
                 <ExplanationReviewControl
-                  currentReview={reviewForTarget(reviews, target)}
+                  currentReview={currentReview}
                   disabled={!canReview}
                   evidencePackId={pack.id}
-                  key={item.feature_name}
+                  key={reviewControlKey(target, currentReview)}
                   knowledgeBaseId={knowledgeBaseId}
                   label={`Feature ${item.feature_name} review`}
                   submitLabel={`Save feature ${item.feature_name} review`}
