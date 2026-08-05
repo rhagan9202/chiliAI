@@ -35,8 +35,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 5 implementation, focused verification, Task 2 contract review fix, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
-- Remaining work: Task 6.
+- Completed in this pass: Tasks 1 through 5 implementation, Task 6 final verification, focused review fixes, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
+- Remaining work: finish branch into `prod` only.
 
 ---
 
@@ -380,29 +380,16 @@ Result:
 - Sandboxed Playwright run failed with `connect EPERM 127.0.0.1:5173`; escalated rerun passed: 1 Chromium test passed, with e2e teardown deleting the seeded KB.
 - `npm run lint`: passed.
 
-- [ ] **Step 4: Run focused GREEN**
+Commit:
 
-Run:
-
-```bash
-env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/governance.spec.ts
-```
-
-- [ ] **Step 5: Commit**
-
-Run:
-
-```bash
-git add chili_app/e2e/governance.spec.ts
-git commit -m "test(e2e): cover governance dashboard smoke"
-```
+- `956759e test: add governance dashboard e2e smoke`.
 
 ### Task 6: Final Verification And Branch Completion
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-05-safe-cms-020-governance-evals.md`
 
-- [ ] **Step 1: Run frontend gates**
+- [x] **Step 1: Run frontend gates**
 
 Run:
 
@@ -412,7 +399,13 @@ npm run lint
 npm run build
 ```
 
-- [ ] **Step 2: Run backend gates**
+Result:
+
+- `npm run test:run`: 119 files passed, 1002 tests passed.
+- `npm run lint`: passed.
+- `npm run build`: passed.
+
+- [x] **Step 2: Run backend gates**
 
 Run:
 
@@ -421,7 +414,13 @@ uv run --project backend pytest backend/tests/governance backend/tests/api/test_
 PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright
 ```
 
-- [ ] **Step 3: Run browser/live-stack gate**
+Result:
+
+- `uv run --project backend pytest backend/tests/governance backend/tests/api/test_governance_router.py backend/tests/api/test_app.py backend/tests/config/test_schema.py -q`: 136 passed.
+- `uv run --project backend ruff check --no-cache backend/governance backend/api/routers/governance.py backend/tests/governance backend/tests/api/test_governance_router.py backend/tests/config/test_schema.py`: passed.
+- `PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright`: 0 errors, 0 warnings.
+
+- [x] **Step 3: Run browser/live-stack gate**
 
 Run:
 
@@ -431,7 +430,13 @@ curl -sS http://localhost:8000/health
 env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/governance.spec.ts e2e/dashboard-kb-scope.spec.ts
 ```
 
-- [ ] **Step 4: Run whitespace and branch checks**
+Result:
+
+- `docker compose -f docker-compose.dev.yaml ps`: API/app/data services healthy or running; app on `:5173`, API on `:8000`.
+- `curl -sS http://localhost:8000/health`: `{"status":"ok"}`.
+- `env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/governance.spec.ts e2e/dashboard-kb-scope.spec.ts`: 4 Chromium tests passed; e2e teardown deleted 3/3 run-created KBs.
+
+- [x] **Step 4: Run whitespace and branch checks**
 
 Run:
 
@@ -440,7 +445,12 @@ git diff --check
 git status --short --branch
 ```
 
-- [ ] **Step 5: Commit final plan status**
+Result:
+
+- `git diff --check`: passed.
+- `git status --short --branch`: clean on `safe-cms-020-governance-evals`.
+
+- [x] **Step 5: Commit final plan status**
 
 Run:
 
@@ -448,6 +458,10 @@ Run:
 git add docs/superpowers/plans/2026-08-05-safe-cms-020-governance-evals.md
 git commit -m "docs: update safe cms 020 plan status"
 ```
+
+Result:
+
+- Completed by the plan-status commit containing this update.
 
 - [ ] **Step 6: Finish branch into prod only**
 
