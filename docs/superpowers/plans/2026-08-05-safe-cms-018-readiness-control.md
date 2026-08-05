@@ -16,7 +16,7 @@
 - Create `backend/readiness/service.py`: pure aggregation service over existing repository/service protocols.
 - Create `backend/readiness/__init__.py`: package exports.
 - Modify `backend/pyproject.toml`: include `readiness*` and `tests/readiness` in packaging/Pyright discovery.
-- Test `backend/tests/readiness/test_service.py`: service aggregation behavior without FastAPI.
+- Test `backend/tests/readiness/test_readiness_service.py`: service aggregation behavior without FastAPI.
 - Modify `backend/api/contracts.py`: wire-level readiness response models.
 - Create `backend/api/routers/readiness.py`: `GET /knowledgebases/{knowledge_base_id}/readiness`.
 - Modify `backend/api/dependencies.py`: readiness service dependency.
@@ -31,8 +31,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 4.
-- Remaining work: Task 5.
+- Completed in this pass: Tasks 1 through 5.
+- Remaining work: none.
 
 ---
 
@@ -43,11 +43,11 @@
 - Create: `backend/readiness/service.py`
 - Create: `backend/readiness/__init__.py`
 - Modify: `backend/pyproject.toml`
-- Test: `backend/tests/readiness/test_service.py`
+- Test: `backend/tests/readiness/test_readiness_service.py`
 
 - [x] **Step 1: Write failing service tests**
 
-Create `backend/tests/readiness/test_service.py` with tests that seed:
+Create `backend/tests/readiness/test_readiness_service.py` with tests that seed:
 
 ```python
 from __future__ import annotations
@@ -210,7 +210,7 @@ def test_readiness_reports_blockers_for_building_kb_no_connectors_and_no_workflo
 
 - [x] **Step 2: Run focused red tests**
 
-Run: `uv run --project backend pytest backend/tests/readiness/test_service.py -q`
+Run: `uv run --project backend pytest backend/tests/readiness/test_readiness_service.py -q`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'readiness'`.
 
@@ -450,7 +450,7 @@ git commit -m "feat: add workspace readiness control"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-05-safe-cms-018-readiness-control.md`
 
-- [ ] **Step 1: Run backend gates**
+- [x] **Step 1: Run backend gates**
 
 Run:
 
@@ -461,7 +461,13 @@ uv run --project backend ruff check backend
 uv run --project backend pyright
 ```
 
-- [ ] **Step 2: Run frontend gates**
+- Verification:
+  - `uv run --project backend pytest backend/tests/readiness backend/tests/api/test_readiness_router.py backend/tests/api/test_app.py -q` -> 20 passed.
+  - `uv run --project backend pytest -m "not integration" backend/tests -q` -> 2976 passed, 1 skipped, 99 deselected.
+  - `uv run --project backend ruff check backend` -> all checks passed.
+  - `uv run --project backend pyright` -> 0 errors, 0 warnings, 0 informations.
+
+- [x] **Step 2: Run frontend gates**
 
 Run:
 
@@ -470,7 +476,11 @@ npm run test:run
 npm run build
 ```
 
-- [ ] **Step 3: Run contract, migration, and whitespace gates**
+- Verification:
+  - `npm run test:run` -> 116 files passed, 984 tests passed.
+  - `npm run build` -> TypeScript and Vite build passed.
+
+- [x] **Step 3: Run contract, migration, and whitespace gates**
 
 Run:
 
@@ -481,7 +491,13 @@ scripts/ci_migration_check.sh
 git diff --check
 ```
 
-- [ ] **Step 4: Commit final plan status**
+- Verification:
+  - `uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json` -> passed with no generated drift.
+  - `npm run codegen:api` -> passed with no generated drift.
+  - `scripts/ci_migration_check.sh` -> migration replay clean; schema matches `backend/database/migrations/snapshots/head.sql`.
+  - `git diff --check` -> passed.
+
+- [x] **Step 4: Commit final plan status**
 
 Run:
 
