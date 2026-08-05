@@ -29,7 +29,7 @@
 
 - Completed in this pass: Tasks 1, 2, 3, 4, and 5.
 - Completed verification in this pass: focused capability/workflow/API tests, full non-integration backend tests, Ruff, Pyright, OpenAPI export, API codegen, focused frontend tests, full frontend test suite, frontend build, migration replay, and whitespace checks.
-- Remaining work: final verified commit.
+- Remaining work: none; the verified capability-registry slice is present on `prod`.
 
 ---
 

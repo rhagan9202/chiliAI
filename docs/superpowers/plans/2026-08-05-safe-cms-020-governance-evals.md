@@ -36,7 +36,7 @@
 ## Implementation Status
 
 - Completed in this pass: Tasks 1 through 5 implementation, Task 6 final verification, focused review fixes, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
-- Remaining work: finish branch into `prod` only.
+- Remaining work: none; merged to local `prod` and pushed to `origin/prod` at `58ff388`.
 
 ---
 
@@ -463,6 +463,12 @@ Result:
 
 - Completed by the plan-status commit containing this update.
 
-- [ ] **Step 6: Finish branch into prod only**
+- [x] **Step 6: Finish branch into prod only**
 
 Use the finishing-a-development-branch workflow with local `prod` as the integration target. Fetch and push only `origin/prod`; do not merge into or push `origin/main`.
+
+Result:
+
+- Local `prod` merged `safe-cms-020-governance-evals` with merge commit `58ff388 Merge SAFE-CMS-020 governance evaluations`.
+- `git push origin prod` updated `origin/prod` from `4e06a70` to `58ff388`.
+- Final sync check: `HEAD`, `prod`, and `origin/prod` all resolve to `58ff388184be29a30351ea7bc46f95bd231b645d`; `origin/main` remains `4f69df58b3fb6336b15a9c7ad0c7e63394d73815`.
