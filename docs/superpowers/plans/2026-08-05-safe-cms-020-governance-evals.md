@@ -41,7 +41,7 @@
 
 - Completed in the foundation pass: Tasks 1 through 5 implementation, Task 6 final verification, focused review fixes, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
 - Red-gate follow-up completed in `safe-cms-020-eval-baselines`: persisted governance eval runs, metric pass/fail comparisons, drift summaries, baseline approval decisions, release blockers for pending/failed candidates, API routes, generated contracts, migration replay, and dashboard eval evidence.
-- Crash-resume verification completed on 2026-08-05: focused backend tests, migration/config tests, Ruff, Pyright, full frontend Vitest, frontend lint/build, OpenAPI/codegen regeneration, and live governance e2e smoke all passed. Remaining work: commit and `prod` sync for the red-gate follow-up.
+- Crash-resume verification completed on 2026-08-05: focused backend tests, migration/config tests, Ruff, Pyright, full frontend Vitest, frontend lint/build, OpenAPI/codegen regeneration, and live governance e2e smoke all passed. Remaining work: none; merged to local `prod` at `1759345` for `origin/prod` sync.
 
 ---
 
