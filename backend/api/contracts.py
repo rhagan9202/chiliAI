@@ -1406,6 +1406,109 @@ class GovernanceReleaseBlockerResponse(BaseModel):
     resource_id: str
 
 
+class GovernanceMetricInputRequest(BaseModel):
+    """Candidate-vs-baseline metric submitted to a governance eval run."""
+
+    name: str
+    baseline_value: float
+    candidate_value: float
+    threshold: float = Field(default=0.0, ge=0.0)
+    direction: Literal["higher", "lower"]
+
+
+class GovernanceMetricResultResponse(BaseModel):
+    """Persisted candidate-vs-baseline metric result."""
+
+    name: str
+    baseline_value: float
+    candidate_value: float
+    threshold: float = Field(ge=0.0)
+    direction: Literal["higher", "lower"]
+    delta: float
+    passed: bool
+
+
+class GovernanceDriftSummaryResponse(BaseModel):
+    """Compact drift summary for a governance evaluation run."""
+
+    metric_count: int = Field(ge=0)
+    failed_metric_count: int = Field(ge=0)
+    max_abs_delta: float = Field(ge=0.0)
+
+
+class GovernanceBaselineDecisionResponse(BaseModel):
+    """Approval or rejection decision for a governance eval run."""
+
+    decision: Literal["approved", "rejected"]
+    decided_by: str
+    decided_at: datetime
+    rationale: str
+
+
+class GovernanceEvalRunCreateRequest(BaseModel):
+    """Register a candidate governance evaluation run."""
+
+    artifact_kind: Literal[
+        "connector",
+        "model",
+        "playbook",
+        "prompt",
+        "scoring",
+        "workflow_definition",
+    ]
+    artifact_id: str
+    artifact_version: str
+    baseline_version: str
+    dataset_id: str
+    metrics: list[GovernanceMetricInputRequest] = Field(min_length=1)
+    dataset_source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    affected_alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    affected_case_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class GovernanceEvalApprovalRequest(BaseModel):
+    """Approve a passing governance eval run as a baseline decision."""
+
+    rationale: str = Field(min_length=1)
+
+
+class GovernanceEvalRunResponse(BaseModel):
+    """Persisted governance evaluation run response."""
+
+    run_id: str
+    knowledge_base_id: str
+    artifact_kind: Literal[
+        "connector",
+        "model",
+        "playbook",
+        "prompt",
+        "scoring",
+        "workflow_definition",
+    ]
+    artifact_id: str
+    artifact_version: str
+    baseline_version: str
+    dataset_id: str
+    status: Literal["candidate", "approved", "rejected"]
+    metrics: list[GovernanceMetricResultResponse] = Field(min_length=1)
+    drift_summary: GovernanceDriftSummaryResponse
+    dataset_source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    affected_alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    affected_case_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    created_by: str
+    created_at: datetime
+    approval: GovernanceBaselineDecisionResponse | None = None
+
+
+class GovernanceEvalRunListResponse(BaseModel):
+    """List of governance evaluation runs for one knowledge base."""
+
+    items: list[GovernanceEvalRunResponse] = Field(
+        default_factory=lambda: cast(list[GovernanceEvalRunResponse], [])
+    )
+    total_items: int = Field(ge=0)
+
+
 class GovernanceReportResponse(BaseModel):
     """KB-scoped governance and release-readiness report."""
 
@@ -1419,6 +1522,9 @@ class GovernanceReportResponse(BaseModel):
         default_factory=lambda: cast(list[GovernancePendingApprovalResponse], [])
     )
     feedback_trends: GovernanceFeedbackTrendResponse
+    eval_runs: list[GovernanceEvalRunResponse] = Field(
+        default_factory=lambda: cast(list[GovernanceEvalRunResponse], [])
+    )
     release_blockers: list[GovernanceReleaseBlockerResponse] = Field(
         default_factory=lambda: cast(list[GovernanceReleaseBlockerResponse], [])
     )
@@ -2179,7 +2285,15 @@ __all__ = [
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
+    "GovernanceBaselineDecisionResponse",
+    "GovernanceDriftSummaryResponse",
+    "GovernanceEvalApprovalRequest",
+    "GovernanceEvalRunCreateRequest",
+    "GovernanceEvalRunListResponse",
+    "GovernanceEvalRunResponse",
     "GovernanceFeedbackTrendResponse",
+    "GovernanceMetricInputRequest",
+    "GovernanceMetricResultResponse",
     "GovernancePendingApprovalResponse",
     "GovernanceReleaseBlockerResponse",
     "GovernanceReportResponse",

@@ -143,6 +143,26 @@ CREATE TABLE public.fraud_playbook_snapshots (
     CONSTRAINT ck_fraud_playbook_snapshots_source CHECK ((source = ANY (ARRAY['domain_config'::text, 'api_import'::text, 'api_publish'::text]))),
     CONSTRAINT ck_fraud_playbook_snapshots_status CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'retired'::text])))
 );
+CREATE TABLE public.governance_eval_runs (
+    run_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    artifact_kind text NOT NULL,
+    artifact_id text NOT NULL,
+    artifact_version text NOT NULL,
+    baseline_version text NOT NULL,
+    dataset_id text NOT NULL,
+    status text NOT NULL,
+    metrics jsonb NOT NULL,
+    drift_summary jsonb NOT NULL,
+    dataset_source_refs jsonb NOT NULL,
+    affected_alert_ids jsonb NOT NULL,
+    affected_case_ids jsonb NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    approval jsonb,
+    CONSTRAINT ck_governance_eval_runs_artifact_kind CHECK ((artifact_kind = ANY (ARRAY['connector'::text, 'model'::text, 'playbook'::text, 'prompt'::text, 'scoring'::text, 'workflow_definition'::text]))),
+    CONSTRAINT ck_governance_eval_runs_status CHECK ((status = ANY (ARRAY['candidate'::text, 'approved'::text, 'rejected'::text])))
+);
 CREATE TABLE public.identity_links (
     id text NOT NULL,
     knowledge_base_id text NOT NULL,
@@ -314,6 +334,8 @@ ALTER TABLE ONLY public.event_dlq
     ADD CONSTRAINT event_dlq_pkey PRIMARY KEY (dlq_id);
 ALTER TABLE ONLY public.explanation_reviews
     ADD CONSTRAINT explanation_reviews_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.governance_eval_runs
+    ADD CONSTRAINT governance_eval_runs_pkey PRIMARY KEY (run_id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.fraud_playbook_snapshots
@@ -358,6 +380,8 @@ CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status
 CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_state_updated ON public.explanation_reviews USING btree (knowledge_base_id, state, updated_at DESC);
 CREATE INDEX ix_fraud_playbook_snapshots_domain_status ON public.fraud_playbook_snapshots USING btree (knowledge_base_id, domain_name, status, updated_at DESC);
+CREATE INDEX ix_governance_eval_runs_artifact ON public.governance_eval_runs USING btree (knowledge_base_id, artifact_kind, artifact_id, artifact_version);
+CREATE INDEX ix_governance_eval_runs_kb_status ON public.governance_eval_runs USING btree (knowledge_base_id, status, created_at DESC);
 CREATE INDEX ix_identity_links_kb_canonical_updated ON public.identity_links USING btree (knowledge_base_id, canonical_entity_id, updated_at DESC);
 CREATE INDEX ix_identity_links_kb_review_state_updated ON public.identity_links USING btree (knowledge_base_id, review_state, updated_at DESC);
 CREATE INDEX ix_identity_links_kb_source_updated ON public.identity_links USING btree (knowledge_base_id, source_entity_id, updated_at DESC);

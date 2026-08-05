@@ -57,6 +57,39 @@ const report: GovernanceReportResponse = {
     approved_reviews: 3,
     state_counts: { approved: 3, misleading: 1, unsupported: 1, useful: 2 },
   },
+  eval_runs: [
+    {
+      run_id: 'kb-1:model:risk-scorer:candidate-v2:tn-demo-1pct',
+      knowledge_base_id: 'kb-1',
+      artifact_kind: 'model',
+      artifact_id: 'risk-scorer',
+      artifact_version: 'candidate-v2',
+      baseline_version: 'prod-v1',
+      dataset_id: 'tn-demo-1pct',
+      status: 'candidate',
+      metrics: [
+        {
+          name: 'precision',
+          baseline_value: 0.72,
+          candidate_value: 0.78,
+          threshold: 0,
+          direction: 'higher',
+          delta: 0.06,
+          passed: true,
+        },
+      ],
+      drift_summary: {
+        metric_count: 1,
+        failed_metric_count: 0,
+        max_abs_delta: 0.06,
+      },
+      affected_alert_ids: ['alert-1'],
+      affected_case_ids: ['case-1'],
+      created_by: 'model-owner-1',
+      created_at: '2026-08-05T17:50:00Z',
+      approval: null,
+    },
+  ],
   release_blockers: [
     {
       severity: 'blocking',
@@ -155,6 +188,7 @@ describe('GovernancePage', () => {
     expect(screen.getByLabelText('Published versions: 2')).toBeInTheDocument()
     expect(screen.getByLabelText('Pending approvals: 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Challenged explanations: 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('Evaluation runs: 1')).toBeInTheDocument()
 
     const versions = screen.getByRole('region', { name: 'Production versions' })
     expect(within(versions).getByText('billing-review')).toBeInTheDocument()
@@ -166,5 +200,11 @@ describe('GovernancePage', () => {
     const blockers = screen.getByRole('region', { name: 'Release blockers' })
     expect(within(blockers).getByText('pending_workflow_approval')).toBeInTheDocument()
     expect(within(blockers).getByText('challenged_explanations')).toBeInTheDocument()
+
+    const evaluations = screen.getByRole('region', { name: 'Evaluation runs' })
+    expect(within(evaluations).getByText('risk-scorer')).toBeInTheDocument()
+    expect(within(evaluations).getByText('candidate-v2 vs prod-v1')).toBeInTheDocument()
+    expect(within(evaluations).getByText('precision')).toBeInTheDocument()
+    expect(within(evaluations).getAllByText('+0.060')).toHaveLength(2)
   })
 })

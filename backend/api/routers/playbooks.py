@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from api.contracts import (
@@ -18,6 +20,7 @@ from api.contracts import (
 )
 from api.dependencies import (
     get_domain_config,
+    get_governance_eval_service,
     get_knowledge_base_repository,
     get_playbook_repository,
     get_playbook_service,
@@ -26,6 +29,7 @@ from api.middleware.auth import User
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, FraudPlaybookConfig
 from knowledgebases.protocols import KnowledgeBaseRepository
+from governance.service import GovernanceEvalService
 from playbooks.models import PlaybookImportResult, PlaybookPublishRequest, PlaybookSnapshot
 from playbooks.repository import PlaybookRepository
 from playbooks.service import PlaybookService
@@ -215,6 +219,7 @@ def publish_playbook(
     service: PlaybookService = Depends(get_playbook_service),
     domain_config: DomainConfig = Depends(get_domain_config),
     user: User = Depends(require_role("admin")),
+    governance_eval_service: Any = Depends(get_governance_eval_service),
 ) -> PlaybookSnapshotResponse:
     """Publish a config-authored seed playbook as an immutable snapshot."""
     del playbook_repository
@@ -224,6 +229,21 @@ def publish_playbook(
         user,
         domain_config,
     )
+    if isinstance(governance_eval_service, GovernanceEvalService) and (
+        not governance_eval_service.has_approved_eval(
+            knowledge_base_id=knowledge_base_id,
+            artifact_kind="playbook",
+            artifact_id=playbook_id,
+            artifact_version=payload.version,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Approved governance eval required for playbook "
+                f"{playbook_id}:{payload.version}."
+            ),
+        )
     try:
         snapshot = service.publish_config_playbook(
             PlaybookPublishRequest(

@@ -10,13 +10,21 @@
 
 ---
 
+## Implementation Status
+
+- Completed in prior SAFE-CMS-014 passes: Tasks 1 through 6, including workflow-definition models, service lifecycle, KB-scoped API, run idempotency, Postgres persistence, generated contracts, and focused review fixes.
+- Verification evidence: SAFE-CMS-014 implementation commits `08555ed` through `6216c2e`; the full surge closeout was merged to `origin/prod` at `271f305` on 2026-08-05.
+- Remaining work: none; this plan is reconciled to the current `prod` state.
+
+---
+
 ## Scope Reference
 
 Design spec: `docs/superpowers/specs/2026-08-04-safe-cms-014-workflow-definitions-design.md`
 
 Runway ADR: `docs/superpowers/specs/2026-08-04-safe-cms-pi4-playbooks-workflows-adr.md`
 
-Current branch: `safe-cms-013-playbooks`
+Current branch context: implemented on SAFE-CMS-014 feature commits and reconciled from `prod`.
 
 ## File Structure
 
@@ -135,7 +143,7 @@ def run_request() -> WorkflowDefinitionRunRequest:
 - Create: `backend/workflow_definitions/__init__.py`
 - Create: `backend/tests/workflow_definitions/test_models.py`
 
-- [ ] **Step 1: Write RED model validation tests**
+- [x] **Step 1: Write RED model validation tests**
 
 Create `backend/tests/workflow_definitions/test_models.py`:
 
@@ -267,7 +275,7 @@ def test_builtin_capability_catalog_is_intentionally_small() -> None:
     assert WorkflowFailureMode.FAIL_WORKFLOW == "fail_workflow"
 ```
 
-- [ ] **Step 2: Run RED tests**
+- [x] **Step 2: Run RED tests**
 
 Run:
 
@@ -277,7 +285,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_models.p
 
 Expected: FAIL during import with `ModuleNotFoundError: No module named 'workflow_definitions'`.
 
-- [ ] **Step 3: Add model implementation**
+- [x] **Step 3: Add model implementation**
 
 Create `backend/workflow_definitions/models.py`:
 
@@ -519,7 +527,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Run GREEN model tests**
+- [x] **Step 4: Run GREEN model tests**
 
 Run:
 
@@ -529,7 +537,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_models.p
 
 Expected: `6 passed`.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 Run:
 
@@ -551,7 +559,7 @@ Expected: commit created with only these three files.
 - Create: `backend/tests/workflow_definitions/test_service.py`
 - Modify: `backend/workflow_definitions/__init__.py`
 
-- [ ] **Step 1: Write RED repository tests**
+- [x] **Step 1: Write RED repository tests**
 
 Create `backend/tests/workflow_definitions/test_in_memory.py`:
 
@@ -645,7 +653,7 @@ def test_update_definition_replaces_existing_snapshot() -> None:
     assert found.name == "Updated provider workflow"
 ```
 
-- [ ] **Step 2: Write RED service tests**
+- [x] **Step 2: Write RED service tests**
 
 Create `backend/tests/workflow_definitions/test_service.py`:
 
@@ -916,7 +924,7 @@ def test_missing_definition_raises_not_found() -> None:
         )
 ```
 
-- [ ] **Step 3: Run RED service and repository tests**
+- [x] **Step 3: Run RED service and repository tests**
 
 Run:
 
@@ -926,7 +934,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_in_memor
 
 Expected: FAIL during import with missing repository and service modules.
 
-- [ ] **Step 4: Implement repository protocol and in-memory store**
+- [x] **Step 4: Implement repository protocol and in-memory store**
 
 Create `backend/workflow_definitions/repository.py`:
 
@@ -1065,7 +1073,7 @@ from workflow_definitions.adapters.in_memory import InMemoryWorkflowDefinitionRe
 __all__ = ["InMemoryWorkflowDefinitionRepository"]
 ```
 
-- [ ] **Step 5: Implement service lifecycle and preview run handoff**
+- [x] **Step 5: Implement service lifecycle and preview run handoff**
 
 Create `backend/workflow_definitions/service.py`:
 
@@ -1428,7 +1436,7 @@ __all__ = [
 
 Update `backend/workflow_definitions/__init__.py` exports to include `WorkflowDefinitionService`, `WorkflowDefinitionRepository`, and `InMemoryWorkflowDefinitionRepository`.
 
-- [ ] **Step 6: Run GREEN service tests**
+- [x] **Step 6: Run GREEN service tests**
 
 Run:
 
@@ -1438,7 +1446,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_in_memor
 
 Expected: `9 passed`.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 Run:
 
@@ -1458,7 +1466,7 @@ Expected: commit created with models from Task 1 plus the new service and reposi
 - Create: `backend/api/routers/workflow_definitions.py`
 - Create: `backend/tests/api/test_workflow_definitions_router.py`
 
-- [ ] **Step 1: Write RED router tests**
+- [x] **Step 1: Write RED router tests**
 
 Create `backend/tests/api/test_workflow_definitions_router.py`:
 
@@ -1648,7 +1656,7 @@ def test_out_of_scope_knowledge_base_returns_404() -> None:
     assert response.status_code == 404
 ```
 
-- [ ] **Step 2: Run RED router tests**
+- [x] **Step 2: Run RED router tests**
 
 Run:
 
@@ -1658,7 +1666,7 @@ uv run --project backend pytest backend/tests/api/test_workflow_definitions_rout
 
 Expected: FAIL during import because `get_workflow_definition_service` is not defined or route returns 404 because the router is not registered.
 
-- [ ] **Step 3: Add API contracts**
+- [x] **Step 3: Add API contracts**
 
 Append to `backend/api/contracts.py` near the workflow/playbook response models:
 
@@ -1758,7 +1766,7 @@ class WorkflowDefinitionListResponse(BaseModel):
 
 Add all new contract class names to the `__all__` list in `backend/api/contracts.py`.
 
-- [ ] **Step 4: Add router**
+- [x] **Step 4: Add router**
 
 Create `backend/api/routers/workflow_definitions.py`:
 
@@ -2121,7 +2129,7 @@ def _not_found(resource: str, identifier: str) -> HTTPException:
     )
 ```
 
-- [ ] **Step 5: Wire dependencies and app registration**
+- [x] **Step 5: Wire dependencies and app registration**
 
 In `backend/api/dependencies.py`, add imports:
 
@@ -2179,7 +2187,7 @@ Register it near playbooks/workflows:
 app.include_router(workflow_definitions_router)
 ```
 
-- [ ] **Step 6: Run router tests**
+- [x] **Step 6: Run router tests**
 
 Run:
 
@@ -2189,7 +2197,7 @@ uv run --project backend pytest backend/tests/api/test_workflow_definitions_rout
 
 Expected: `6 passed`.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 Run:
 
@@ -2211,7 +2219,7 @@ Expected: commit created with API-only changes.
 - Create: `backend/tests/database/test_workflow_definitions_migration.py`
 - Modify: `backend/database/migrations/snapshots/head.sql`
 
-- [ ] **Step 1: Write RED migration declaration test**
+- [x] **Step 1: Write RED migration declaration test**
 
 Create `backend/tests/database/test_workflow_definitions_migration.py`:
 
@@ -2235,7 +2243,7 @@ def test_workflow_definition_migration_declares_snapshot_table() -> None:
     assert "ix_workflow_definition_snapshots_kb_status" in migration
 ```
 
-- [ ] **Step 2: Write RED Postgres repository tests**
+- [x] **Step 2: Write RED Postgres repository tests**
 
 Create `backend/tests/workflow_definitions/test_postgres.py`:
 
@@ -2370,7 +2378,7 @@ def test_postgres_repository_lists_by_knowledge_base(provider: ConnectionProvide
     ]
 ```
 
-- [ ] **Step 3: Run RED migration and Postgres tests**
+- [x] **Step 3: Run RED migration and Postgres tests**
 
 Run:
 
@@ -2388,7 +2396,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_postgres
 
 Expected: FAIL during import because `PostgresWorkflowDefinitionRepository` does not exist, or SKIP if `DATABASE_URL` is unset.
 
-- [ ] **Step 4: Add migration**
+- [x] **Step 4: Add migration**
 
 Create `backend/database/migrations/versions/0021_workflow_definition_snapshots.py`:
 
@@ -2452,7 +2460,7 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS workflow_definition_snapshots")
 ```
 
-- [ ] **Step 5: Add Postgres repository**
+- [x] **Step 5: Add Postgres repository**
 
 Create `backend/workflow_definitions/adapters/postgres.py`:
 
@@ -2682,7 +2690,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 6: Switch dependency factory to Postgres when configured**
+- [x] **Step 6: Switch dependency factory to Postgres when configured**
 
 In `backend/api/dependencies.py`, add this import:
 
@@ -2710,7 +2718,7 @@ def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRe
     )
 ```
 
-- [ ] **Step 7: Run migration and repository tests**
+- [x] **Step 7: Run migration and repository tests**
 
 Run:
 
@@ -2728,7 +2736,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_postgres
 
 Expected: `3 passed`, or SKIP if `DATABASE_URL` is unset.
 
-- [ ] **Step 8: Regenerate migration snapshot**
+- [x] **Step 8: Regenerate migration snapshot**
 
 Run:
 
@@ -2738,7 +2746,7 @@ scripts/ci_migration_check.sh --update-snapshot
 
 Expected: command exits 0 and prints `OK: snapshot written:` with `backend/database/migrations/snapshots/head.sql`.
 
-- [ ] **Step 9: Verify migration replay has no drift**
+- [x] **Step 9: Verify migration replay has no drift**
 
 Run:
 
@@ -2749,7 +2757,7 @@ rg -n "CREATE TABLE public.workflow_definition_snapshots" backend/database/migra
 
 Expected: migration check exits 0 and prints `OK: migration replay clean`; `rg` finds the new snapshot table.
 
-- [ ] **Step 10: Commit Task 4**
+- [x] **Step 10: Commit Task 4**
 
 Run:
 
@@ -2767,7 +2775,7 @@ Expected: commit created with migration, snapshot, Postgres adapter, and tests.
 - Modify: `chili_app/src/lib/api/schema.ts`
 - Modify if needed: `chili_app/src/api/contracts.ts`
 
-- [ ] **Step 1: Export OpenAPI**
+- [x] **Step 1: Export OpenAPI**
 
 Run:
 
@@ -2777,7 +2785,7 @@ PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chi
 
 Expected: command exits 0 and `chili_app/openapi.json` includes `/knowledgebases/{knowledge_base_id}/workflow-definitions`.
 
-- [ ] **Step 2: Run frontend API codegen**
+- [x] **Step 2: Run frontend API codegen**
 
 Run:
 
@@ -2787,7 +2795,7 @@ cd chili_app && npm run codegen:api
 
 Expected: command exits 0 and `chili_app/src/lib/api/schema.ts` includes `WorkflowDefinitionResponse`.
 
-- [ ] **Step 3: Run focused backend tests**
+- [x] **Step 3: Run focused backend tests**
 
 Run:
 
@@ -2805,7 +2813,7 @@ uv run --project backend pytest \
 
 Expected: all selected tests pass.
 
-- [ ] **Step 4: Run integration test when Postgres is available**
+- [x] **Step 4: Run integration test when Postgres is available**
 
 Run with `DATABASE_URL` set:
 
@@ -2815,7 +2823,7 @@ uv run --project backend pytest backend/tests/workflow_definitions/test_postgres
 
 Expected: `3 passed`, or SKIP if `DATABASE_URL` is unset.
 
-- [ ] **Step 5: Run static checks**
+- [x] **Step 5: Run static checks**
 
 Run:
 
@@ -2826,7 +2834,7 @@ uv run --project backend pyright
 
 Expected: Ruff exits 0. Pyright reports `0 errors`.
 
-- [ ] **Step 6: Run generated contract drift check**
+- [x] **Step 6: Run generated contract drift check**
 
 Run:
 
@@ -2837,7 +2845,7 @@ git status --short
 
 Expected: `git diff --check` exits 0. `git status --short` shows only intended SAFE-CMS-014 files and generated contract files.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 Run:
 
@@ -2853,7 +2861,7 @@ Expected: commit created if generated files changed. If only backend generated f
 **Files:**
 - Modify only files identified by focused review findings.
 
-- [ ] **Step 1: Request focused code review**
+- [x] **Step 1: Request focused code review**
 
 Use `superpowers:requesting-code-review` with this prompt:
 
@@ -2873,7 +2881,7 @@ Do not suggest broad UI work or Flowise integration; those are out of scope for 
 
 Expected: review returns either no blockers or concrete file/line findings.
 
-- [ ] **Step 2: Fix review findings with TDD**
+- [x] **Step 2: Fix review findings with TDD**
 
 For each blocker, write a focused failing test in the nearest existing test file, run it to confirm RED, patch the production file, then rerun that test to confirm GREEN.
 
@@ -2885,7 +2893,7 @@ uv run --project backend pytest backend/tests/api/test_workflow_definitions_rout
 
 Expected: the new or updated test fails before the fix and passes after the fix.
 
-- [ ] **Step 3: Run final verification**
+- [x] **Step 3: Run final verification**
 
 Run:
 
@@ -2906,7 +2914,7 @@ git diff --check
 
 Expected: tests pass, Ruff exits 0, Pyright reports `0 errors`, and `git diff --check` exits 0.
 
-- [ ] **Step 4: Commit review fixes**
+- [x] **Step 4: Commit review fixes**
 
 Run:
 
@@ -2917,7 +2925,7 @@ git commit -m "Address SAFE-CMS-014 workflow definition review"
 
 Expected: commit created only if review fixes changed files. If there are no review findings, skip this commit and record that no changes were needed.
 
-- [ ] **Step 5: Final branch status**
+- [x] **Step 5: Final branch status**
 
 Run:
 

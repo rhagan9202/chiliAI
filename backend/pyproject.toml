@@ -92,10 +92,13 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*", "connectors*", "readiness*", "workflow_definitions*"]
+           "conversations*", "connectors*", "governance*", "readiness*",
+           "workflow_definitions*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+pythonpath = ["."]
 markers = [
     "integration: tests that require external services or optional dependencies",
     "e2e: end-to-end pipeline tests that exercise multiple modules through public APIs",

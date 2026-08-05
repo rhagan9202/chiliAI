@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.contracts import PlaybookImportRequestPayload, PlaybookPublishRequestPayload
 from api.dependencies import (
     get_domain_config,
+    get_governance_eval_repository,
     get_knowledge_base_repository,
     get_playbook_repository,
     get_playbook_service,
@@ -20,6 +21,13 @@ from api.middleware.auth import User, get_current_user
 from api.routers import playbooks as playbooks_router
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig, FraudPlaybookConfig
+from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
+from governance.models import (
+    GovernanceBaselineDecision,
+    GovernanceDriftSummary,
+    GovernanceEvalRun,
+    GovernanceMetricResult,
+)
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from playbooks.adapters.in_memory import InMemoryPlaybookRepository
 from playbooks.models import PlaybookImportArtifact, PlaybookSnapshot
@@ -336,6 +344,59 @@ def test_publish_playbook_requires_admin_and_uses_authenticated_actor() -> None:
     assert import_response.status_code == 403
 
 
+def test_publish_playbook_requires_approved_governance_eval_baseline() -> None:
+    config = _domain_config(auth_enabled=True)
+    kb_repository = _repository_with_kbs()
+    repository, service = _repository_service(config)
+    eval_repository = InMemoryGovernanceEvalRepository()
+    app = _playbook_api_app(
+        config=config,
+        kb_repository=kb_repository,
+        repository=repository,
+        service=service,
+        eval_repository=eval_repository,
+        user=_admin(),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/knowledgebases/kb-1/playbooks/{SEED_PLAYBOOK_ID}/publish",
+            json={"version": "v1"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Approved governance eval required for playbook "
+        f"{SEED_PLAYBOOK_ID}:v1."
+    )
+
+
+def test_publish_playbook_allows_approved_governance_eval_baseline() -> None:
+    config = _domain_config(auth_enabled=True)
+    kb_repository = _repository_with_kbs()
+    repository, service = _repository_service(config)
+    eval_repository = InMemoryGovernanceEvalRepository(
+        [_approved_eval_run(playbook_id=SEED_PLAYBOOK_ID, version="v1")]
+    )
+    app = _playbook_api_app(
+        config=config,
+        kb_repository=kb_repository,
+        repository=repository,
+        service=service,
+        eval_repository=eval_repository,
+        user=_admin(),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/knowledgebases/kb-1/playbooks/{SEED_PLAYBOOK_ID}/publish",
+            json={"version": "v1"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["playbook_id"] == SEED_PLAYBOOK_ID
+
+
 def test_playbook_routes_hide_unauthorized_kb() -> None:
     config = _domain_config()
     kb_repository = _repository_with_kbs()
@@ -408,3 +469,60 @@ def test_export_import_round_trips_domain_artifact() -> None:
     assert [playbook.id for playbook in artifact.playbooks] == [SEED_PLAYBOOK_ID]
     assert imported.domain_name == "medicare_fraud"
     assert imported.imported_count == 1
+
+
+def _playbook_api_app(
+    *,
+    config: DomainConfig,
+    kb_repository: InMemoryKnowledgeBaseRepository,
+    repository: InMemoryPlaybookRepository,
+    service: PlaybookService,
+    eval_repository: InMemoryGovernanceEvalRepository,
+    user: User,
+) -> FastAPI:
+    app = create_app()
+    app.dependency_overrides[get_domain_config] = lambda: config
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
+    app.dependency_overrides[get_playbook_repository] = lambda: repository
+    app.dependency_overrides[get_playbook_service] = lambda: service
+    app.dependency_overrides[get_governance_eval_repository] = lambda: eval_repository
+    return app
+
+
+def _approved_eval_run(*, playbook_id: str, version: str) -> GovernanceEvalRun:
+    return GovernanceEvalRun(
+        run_id=f"kb-1:playbook:{playbook_id}:{version}:tn-demo-1pct",
+        knowledge_base_id="kb-1",
+        artifact_kind="playbook",
+        artifact_id=playbook_id,
+        artifact_version=version,
+        baseline_version="baseline-v1",
+        dataset_id="tn-demo-1pct",
+        status="approved",
+        metrics=[
+            GovernanceMetricResult(
+                name="precision",
+                baseline_value=0.72,
+                candidate_value=0.78,
+                threshold=0.0,
+                direction="higher",
+                delta=0.06,
+                passed=True,
+            )
+        ],
+        drift_summary=GovernanceDriftSummary(
+            metric_count=1,
+            failed_metric_count=0,
+            max_abs_delta=0.06,
+        ),
+        dataset_source_refs=["explanation_review:pack-1:narrative:narrative"],
+        created_by="model-owner-1",
+        created_at=BASE_TIME,
+        approval=GovernanceBaselineDecision(
+            decision="approved",
+            decided_by="supervisor-1",
+            decided_at=BASE_TIME,
+            rationale="Approved baseline.",
+        ),
+    )

@@ -198,6 +198,9 @@ from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from analytics.score_runs.service import ScoreRunService, create_score_run_service
+from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
+from governance.adapters.postgres import PostgresGovernanceEvalRepository
+from governance.repository import GovernanceEvalRepository
 from playbooks.adapters.in_memory import InMemoryPlaybookRepository
 from playbooks.adapters.postgres import PostgresPlaybookRepository
 from playbooks.repository import PlaybookRepository
@@ -241,7 +244,7 @@ from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
 from graph.protocols import GraphServiceProtocol
 from graph.service import create_graph_service
-from governance.service import GovernanceReportService
+from governance.service import GovernanceEvalService, GovernanceReportService
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -388,6 +391,8 @@ __all__ = [
     "get_graph_repository",
     "get_graph_service",
     "get_governance_report_service",
+    "get_governance_eval_repository",
+    "get_governance_eval_service",
     "get_identity_decision_service",
     "get_identity_link_repository",
     "get_identity_resolution_service",
@@ -2774,6 +2779,29 @@ def get_workflow_definition_repository(request: Request) -> WorkflowDefinitionRe
     )
 
 
+def get_governance_eval_repository(request: Request) -> GovernanceEvalRepository:
+    """Return the SAFE-CMS-020 governance evaluation repository."""
+
+    return _memoize_config_derived(
+        request.app,
+        "governance_eval_repository",
+        lambda: (
+            PostgresGovernanceEvalRepository(provider)
+            if (provider := get_connection_provider()) is not None
+            else InMemoryGovernanceEvalRepository()
+        ),
+        guard=lambda value: isinstance(value, GovernanceEvalRepository),
+    )
+
+
+def get_governance_eval_service(
+    repository: GovernanceEvalRepository = Depends(get_governance_eval_repository),
+) -> GovernanceEvalService:
+    """Return the SAFE-CMS-020 governance evaluation service."""
+
+    return GovernanceEvalService(repository=repository)
+
+
 def get_governance_report_service(
     playbook_repository: PlaybookRepository = Depends(get_playbook_repository),
     workflow_definition_repository: WorkflowDefinitionRepository = Depends(
@@ -2782,6 +2810,7 @@ def get_governance_report_service(
     explanation_review_service: ExplanationReviewService = Depends(
         get_explanation_review_service
     ),
+    eval_repository: GovernanceEvalRepository = Depends(get_governance_eval_repository),
 ) -> GovernanceReportService:
     """Return the SAFE-CMS-020 governance report service."""
 
@@ -2789,6 +2818,7 @@ def get_governance_report_service(
         playbook_repository=playbook_repository,
         workflow_definition_repository=workflow_definition_repository,
         explanation_review_service=explanation_review_service,
+        eval_repository=eval_repository,
     )
 
 
@@ -3521,6 +3551,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "playbook_repository",
     "connector_repository",
     "workflow_definition_repository",
+    "governance_eval_repository",
     "risk_projection_repository",
 )
 

@@ -895,6 +895,9 @@ Before implementation starts, create or update:
   - Added to `docs/project/planning/backlog.md` on 2026-08-02.
 - [x] Draft PI 1 implementation specs for Sprints 1-4.
   - Added `docs/superpowers/specs/2026-08-02-safe-cms-pi1-analytics-foundation-design.md`.
-- [ ] Run a fresh route/API/component inventory before Sprint 1 implementation.
-- [ ] Select demo KB/data subset and expected CMS fraud scenarios.
-- [ ] Assign owner/reviewer/QA roles for PI 1.
+- [x] Run a fresh route/API/component inventory before Sprint 1 implementation.
+  - Completed during SAFE-CMS-001 implementation and PI 1 foundation planning before the 2026-08-02 sprint branch work.
+- [x] Select demo KB/data subset and expected CMS fraud scenarios.
+  - Completed through the CMS DE-SynPUF/TN demo path and documented in `docs/demo/README.md`, `docs/demo/presenter-script.md`, and `docs/testing/DATA.md`.
+- [x] Assign owner/reviewer/QA roles for PI 1.
+  - Completed through the surge operating model in Section 13: planner, explorer, worker, reviewer, and QA/controller roles.

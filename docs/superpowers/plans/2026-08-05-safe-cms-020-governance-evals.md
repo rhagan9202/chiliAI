@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the first SAFE-CMS-020 governance surface: a KB-scoped release-readiness report that inventories published playbook versions, approved workflow definitions, pending approvals, challenged explanations, and release blockers.
+**Goal:** Add the SAFE-CMS-020 governance surface: a KB-scoped release-readiness report that inventories published playbook versions, approved workflow definitions, pending approvals, challenged explanations, persisted candidate-vs-baseline eval runs, drift summaries, baseline decisions, affected alert/case linkage, and release blockers.
 
-**Architecture:** Build a new backend `governance` module that composes existing playbook, workflow-definition, and explanation-review repositories without introducing a new persistence store in this slice. Expose a viewer-gated `GET /knowledgebases/{knowledge_base_id}/governance/report` route, regenerate frontend contracts, then add a compact supervisor dashboard route driven by the active knowledge base.
+**Architecture:** Build a backend `governance` module that composes existing playbook, workflow-definition, and explanation-review repositories, plus a durable governance-eval repository for candidate-vs-baseline results. Expose viewer-gated report/list routes, analyst candidate registration, and admin approval gates under `/knowledgebases/{knowledge_base_id}/governance`, regenerate frontend contracts, then render compact supervisor dashboard evidence driven by the active knowledge base.
 
 **Tech Stack:** Python 3.12, FastAPI, Pydantic, pytest, pyright, React 19, TypeScript, Vite 8, TanStack Query, Vitest, Playwright.
 
@@ -32,11 +32,16 @@
 - Modify `backend/config/defaults/medicare_fraud.yaml` and `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml`: add supervisor-visible Governance page.
 - Modify `backend/tests/config/test_schema.py`: assert CMS packs expose governance only to supervisor.
 - Modify `backend/README.md`, `chili_app/README.md`, `docs/architecture.md`, and this plan with final status and usage notes.
+- Create `backend/governance/repository.py`, `backend/governance/adapters/in_memory.py`, and `backend/governance/adapters/postgres.py`: persisted eval-run repository.
+- Create `backend/database/migrations/versions/0022_governance_eval_runs.py` and update `backend/database/migrations/snapshots/head.sql`.
+- Create `backend/tests/governance/test_eval_service.py`, `backend/tests/governance/test_postgres.py`, and `backend/tests/database/test_governance_evals_migration.py`.
+- Modify `chili_app/src/pages/GovernancePage.tsx` and `chili_app/src/pages/__tests__/GovernancePage.test.tsx`: surface eval-run status, metric deltas, drift summaries, and approval state.
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 5 implementation, Task 6 final verification, focused review fixes, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
-- Remaining work: none; merged to local `prod` and pushed to `origin/prod` at `58ff388`.
+- Completed in the foundation pass: Tasks 1 through 5 implementation, Task 6 final verification, focused review fixes, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
+- Red-gate follow-up completed in `safe-cms-020-eval-baselines`: persisted governance eval runs, metric pass/fail comparisons, drift summaries, baseline approval decisions, release blockers for pending/failed candidates, API routes, generated contracts, migration replay, and dashboard eval evidence.
+- Crash-resume verification completed on 2026-08-05: focused backend tests, migration/config tests, Ruff, Pyright, full frontend Vitest, frontend lint/build, OpenAPI/codegen regeneration, and live governance e2e smoke all passed. Remaining work: commit and `prod` sync for the red-gate follow-up.
 
 ---
 
