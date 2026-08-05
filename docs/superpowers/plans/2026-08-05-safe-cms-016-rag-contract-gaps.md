@@ -25,8 +25,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1, 2, 3, and 4.
-- Remaining work: Task 5.
+- Completed in this pass: Tasks 1, 2, 3, 4, and 5.
+- Remaining work: none.
 
 ---
 
@@ -276,7 +276,7 @@ git commit -m "feat: add workflow rag capability adapter"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-05-safe-cms-016-rag-contract-gaps.md`
 
-- [ ] **Step 1: Run backend gates**
+- [x] **Step 1: Run backend gates**
 
 Run:
 
@@ -287,7 +287,7 @@ uv run --project backend ruff check backend
 uv run --project backend pyright
 ```
 
-- [ ] **Step 2: Run frontend gates**
+- [x] **Step 2: Run frontend gates**
 
 Run:
 
@@ -297,7 +297,7 @@ npm run test:run
 npm run build
 ```
 
-- [ ] **Step 3: Run migration/schema and whitespace gates**
+- [x] **Step 3: Run migration/schema and whitespace gates**
 
 Run:
 
@@ -306,7 +306,7 @@ scripts/ci_migration_check.sh
 git diff --check
 ```
 
-- [ ] **Step 4: Commit final plan status**
+- [x] **Step 4: Commit final plan status**
 
 Run:
 
