@@ -22,6 +22,7 @@ from connectors.models import (
     redact_credentials_ref,
 )
 from connectors.repository import ConnectorRepositoryProtocol
+from connectors.service import ConnectorService
 
 __all__ = [
     "ConnectorConfigValue",
@@ -34,6 +35,7 @@ __all__ = [
     "ConnectorQuarantineRecordCreate",
     "ConnectorRepositoryProtocol",
     "ConnectorSchedule",
+    "ConnectorService",
     "ConnectorScheduleMode",
     "ConnectorSourceType",
     "ConnectorStatus",

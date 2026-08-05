@@ -28,8 +28,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Task 1.
-- Remaining work: Tasks 2 through 5.
+- Completed in this pass: Tasks 1 and 2.
+- Remaining work: Tasks 3 through 5.
 
 ---
 
@@ -188,21 +188,21 @@ git commit -m "feat: add connector models and repository"
 - Create: `backend/connectors/service.py`
 - Test: `backend/tests/connectors/test_service.py`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Create service tests proving registration validates KB scope, duplicate connector ids are idempotent only when the definition matches, `start_sync()` reuses an existing run with the same idempotency key, and `complete_sync()` records counters and ingest correlation.
 
-- [ ] **Step 2: Run focused red tests**
+- [x] **Step 2: Run focused red tests**
 
 Run: `uv run --project backend pytest backend/tests/connectors/test_service.py -q`
 
 Expected: FAIL because `connectors.service` does not exist.
 
-- [ ] **Step 3: Implement `ConnectorService`**
+- [x] **Step 3: Implement `ConnectorService`**
 
 The service wraps `ConnectorRepositoryProtocol`, exposes `register_connector()`, `list_connectors()`, `start_sync()`, `complete_sync()`, `fail_sync()`, and `quarantine_record()`, and never returns raw credentials beyond `credentials_ref`.
 
-- [ ] **Step 4: Run focused green tests and lint**
+- [x] **Step 4: Run focused green tests and lint**
 
 Run:
 
@@ -213,7 +213,7 @@ uv run --project backend ruff check backend/connectors backend/tests/connectors
 
 Expected: PASS and Ruff clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
