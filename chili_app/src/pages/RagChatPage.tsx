@@ -19,7 +19,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { resolveRagCitationTarget } from '../lib/citationTargets'
-import { buildRagMessageFilters, parseRagLaunchContext } from '../lib/ragContext'
+import { buildRagScope, parseRagLaunchContext } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
 import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { relativeAge } from '../utils/relativeTime'
@@ -73,6 +73,7 @@ export function RagChatPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const launchContext = useMemo(() => parseRagLaunchContext(searchParams), [searchParams])
+  const ragScope = useMemo(() => buildRagScope(launchContext), [launchContext])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const launchQuestion = launchContext.question ?? ''
   const [draftState, setDraftState] = useState(() => ({
@@ -235,13 +236,13 @@ export function RagChatPage() {
                         ? contextTitleBySource[launchContext.source]
                         : 'Entity investigation',
                     content: contextQuestion,
-                    filters: buildRagMessageFilters(launchContext),
+                    filters: ragScope.filters,
                   },
                   {
                     onError: (error) => {
                       if (isStartConversationPartialError(error)) {
                         setConversationId(error.createdConversation.id)
-                        setRetryFilters(buildRagMessageFilters(launchContext))
+                        setRetryFilters(ragScope.filters)
                         setShowContextualRetryMessage(true)
                       }
                     },
@@ -270,6 +271,7 @@ export function RagChatPage() {
 
       {contextChips.length > 0 ? (
         <div className="alert-row-card__meta" aria-label="Launch context">
+          <Chip label={ragScope.label} tone="info" />
           {contextChips.map((chip) => (
             <Chip key={chip} label={chip} tone="default" />
           ))}
@@ -415,7 +417,7 @@ export function RagChatPage() {
               addMessageMutation.mutate({
                 content: draft,
                 include_graph_context: true,
-              filters: retryFilters ?? {},
+                filters: retryFilters ?? {},
             })
               setDraftForLaunchQuestion('')
               setRetryFilters(null)

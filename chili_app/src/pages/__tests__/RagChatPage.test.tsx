@@ -326,6 +326,7 @@ describe('RagChatPage', () => {
     expect(screen.getByText('alert-1')).toBeInTheDocument()
     expect(screen.getByText('provider-204')).toBeInTheDocument()
     expect(screen.getByText('evidence-1')).toBeInTheDocument()
+    expect(screen.getByText('Alert alert-1')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /start with this context/i }))
 

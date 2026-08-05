@@ -25,8 +25,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 and 2.
-- Remaining work: Tasks 3 through 5.
+- Completed in this pass: Tasks 1, 2, and 3.
+- Remaining work: Tasks 4 and 5.
 
 ---
 
@@ -201,27 +201,27 @@ git commit -m "feat: add typed rag scope helper"
 - Modify: `chili_app/src/pages/RagChatPage.tsx`
 - Test: `chili_app/src/pages/__tests__/RagChatPage.test.tsx`
 
-- [ ] **Step 1: Write failing active-scope test**
+- [x] **Step 1: Write failing active-scope test**
 
 Add a test that loads `/rag-chat?kb=kb-1&source=alert&alert=alert-1&entity=provider-204` and expects visible scope text `Alert alert-1`.
 
-- [ ] **Step 2: Run focused red test**
+- [x] **Step 2: Run focused red test**
 
 Run: `npm run test:run -- src/pages/__tests__/RagChatPage.test.tsx -t "active scope"`
 
 Expected: FAIL because the page does not expose the active scope.
 
-- [ ] **Step 3: Render active scope from `buildRagScope()`**
+- [x] **Step 3: Render active scope from `buildRagScope()`**
 
 Use the parsed launch context to build scope once and render a compact scope chip near the chat toolbar/input.
 
-- [ ] **Step 4: Run focused green tests**
+- [x] **Step 4: Run focused green tests**
 
 Run: `npm run test:run -- src/pages/__tests__/RagChatPage.test.tsx`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
