@@ -35,8 +35,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 and 2 implementation with focused verification.
-- Remaining work: Task 2 review checkpoint, then Tasks 3 through 6.
+- Completed in this pass: Tasks 1 and 2 implementation, focused verification, and Task 2 contract review fix.
+- Remaining work: Task 2 review re-check, then Tasks 3 through 6.
 
 ---
 
@@ -182,6 +182,7 @@ git commit -m "feat: expose governance report API"
 Result:
 
 - Commit `5206036 feat: expose governance report API`.
+- Code-quality review found stale generated OpenAPI/frontend contracts, missing `api.contracts.__all__` exports, and missing Pyright include scope. Fixed in commit `1265473 fix: close governance API contract gates`; verification: 24 focused backend tests passed, Ruff clean, Pyright 0 errors/warnings, and `npm run build` passed.
 
 ### Task 3: Frontend Governance API And Dashboard
 
