@@ -92,7 +92,7 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*", "connectors*", "workflow_definitions*"]
+           "conversations*", "connectors*", "readiness*", "workflow_definitions*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -150,6 +150,7 @@ include = [
     "monitoring",
     "playbooks",
     "policy",
+    "readiness",
     "records",
     "shared/metrics.py",
     "vectorstore",
@@ -170,6 +171,7 @@ include = [
     "tests/api/test_monitoring_source_selection.py",
     "tests/api/test_policy_registry.py",
     "tests/api/test_production_guardrail.py",
+    "tests/api/test_readiness_router.py",
     "tests/api/test_records_router.py",
     "tests/api/test_ws_router.py",
     "tests/api/test_workflow_projection.py",
@@ -187,6 +189,7 @@ include = [
     "tests/monitoring/test_postgres_observation_source.py",
     "tests/playbooks",
     "tests/policy",
+    "tests/readiness",
     "tests/records",
     "tests/shared/test_metrics.py",
     "tests/vectorstore",

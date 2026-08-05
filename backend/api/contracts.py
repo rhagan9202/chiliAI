@@ -1040,6 +1040,62 @@ class ConnectorQuarantineListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+ReadinessComponentStatusValue = Literal["ready", "blocked", "warning", "unknown"]
+
+
+class ReadinessIssueResponse(BaseModel):
+    """One actionable readiness blocker or warning."""
+
+    component: str
+    code: str
+    message: str
+    action: str | None = None
+
+
+class ReadinessComponentResponse(BaseModel):
+    """Readiness state for one subsystem."""
+
+    status: ReadinessComponentStatusValue
+    label: str
+    summary: str
+    blockers: list[ReadinessIssueResponse] = Field(
+        default_factory=lambda: cast(list[ReadinessIssueResponse], [])
+    )
+    warnings: list[ReadinessIssueResponse] = Field(
+        default_factory=lambda: cast(list[ReadinessIssueResponse], [])
+    )
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReadinessKnowledgeBaseSummaryResponse(BaseModel):
+    """Knowledge-base context in the readiness response."""
+
+    id: str
+    name: str
+    domain: str | None = None
+    status: str
+    document_count: int = Field(ge=0)
+    entity_count: int = Field(ge=0)
+    relationship_count: int = Field(ge=0)
+    updated_at: datetime | None = None
+    created_at: datetime
+
+
+class KnowledgeBaseReadinessResponse(BaseModel):
+    """Aggregated readiness for one active knowledge base."""
+
+    knowledge_base: ReadinessKnowledgeBaseSummaryResponse
+    active_domain_name: str
+    ready: bool
+    components: dict[str, ReadinessComponentResponse]
+    blockers: list[ReadinessIssueResponse] = Field(
+        default_factory=lambda: cast(list[ReadinessIssueResponse], [])
+    )
+    warnings: list[ReadinessIssueResponse] = Field(
+        default_factory=lambda: cast(list[ReadinessIssueResponse], [])
+    )
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -2068,6 +2124,7 @@ __all__ = [
     "HousingInstallationsResponse",
     "HousingOverviewResponse",
     "HousingPortfolioSummaryResponse",
+    "KnowledgeBaseReadinessResponse",
     "PageInfo",
     "PolicyCitation",
     "PolicyCitationResponse",
@@ -2094,6 +2151,10 @@ __all__ = [
     "PlaybookSnapshotSourceValue",
     "PlaybookStatusValue",
     "PlaybookWorkflowStepResponse",
+    "ReadinessComponentResponse",
+    "ReadinessComponentStatusValue",
+    "ReadinessIssueResponse",
+    "ReadinessKnowledgeBaseSummaryResponse",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskProjectionItemResponse",

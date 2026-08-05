@@ -1593,6 +1593,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Knowledge Base Readiness
+         * @description Return aggregated readiness for one knowledge base.
+         */
+        get: operations["get_knowledge_base_readiness_knowledgebases__knowledge_base_id__readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/score-runs": {
         parameters: {
             query?: never;
@@ -5002,6 +5022,25 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * KnowledgeBaseReadinessResponse
+         * @description Aggregated readiness for one active knowledge base.
+         */
+        KnowledgeBaseReadinessResponse: {
+            /** Active Domain Name */
+            active_domain_name: string;
+            /** Blockers */
+            blockers?: components["schemas"]["ReadinessIssueResponse"][];
+            /** Components */
+            components: {
+                [key: string]: components["schemas"]["ReadinessComponentResponse"];
+            };
+            knowledge_base: components["schemas"]["ReadinessKnowledgeBaseSummaryResponse"];
+            /** Ready */
+            ready: boolean;
+            /** Warnings */
+            warnings?: components["schemas"]["ReadinessIssueResponse"][];
+        };
+        /**
          * LlmConfig
          * @description Configuration for selecting the LLM provider and model.
          */
@@ -6096,6 +6135,70 @@ export interface components {
              * @default 5
              */
             top_k: number;
+        };
+        /**
+         * ReadinessComponentResponse
+         * @description Readiness state for one subsystem.
+         */
+        ReadinessComponentResponse: {
+            /** Blockers */
+            blockers?: components["schemas"]["ReadinessIssueResponse"][];
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "blocked" | "warning" | "unknown";
+            /** Summary */
+            summary: string;
+            /** Warnings */
+            warnings?: components["schemas"]["ReadinessIssueResponse"][];
+        };
+        /**
+         * ReadinessIssueResponse
+         * @description One actionable readiness blocker or warning.
+         */
+        ReadinessIssueResponse: {
+            /** Action */
+            action?: string | null;
+            /** Code */
+            code: string;
+            /** Component */
+            component: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * ReadinessKnowledgeBaseSummaryResponse
+         * @description Knowledge-base context in the readiness response.
+         */
+        ReadinessKnowledgeBaseSummaryResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Count */
+            document_count: number;
+            /** Domain */
+            domain?: string | null;
+            /** Entity Count */
+            entity_count: number;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Relationship Count */
+            relationship_count: number;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * RecordEntityMapping
@@ -10380,6 +10483,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_knowledge_base_readiness_knowledgebases__knowledge_base_id__readiness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseReadinessResponse"];
                 };
             };
             /** @description Validation Error */

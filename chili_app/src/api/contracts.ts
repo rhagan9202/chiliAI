@@ -117,6 +117,15 @@ export type PlaybookExportResponse = Schemas['PlaybookExportResponse']
 export type CapabilityListResponse = RequireFields<Schemas['CapabilityListResponse'], 'items'>
 export type CapabilityManifestResponse = Schemas['CapabilityManifestResponse']
 export type CapabilitySideEffectClass = Schemas['CapabilityManifestResponse']['side_effect_class']
+export type KnowledgeBaseReadinessResponse = RequireFields<
+  Schemas['KnowledgeBaseReadinessResponse'],
+  'blockers' | 'warnings'
+>
+export type ReadinessComponentResponse = RequireFields<
+  Schemas['ReadinessComponentResponse'],
+  'blockers' | 'warnings'
+>
+export type ReadinessIssueResponse = Schemas['ReadinessIssueResponse']
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']

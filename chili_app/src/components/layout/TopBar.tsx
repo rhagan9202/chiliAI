@@ -1,4 +1,5 @@
 import { PanelRightOpen } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { getDefaultRole } from '../../app/access'
 import type { DomainConfig, DomainFeatures } from '../../api/contracts'
@@ -10,6 +11,7 @@ type TopBarProps = {
   loading: boolean
   pageTitleOverride?: string
   unavailable: boolean
+  workspaceControl?: ReactNode
 }
 
 export function TopBar({
@@ -18,6 +20,7 @@ export function TopBar({
   loading,
   pageTitleOverride,
   unavailable,
+  workspaceControl,
 }: TopBarProps) {
   const toggleAiPanel = useUiStore((state) => state.toggleAiPanel)
   const selectedRole = useUiStore((state) => state.selectedRole)
@@ -38,6 +41,7 @@ export function TopBar({
         <div className="app-topbar__title">{title}</div>
       </div>
       <div className="app-topbar__actions">
+        {workspaceControl}
         {roleOptions.length > 0 ? (
           <label className="app-topbar__select-wrap">
             <span className="app-topbar__search-label">Active role</span>

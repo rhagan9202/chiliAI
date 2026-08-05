@@ -3,19 +3,26 @@ import { Outlet, useLocation } from 'react-router'
 
 import { useDomainConfig } from '../../api/config'
 import { useDomainFeatures } from '../../api/config'
+import { useKnowledgeBaseReadiness } from '../../api/readiness'
 import { useRealtimeWorkspaceStream } from '../../api/realtime'
 import { getLandingRoute, getRouteBlockReason, resolveRole } from '../../app/access'
+import { useActiveKnowledgeBase } from '../../hooks/useActiveKnowledgeBase'
 import { readStoredRole, useUiStore } from '../../stores/uiStore'
 import { ToastContainer } from '../common/Toast'
 import { AiAssistantPanel } from './AiAssistantPanel'
 import { RouteNotAvailable } from './RouteNotAvailable'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { WorkspaceControl } from './WorkspaceControl'
 import './layout.css'
 
 export function AppShell() {
   const domainConfigQuery = useDomainConfig()
   const domainFeaturesQuery = useDomainFeatures()
+  const activeKnowledgeBase = useActiveKnowledgeBase()
+  const readinessQuery = useKnowledgeBaseReadiness(
+    activeKnowledgeBase.activeKnowledgeBaseId,
+  )
   const aiPanelOpen = useUiStore((state) => state.aiPanelOpen)
   const selectedRole = useUiStore((state) => state.selectedRole)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
@@ -87,6 +94,18 @@ export function AppShell() {
           loading={domainConfigQuery.isLoading}
           pageTitleOverride={pageTitleOverride}
           unavailable={domainConfigQuery.isError}
+          workspaceControl={
+            <WorkspaceControl
+              activeKnowledgeBaseId={activeKnowledgeBase.activeKnowledgeBaseId}
+              isError={activeKnowledgeBase.isError}
+              isLoading={activeKnowledgeBase.isLoading}
+              knowledgeBases={activeKnowledgeBase.knowledgeBases}
+              onSelectKnowledgeBase={activeKnowledgeBase.setActiveKnowledgeBase}
+              readiness={readinessQuery.data}
+              readinessError={readinessQuery.isError}
+              readinessLoading={readinessQuery.isLoading}
+            />
+          }
         />
         <main className="app-shell__main" aria-label="chiliAI workspace">
           {routeBlocked ? (
