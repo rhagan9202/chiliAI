@@ -6674,6 +6674,51 @@
         "title": "KnowledgeBase",
         "type": "object"
       },
+      "KnowledgeBaseReadinessResponse": {
+        "description": "Aggregated readiness for one active knowledge base.",
+        "properties": {
+          "active_domain_name": {
+            "title": "Active Domain Name",
+            "type": "string"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessIssueResponse"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReadinessComponentResponse"
+            },
+            "title": "Components",
+            "type": "object"
+          },
+          "knowledge_base": {
+            "$ref": "#/components/schemas/ReadinessKnowledgeBaseSummaryResponse"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessIssueResponse"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "knowledge_base",
+          "active_domain_name",
+          "ready",
+          "components"
+        ],
+        "title": "KnowledgeBaseReadinessResponse",
+        "type": "object"
+      },
       "LlmConfig": {
         "description": "Configuration for selecting the LLM provider and model.",
         "properties": {
@@ -8913,6 +8958,161 @@
           }
         },
         "title": "RagConfig",
+        "type": "object"
+      },
+      "ReadinessComponentResponse": {
+        "description": "Readiness state for one subsystem.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessIssueResponse"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked",
+              "warning",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessIssueResponse"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "label",
+          "summary"
+        ],
+        "title": "ReadinessComponentResponse",
+        "type": "object"
+      },
+      "ReadinessIssueResponse": {
+        "description": "One actionable readiness blocker or warning.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "code",
+          "message"
+        ],
+        "title": "ReadinessIssueResponse",
+        "type": "object"
+      },
+      "ReadinessKnowledgeBaseSummaryResponse": {
+        "description": "Knowledge-base context in the readiness response.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_count": {
+            "minimum": 0.0,
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "entity_count": {
+            "minimum": 0.0,
+            "title": "Entity Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relationship_count": {
+            "minimum": 0.0,
+            "title": "Relationship Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "document_count",
+          "entity_count",
+          "relationship_count",
+          "created_at"
+        ],
+        "title": "ReadinessKnowledgeBaseSummaryResponse",
         "type": "object"
       },
       "RecordEntityMapping": {
@@ -17288,6 +17488,49 @@
         "summary": "Get Playbook Version",
         "tags": [
           "playbooks"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/readiness": {
+      "get": {
+        "description": "Return aggregated readiness for one knowledge base.",
+        "operationId": "get_knowledge_base_readiness_knowledgebases__knowledge_base_id__readiness_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBaseReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Knowledge Base Readiness",
+        "tags": [
+          "readiness"
         ]
       }
     },

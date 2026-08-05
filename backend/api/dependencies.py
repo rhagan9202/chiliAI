@@ -111,6 +111,7 @@ from capabilities.service import (
 from connectors.adapters.in_memory import InMemoryConnectorRepository
 from connectors.repository import ConnectorRepositoryProtocol
 from connectors.service import ConnectorService
+from readiness.service import ReadinessService
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
 from policy.adapters.postgres import PostgresPolicyItemRepository
 from policy.adapters.protocols import PolicyItemRepository
@@ -411,6 +412,7 @@ __all__ = [
     "get_policy_item_list_payload",
     "get_policy_repository",
     "get_policy_service",
+    "get_readiness_service",
     "get_remote_fetcher",
     "get_risk_projection_repository",
     "get_risk_projection_rebuild_source",
@@ -3347,6 +3349,30 @@ def get_workflow_definition_service(
         run_store,
         audit_service,
         capability_registry=capability_registry,
+    )
+
+
+def get_readiness_service(
+    knowledge_base_repository: KnowledgeBaseRepository = Depends(
+        get_knowledge_base_repository
+    ),
+    connector_service: ConnectorService = Depends(get_connector_service),
+    workflow_definition_service: WorkflowDefinitionService = Depends(
+        get_workflow_definition_service
+    ),
+    capability_registry: CapabilityRegistryService = Depends(
+        get_capability_registry_service
+    ),
+    config: DomainConfig = Depends(get_domain_config),
+) -> ReadinessService:
+    """Return the SAFE-CMS-018 readiness aggregation service."""
+
+    return ReadinessService(
+        knowledge_base_repository=knowledge_base_repository,
+        connector_service=connector_service,
+        workflow_definition_service=workflow_definition_service,
+        capability_registry=capability_registry,
+        active_domain_name=config.domain.name,
     )
 
 

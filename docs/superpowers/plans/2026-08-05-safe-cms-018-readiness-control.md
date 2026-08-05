@@ -31,8 +31,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Task 1.
-- Remaining work: Tasks 2 through 5.
+- Completed in this pass: Tasks 1 and 2.
+- Remaining work: Tasks 3 through 5.
 
 ---
 
@@ -296,7 +296,7 @@ git commit -m "feat: add readiness aggregation service"
 - Test: `backend/tests/api/test_readiness_router.py`
 - Generated: `chili_app/openapi.json`, `chili_app/src/lib/api/schema.ts`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Add tests for:
 
@@ -305,13 +305,13 @@ Add tests for:
 - response contains no credential references;
 - missing KB returns `404`.
 
-- [ ] **Step 2: Run focused red API tests**
+- [x] **Step 2: Run focused red API tests**
 
 Run: `uv run --project backend pytest backend/tests/api/test_readiness_router.py -q`
 
 Expected: FAIL with missing router or `404`.
 
-- [ ] **Step 3: Implement API contracts, dependency, and router**
+- [x] **Step 3: Implement API contracts, dependency, and router**
 
 Add wire models mirroring `ReadinessResponse`, then add:
 
@@ -321,7 +321,7 @@ GET /knowledgebases/{knowledge_base_id}/readiness
 
 The route must use `Depends(require_role("viewer"))`, the same KB-scope 404 behavior as capability/workflow routes, and `ReadinessService`.
 
-- [ ] **Step 4: Regenerate contracts**
+- [x] **Step 4: Regenerate contracts**
 
 Run:
 
@@ -330,7 +330,7 @@ uv run --project backend python -m tools.export_openapi --output chili_app/opena
 npm run codegen:api
 ```
 
-- [ ] **Step 5: Run focused green API tests and app route tests**
+- [x] **Step 5: Run focused green API tests and app route tests**
 
 Run:
 
@@ -340,7 +340,7 @@ uv run --project backend ruff check backend/api/routers/readiness.py backend/api
 uv run --project backend pyright
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
