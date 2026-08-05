@@ -35,8 +35,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 3 implementation, focused verification, Task 2 contract review fix, and frontend governance dashboard wiring.
-- Remaining work: Tasks 4 through 6.
+- Completed in this pass: Tasks 1 through 5 implementation, focused verification, Task 2 contract review fix, frontend governance dashboard wiring, config/docs wiring, and live-stack e2e smoke.
+- Remaining work: Task 6.
 
 ---
 
@@ -320,7 +320,7 @@ Result:
 - `uv run --project backend ruff check --no-cache backend/tests/config/test_schema.py`: passed.
 - `PYRIGHT_PYTHON_FORCE_VERSION=latest uv run --project backend pyright`: first sandboxed run failed on uv cache filesystem access; escalated rerun found optional-member test issues; after explicit assertions, rerun passed with 0 errors, 0 warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
@@ -329,16 +329,20 @@ git add backend/config/defaults/medicare_fraud.yaml backend/config/defaults/medi
 git commit -m "docs: wire governance dashboard into cms packs"
 ```
 
+Result:
+
+- Commit `6271592 docs: wire governance dashboard into cms packs`.
+
 ### Task 5: Live Stack And E2E Governance Smoke
 
 **Files:**
 - Create: `chili_app/e2e/governance.spec.ts`
 
-- [ ] **Step 1: Write failing e2e test**
+- [x] **Step 1: Write failing e2e test**
 
 Add a Playwright test that uses the existing global setup seed, opens `/governance?kb=<seeded kb id>`, and asserts the page shows release readiness plus version/blocker sections.
 
-- [ ] **Step 2: Run focused RED**
+- [x] **Step 2: Run focused RED**
 
 Run against the Docker-backed stack:
 
@@ -348,9 +352,33 @@ env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/governance.spec.ts
 
 Expected before implementation/config completion: FAIL because `/governance` is unavailable or the report endpoint is missing.
 
-- [ ] **Step 3: Implement minimal e2e wiring fixes**
+Result:
+
+- Because Tasks 3 and 4 had already implemented the route, endpoint, and config by the time this spec was added, the pre-implementation `/governance` unavailable failure was already closed.
+- Initial local run still failed before the spec executed because Playwright's webServer availability probe hit sandbox `connect EPERM 127.0.0.1:5173`; this was an environment gate, not an application response.
+
+- [x] **Step 3: Implement minimal e2e wiring fixes**
 
 Fix only route/config/test wiring gaps revealed by the red test. Do not mock API routes in Playwright.
+
+Result:
+
+- Rebuilt/recreated the dev-compose `api` and `app` services after the new route/config commits so e2e exercised current code at `localhost:8000` and `localhost:5173`.
+- Corrected an accidental default-compose rebuild by restoring `docker-compose.dev.yaml` services on `:5173`.
+
+- [x] **Step 4: Run focused GREEN**
+
+Run:
+
+```bash
+env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/governance.spec.ts
+npm run lint
+```
+
+Result:
+
+- Sandboxed Playwright run failed with `connect EPERM 127.0.0.1:5173`; escalated rerun passed: 1 Chromium test passed, with e2e teardown deleting the seeded KB.
+- `npm run lint`: passed.
 
 - [ ] **Step 4: Run focused GREEN**
 
