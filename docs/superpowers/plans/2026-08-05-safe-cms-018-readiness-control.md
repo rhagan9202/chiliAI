@@ -31,8 +31,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 and 2.
-- Remaining work: Tasks 3 through 5.
+- Completed in this pass: Tasks 1 through 3.
+- Remaining work: Tasks 4 and 5.
 
 ---
 
@@ -355,21 +355,21 @@ git commit -m "feat: expose knowledge base readiness api"
 - Create: `chili_app/src/api/readiness.ts`
 - Test: `chili_app/src/api/__tests__/readiness.test.ts`
 
-- [ ] **Step 1: Write failing frontend API tests**
+- [x] **Step 1: Write failing frontend API tests**
 
 Test that `getKnowledgeBaseReadiness("kb-1")` fetches `/knowledgebases/kb-1/readiness`, that `useKnowledgeBaseReadiness(null)` is disabled, and that query keys are stable.
 
-- [ ] **Step 2: Run focused red tests**
+- [x] **Step 2: Run focused red tests**
 
 Run: `npm run test:run -- src/api/__tests__/readiness.test.ts`
 
 Expected: FAIL because `../readiness` does not exist.
 
-- [ ] **Step 3: Implement API client and hook**
+- [x] **Step 3: Implement API client and hook**
 
 Use generated `KnowledgeBaseReadinessResponse` type from `src/api/contracts.ts`, `apiFetch`, and TanStack Query.
 
-- [ ] **Step 4: Run focused green tests**
+- [x] **Step 4: Run focused green tests**
 
 Run:
 
@@ -378,7 +378,7 @@ npm run test:run -- src/api/__tests__/readiness.test.ts
 npm run build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
