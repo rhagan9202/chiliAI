@@ -26,8 +26,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: none.
-- Remaining work: Tasks 1 through 5.
+- Completed in this pass: Tasks 1 through 5.
+- Remaining work: none.
 
 ---
 
@@ -246,7 +246,7 @@ git commit -m "docs: document enterprise visual primitives"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-05-safe-cms-019-enterprise-visual-design.md`
 
-- [ ] **Step 1: Run frontend gates**
+- [x] **Step 1: Run frontend gates**
 
 Run:
 
@@ -256,7 +256,14 @@ npm run lint
 npm run build
 ```
 
-- [ ] **Step 2: Run backend smoke gates**
+Result:
+
+- `npm run test:run`: 117 files passed, 994 tests passed.
+- `npm run lint`: passed after resolving the `EvidencePackViewer` hook lint red gate by remounting review controls from the current review key instead of syncing local state in an effect.
+- `npm run build`: passed.
+- `env -u NO_COLOR -u FORCE_COLOR npm run test:e2e -- e2e/dashboard-kb-scope.spec.ts e2e/alert-bulk-triage.spec.ts e2e/case-dossier.spec.ts`: 8 tests passed with no warning output against the Docker-backed app/API.
+
+- [x] **Step 2: Run backend smoke gates**
 
 Run:
 
@@ -265,7 +272,12 @@ uv run --project backend pytest backend/tests/api/test_app.py -q
 uv run --project backend pyright
 ```
 
-- [ ] **Step 3: Run whitespace and branch checks**
+Result:
+
+- `uv run --project backend pytest backend/tests/api/test_app.py -q`: 15 passed.
+- `uv run --project backend pyright`: 0 errors, 0 warnings.
+
+- [x] **Step 3: Run whitespace and branch checks**
 
 Run:
 
@@ -274,7 +286,12 @@ git diff --check
 git status --short --branch
 ```
 
-- [ ] **Step 4: Commit final plan status**
+Result:
+
+- `git diff --check`: passed.
+- `git status --short --branch`: clean on `safe-cms-019-enterprise-visual-design` before final plan update.
+
+- [x] **Step 4: Commit final plan status**
 
 Run:
 
