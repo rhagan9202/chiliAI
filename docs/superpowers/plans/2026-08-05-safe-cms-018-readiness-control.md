@@ -31,8 +31,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 through 3.
-- Remaining work: Tasks 4 and 5.
+- Completed in this pass: Tasks 1 through 4.
+- Remaining work: Task 5.
 
 ---
 
@@ -397,7 +397,7 @@ git commit -m "feat: add readiness api client"
 - Test: `chili_app/src/components/layout/__tests__/WorkspaceControl.test.tsx`
 - Test: `chili_app/src/components/layout/__tests__/AppShell.test.tsx`
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Cover:
 
@@ -406,7 +406,7 @@ Cover:
 - readiness status shows blocked/ready and lists blocker actions without exposing credentials;
 - no-ready-KB state is explicit.
 
-- [ ] **Step 2: Run focused red tests**
+- [x] **Step 2: Run focused red tests**
 
 Run:
 
@@ -416,7 +416,7 @@ npm run test:run -- src/components/layout/__tests__/WorkspaceControl.test.tsx sr
 
 Expected: FAIL because `WorkspaceControl` does not exist or `TopBar` does not render it.
 
-- [ ] **Step 3: Implement compact workspace control**
+- [x] **Step 3: Implement compact workspace control**
 
 Render a top-bar control with:
 
@@ -427,7 +427,7 @@ Render a top-bar control with:
 
 Use existing class naming under `app-topbar__*` and add only compact, app-shell-specific CSS.
 
-- [ ] **Step 4: Run focused green tests and build**
+- [x] **Step 4: Run focused green tests and build**
 
 Run:
 
@@ -436,7 +436,7 @@ npm run test:run -- src/components/layout/__tests__/WorkspaceControl.test.tsx sr
 npm run build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

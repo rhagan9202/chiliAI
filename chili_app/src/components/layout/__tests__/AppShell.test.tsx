@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,19 +7,41 @@ import { useUiStore } from '../../../stores/uiStore'
 import { AppShell } from '../AppShell'
 
 const mocks = vi.hoisted(() => ({
+  useActiveKnowledgeBase: vi.fn(),
   useDomainConfig: vi.fn(),
   useDomainFeatures: vi.fn(),
+  useKnowledgeBaseReadiness: vi.fn(),
 }))
 
 vi.mock('../../../api/config', () => ({
   useDomainConfig: mocks.useDomainConfig,
   useDomainFeatures: mocks.useDomainFeatures,
 }))
+vi.mock('../../../api/readiness', () => ({
+  useKnowledgeBaseReadiness: mocks.useKnowledgeBaseReadiness,
+}))
 vi.mock('../../../api/realtime', () => ({ useRealtimeWorkspaceStream: () => undefined }))
+vi.mock('../../../hooks/useActiveKnowledgeBase', () => ({
+  useActiveKnowledgeBase: mocks.useActiveKnowledgeBase,
+}))
 vi.mock('../Sidebar', () => ({ Sidebar: () => <nav data-testid="sidebar" /> }))
 vi.mock('../TopBar', () => ({
-  TopBar: ({ pageTitleOverride }: { pageTitleOverride?: string }) => (
-    <header data-testid="topbar">{pageTitleOverride ?? 'default title'}</header>
+  TopBar: ({
+    pageTitleOverride,
+    workspaceControl,
+  }: {
+    pageTitleOverride?: string
+    workspaceControl?: ReactNode
+  }) => (
+    <header data-testid="topbar">
+      {pageTitleOverride ?? 'default title'}
+      {workspaceControl}
+    </header>
+  ),
+}))
+vi.mock('../WorkspaceControl', () => ({
+  WorkspaceControl: ({ activeKnowledgeBaseId }: { activeKnowledgeBaseId: string | null }) => (
+    <div data-testid="workspace-control">{activeKnowledgeBaseId ?? 'no-kb'}</div>
   ),
 }))
 vi.mock('../AiAssistantPanel', () => ({ AiAssistantPanel: () => <aside data-testid="ai-panel" /> }))
@@ -69,6 +92,18 @@ describe('AppShell route access', () => {
     useUiStore.setState({ selectedRole: null })
     mocks.useDomainConfig.mockReturnValue({ data: domainConfig, isLoading: false, isError: false })
     mocks.useDomainFeatures.mockReturnValue({ data: domainFeatures, isLoading: false, isError: false })
+    mocks.useActiveKnowledgeBase.mockReturnValue({
+      activeKnowledgeBaseId: 'kb-ready',
+      isError: false,
+      isLoading: false,
+      knowledgeBases: [],
+      setActiveKnowledgeBase: vi.fn(),
+    })
+    mocks.useKnowledgeBaseReadiness.mockReturnValue({
+      data: undefined,
+      isError: false,
+      isLoading: false,
+    })
   })
 
   it('renders the page when the active role is allowed to open it', () => {
@@ -173,5 +208,12 @@ describe('AppShell route access', () => {
     renderShell('/alerts')
 
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
+  })
+
+  it('passes active KB workspace control into the top bar', () => {
+    renderShell('/alerts')
+
+    expect(screen.getByTestId('workspace-control')).toHaveTextContent('kb-ready')
+    expect(mocks.useKnowledgeBaseReadiness).toHaveBeenCalledWith('kb-ready')
   })
 })
