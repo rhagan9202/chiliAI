@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` for implementation sprints and `superpowers:executing-plans` for checklist execution. Each sprint below is intentionally written as a self-contained feature plan, but workers must read the Program Guardrails, Shared Definition of Done, Dependency Map, and the sprint immediately before their assigned sprint before changing code.
 
 **Date:** 2026-07-30
-**Status:** planning baseline
+**Status:** implementation complete on `origin/prod` as of 2026-08-05; SAFE-CMS-001 through SAFE-CMS-020 are reconciled in `docs/project/planning/backlog.md`.
 **Scope:** 20 sprints, one sprint per high-impact feature from the CMS fraud detection and explainability product review
 **Primary use case:** CMS fraud, waste, and abuse detection for provider, beneficiary, claims, enrollment, graph, policy, evidence, case, and RAG workflows
 **Product objective:** Move chiliAI toward an industry-leading modular analytics and AI platform where users can build trustworthy, explainable, agentic workflows over knowledge graphs, data sources, analytics capabilities, and connectors.
