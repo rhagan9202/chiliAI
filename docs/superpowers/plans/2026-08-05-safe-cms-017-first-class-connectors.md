@@ -28,8 +28,8 @@
 
 ## Implementation Status
 
-- Completed in this pass: Tasks 1 and 2.
-- Remaining work: Tasks 3 through 5.
+- Completed in this pass: Tasks 1 through 3.
+- Remaining work: Tasks 4 and 5.
 
 ---
 
@@ -231,17 +231,17 @@ git commit -m "feat: add connector lifecycle service"
 - Modify: `backend/api/app.py`
 - Test: `backend/tests/api/test_connectors_router.py`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 Add tests for viewer listing connectors, analyst registering a connector with a credentials reference, analyst starting a sync run, and quarantine list visibility without raw secrets.
 
-- [ ] **Step 2: Run focused red API tests**
+- [x] **Step 2: Run focused red API tests**
 
 Run: `uv run --project backend pytest backend/tests/api/test_connectors_router.py -q`
 
 Expected: FAIL with missing router or 404.
 
-- [ ] **Step 3: Implement API contracts and router**
+- [x] **Step 3: Implement API contracts and router**
 
 Add KB-scoped routes:
 
@@ -253,16 +253,16 @@ GET /knowledgebases/{knowledge_base_id}/connectors/{connector_id}/sync-runs
 GET /knowledgebases/{knowledge_base_id}/connectors/{connector_id}/quarantine
 ```
 
-- [ ] **Step 4: Regenerate OpenAPI and frontend contracts**
+- [x] **Step 4: Regenerate OpenAPI and frontend contracts**
 
 Run:
 
 ```bash
-uv run --project backend python -m tools.export_openapi
+uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
 npm run codegen:api
 ```
 
-- [ ] **Step 5: Run focused green API tests and app route tests**
+- [x] **Step 5: Run focused green API tests and app route tests**
 
 Run:
 
@@ -272,7 +272,7 @@ uv run --project backend pytest backend/tests/api/test_connectors_router.py back
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 

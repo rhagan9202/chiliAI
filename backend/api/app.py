@@ -23,6 +23,7 @@ from api.routers.auth import router as auth_router
 from api.routers.capabilities import router as capabilities_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
+from api.routers.connectors import router as connectors_router
 from api.routers.dev_seed import router as dev_seed_router
 from api.routers.evidence import kb_router as evidence_kb_router
 from api.routers.evidence import router as evidence_router
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_router)
     app.include_router(workflow_definitions_router)
     app.include_router(playbooks_router)
+    app.include_router(connectors_router)
     app.include_router(housing_router)
     app.include_router(identity_router)
     app.include_router(policy_router)

@@ -108,6 +108,9 @@ from capabilities.service import (
     CapabilityRegistryService,
     create_default_capability_registry_service,
 )
+from connectors.adapters.in_memory import InMemoryConnectorRepository
+from connectors.repository import ConnectorRepositoryProtocol
+from connectors.service import ConnectorService
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
 from policy.adapters.postgres import PostgresPolicyItemRepository
 from policy.adapters.protocols import PolicyItemRepository
@@ -357,6 +360,8 @@ __all__ = [
     "get_chat_message_payload",
     "get_conversation_repository",
     "get_conversation_service",
+    "get_connector_repository",
+    "get_connector_service",
     "get_dlq_record_store",
     "get_document_status_store",
     "get_embedder",
@@ -2722,6 +2727,25 @@ def get_playbook_service(
     return PlaybookService(repository=repository, domain_config=config)
 
 
+def get_connector_repository(request: Request) -> ConnectorRepositoryProtocol:
+    """Return the connector repository for SAFE-CMS-017 state."""
+
+    return _memoize_config_derived(
+        request.app,
+        "connector_repository",
+        lambda: InMemoryConnectorRepository(),
+        guard=lambda value: isinstance(value, InMemoryConnectorRepository),
+    )
+
+
+def get_connector_service(
+    repository: ConnectorRepositoryProtocol = Depends(get_connector_repository),
+) -> ConnectorService:
+    """Return the connector lifecycle service."""
+
+    return ConnectorService(repository)
+
+
 @lru_cache(maxsize=1)
 def get_capability_registry_service() -> CapabilityRegistryService:
     """Return the typed capability registry for workflows and agents."""
@@ -3449,6 +3473,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "scorecard_run_repository",
     "score_run_repository",
     "playbook_repository",
+    "connector_repository",
     "workflow_definition_repository",
     "risk_projection_repository",
 )

@@ -1298,6 +1298,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Connectors
+         * @description Return connector definitions for one knowledge base.
+         */
+        get: operations["list_connectors_knowledgebases__knowledge_base_id__connectors_get"];
+        put?: never;
+        /**
+         * Register Connector
+         * @description Register a connector definition for one knowledge base.
+         */
+        post: operations["register_connector_knowledgebases__knowledge_base_id__connectors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/connectors/{connector_id}/quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Quarantine
+         * @description Return quarantined records for one connector.
+         */
+        get: operations["list_quarantine_knowledgebases__knowledge_base_id__connectors__connector_id__quarantine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/connectors/{connector_id}/sync-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sync Runs
+         * @description Return sync runs for one connector.
+         */
+        get: operations["list_sync_runs_knowledgebases__knowledge_base_id__connectors__connector_id__sync_runs_get"];
+        put?: never;
+        /**
+         * Start Sync Run
+         * @description Create or reuse a manual connector sync run.
+         */
+        post: operations["start_sync_run_knowledgebases__knowledge_base_id__connectors__connector_id__sync_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledgebases/{knowledge_base_id}/documents": {
         parameters: {
             query?: never;
@@ -3115,6 +3183,228 @@ export interface components {
              * @description Human-readable error message.
              */
             message: string;
+        };
+        /**
+         * ConnectorCreateRequest
+         * @description Payload for registering a KB-scoped connector.
+         */
+        ConnectorCreateRequest: {
+            /** Config */
+            config?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Connector Id */
+            connector_id: string;
+            /** Credentials Ref */
+            credentials_ref?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            mapping: components["schemas"]["ConnectorMappingRefPayload"];
+            /** Name */
+            name: string;
+            schedule?: components["schemas"]["ConnectorSchedulePayload"];
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "filesystem" | "object_store" | "http";
+        };
+        /**
+         * ConnectorListResponse
+         * @description Page of KB-scoped connector definitions.
+         */
+        ConnectorListResponse: {
+            /** Items */
+            items?: components["schemas"]["ConnectorResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConnectorMappingRefPayload
+         * @description Connector mapping reference payload.
+         */
+        ConnectorMappingRefPayload: {
+            /** Feed Name */
+            feed_name: string;
+            /** Mapping Id */
+            mapping_id: string;
+            /** Mapping Version */
+            mapping_version: string;
+        };
+        /**
+         * ConnectorQuarantineListResponse
+         * @description Page of connector quarantine records.
+         */
+        ConnectorQuarantineListResponse: {
+            /** Items */
+            items?: components["schemas"]["ConnectorQuarantineRecordResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConnectorQuarantineRecordResponse
+         * @description Audit-safe quarantined source record metadata.
+         */
+        ConnectorQuarantineRecordResponse: {
+            /** Connector Id */
+            connector_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Quarantine Id */
+            quarantine_id: string;
+            /** Raw Ref */
+            raw_ref?: string | null;
+            /** Reason */
+            reason: string;
+            /** Run Id */
+            run_id: string;
+            /** Source Record Id */
+            source_record_id: string;
+        };
+        /**
+         * ConnectorResponse
+         * @description Audit-safe connector definition response.
+         */
+        ConnectorResponse: {
+            /** Config */
+            config?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Connector Id */
+            connector_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Credentials Display */
+            credentials_display?: string | null;
+            /** Domain Name */
+            domain_name?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            mapping: components["schemas"]["ConnectorMappingRefPayload"];
+            /** Name */
+            name: string;
+            schedule: components["schemas"]["ConnectorSchedulePayload"];
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "filesystem" | "object_store" | "http";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ConnectorSchedulePayload
+         * @description Connector schedule request/response payload.
+         */
+        ConnectorSchedulePayload: {
+            /** Expression */
+            expression?: string | null;
+            /**
+             * Mode
+             * @default manual
+             * @enum {string}
+             */
+            mode: "manual" | "interval" | "cron";
+        };
+        /**
+         * ConnectorSyncCountersResponse
+         * @description Connector sync run counters.
+         */
+        ConnectorSyncCountersResponse: {
+            /** Accepted */
+            accepted: number;
+            /** Failed */
+            failed: number;
+            /** Pulled */
+            pulled: number;
+            /** Quarantined */
+            quarantined: number;
+        };
+        /**
+         * ConnectorSyncRunListResponse
+         * @description Page of connector sync runs.
+         */
+        ConnectorSyncRunListResponse: {
+            /** Items */
+            items?: components["schemas"]["ConnectorSyncRunResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ConnectorSyncRunRequest
+         * @description Payload for manually starting a connector sync run.
+         */
+        ConnectorSyncRunRequest: {
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
+        /**
+         * ConnectorSyncRunResponse
+         * @description Connector sync run response.
+         */
+        ConnectorSyncRunResponse: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Connector Id */
+            connector_id: string;
+            counters: components["schemas"]["ConnectorSyncCountersResponse"];
+            /** Error Message */
+            error_message?: string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Ingest Correlation Id */
+            ingest_correlation_id?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Requested By */
+            requested_by: string;
+            /** Run Id */
+            run_id: string;
+            /** Source Cursor */
+            source_cursor?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "canceled";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * CreateKbRequest
@@ -9514,6 +9804,181 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CapabilityListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connectors_knowledgebases__knowledge_base_id__connectors_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_connector_knowledgebases__knowledge_base_id__connectors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_quarantine_knowledgebases__knowledge_base_id__connectors__connector_id__quarantine_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorQuarantineListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sync_runs_knowledgebases__knowledge_base_id__connectors__connector_id__sync_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSyncRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_sync_run_knowledgebases__knowledge_base_id__connectors__connector_id__sync_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectorSyncRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorSyncRunResponse"];
                 };
             };
             /** @description Validation Error */
