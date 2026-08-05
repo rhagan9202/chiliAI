@@ -28,6 +28,8 @@ import { FilterGroup } from '../components/ui/FilterGroup'
 import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { StatusPill } from '../components/ui/StatusPill'
+import { statusToneForValue } from '../components/ui/statusPill'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import {
   ALERT_SORTS,
@@ -739,21 +741,24 @@ export function AlertFeedPage() {
                         </span>
                       </div>
                       <div className="alert-row-card__meta">
-                        <Chip label={alert.severity} tone={severityTone(alert.severity)} />
-                        <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
+                        <StatusPill compact context="Alert severity" label={alert.severity} tone={severityTone(alert.severity)} />
+                        <StatusPill compact context="Alert status" label={alert.status} tone={statusToneForValue(alert.status)} />
                         <Chip label={alert.assignee || 'Unassigned'} tone="default" />
                         <Chip
                           label={`Case ${alert.case_state ?? 'none'}`}
                           tone={alert.case_state ? 'info' : 'default'}
                         />
-                        <Chip
+                        <StatusPill
+                          ariaLabel={`Score freshness: ${alert.score_freshness}`}
+                          compact
+                          context="Score freshness"
                           label={
                             SCORE_FRESHNESS_OPTIONS.find((option) => option.id === alert.score_freshness)
                               ?.label ?? 'Unknown score'
                           }
-                          tone={alert.score_freshness === 'fresh' ? 'success' : 'warning'}
+                          tone={statusToneForValue(alert.score_freshness)}
                         />
-                        <Chip label={slaLabel(alert.created_at)} tone="warning" />
+                        <StatusPill compact context="SLA state" label={slaLabel(alert.created_at)} tone="warning" />
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />
                         ) : null}

@@ -1152,6 +1152,23 @@ chili_app/src/
     └── useNeighborhood.ts
 ```
 
+#### Shared UI primitives and visual language
+
+Core analyst pages share `SectionHeader`, `FilterGroup`, `Tabs`, `Card`,
+`Chip`, and `StatusPill` from `chili_app/src/components/ui`. `StatusPill` is
+reserved for operational state: alert severity/status, case status/priority,
+SLA, readiness, workflow state, and score freshness. `Chip` remains for counts,
+tags, and compact non-state labels. This split keeps Dashboard, Alert Feed,
+Case Management, RAG, Policy, Connectors, and Workflows from inventing separate
+status semantics per page.
+
+Visual density follows the enterprise guardrails in
+`chili_app/src/theme/tokens.ts` and `chili_app/src/components/ui/ui.css`: cards
+and framed repeated items use an 8px maximum radius, text uses fixed token
+sizes rather than viewport scaling, and controls carry explicit accessible
+names. New route work should compose these primitives before adding
+page-specific CSS.
+
 #### Active knowledge base (shared workspace state)
 
 Which knowledge base the analyst is working in is **workspace state, not page

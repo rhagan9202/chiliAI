@@ -779,6 +779,15 @@ describe('AlertFeedPage', () => {
     expect(screen.getByText('NETWORK')).toBeInTheDocument()
   })
 
+  it('exposes row severity, status, freshness, and SLA as semantic status pills', () => {
+    renderAlertFeed()
+
+    expect(screen.getByLabelText('Alert severity: critical')).toBeInTheDocument()
+    expect(screen.getByLabelText('Alert status: open')).toBeInTheDocument()
+    expect(screen.getByLabelText('Score freshness: fresh')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('SLA state: SLA risk').length).toBeGreaterThan(0)
+  })
+
   it('falls back to the severity word for the flag label when an alert has no tags', () => {
     mocks.useAlerts.mockReturnValue({
       isLoading: false,
