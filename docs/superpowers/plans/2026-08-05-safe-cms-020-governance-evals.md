@@ -35,7 +35,7 @@
 
 ## Implementation Status
 
-- Completed in this pass: Task 1 implementation and focused verification.
+- Completed in this pass: Task 1 implementation, focused verification, and pagination review fix.
 - Remaining work: Task 1 review checkpoint, then Tasks 2 through 6.
 
 ---
@@ -112,6 +112,7 @@ git commit -m "feat: add governance report service"
 Result:
 
 - Commit `0b23f42 feat: add governance report service`.
+- Spec review found first-page-only inventory for playbooks, workflow definitions, and explanation reviews. Added pagination regression tests and commit `cbb2b54 fix: paginate governance report inputs`; focused tests now pass with 6 tests, Ruff clean, and Pyright 0 errors/warnings.
 
 ### Task 2: Governance Report API Route
 
