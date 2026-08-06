@@ -197,6 +197,7 @@ from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from analytics.score_runs.service import ScoreRunService, create_score_run_service
 from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
@@ -2702,10 +2703,16 @@ def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
 def get_score_run_repository(request: Request) -> ScoreRunRepositoryProtocol:
     """Return the score-run repository for score-all workflow state."""
 
+    def build() -> ScoreRunRepositoryProtocol:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryScoreRunRepository()
+        return PostgresScoreRunRepository(provider)
+
     return _memoize_config_derived(
         request.app,
         "score_run_repository",
-        lambda: InMemoryScoreRunRepository(),
+        build,
         guard=lambda value: isinstance(value, ScoreRunRepositoryProtocol),
     )
 
