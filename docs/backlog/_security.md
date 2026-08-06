@@ -109,7 +109,7 @@
 **ID:** _security.03
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, _multitenancy.02, _multitenancy.03, api.21]
-**Unblocks:** [_security.02, _security.06, storage.06]
+**Unblocks:** [_security.02, storage.06]
 **Estimated size:** L
 
 **As a** platform operator running multi-tenant chiliAI,
@@ -260,8 +260,8 @@
 ## Story _security.06: Add a durable audit log for analyst and admin actions
 
 **ID:** _security.06
-**Status:** planned
-**Prerequisites:** [_security.03, database.01, events.01]
+**Status:** in-progress
+**Prerequisites:** []
 **Unblocks:** [_security.08, analytics.27, api.17, config.09, frontend.18, ingestion.07, knowledgebases.06, monitoring.04, storage.09]
 **Estimated size:** L
 
@@ -270,20 +270,51 @@
 **so that** the §14.2 audit-log capability is fulfilled and we can answer "who did what, when, against which tenant" for any 90-day window.
 
 ### Current State
-- `docs/architecture.md:1359` (§14.2) lists "Audit log" as a Medium-priority future capability with no concrete owner.
-- `grep -R "audit" backend/` finds only the policy-registry startup check and vector-index artifact references — no model, no router, no event type carries audit data.
-- `backend/api/routers/auth.py` emits no structured "login.success"/"login.failure"/"logout" log lines today; `backend/api/routers/knowledgebases.py:172` allows admin DELETE with no auditable trail.
-- The 2026-05-08 design spec §10 calls out that "Audit logging hooks (login success/failure, logout, refresh)... belongs to the future observability spec" — this story is that owner.
-- No Postgres table or Alembic migration for an `audit_log` table exists today.
+> **Prerequisites corrected 2026-08-06.** This story declared
+> `[_security.03, database.01, events.01]`. None of the three are done, yet the
+> module shipped anyway — which is the proof the edges were wrong, not that the
+> work jumped its dependencies. `backend/auditlog/` imports exactly
+> `database.protocols.ConnectionProvider` and `shared.utils`; `ConnectionProvider`
+> predates the backlog (`f23f618`), and tenant isolation (`_security.03`),
+> the `workflow_runs` migration (`database.01`) and stale-entry reclaim
+> (`events.01`) are none of them build prerequisites for an append-only log.
+> The list is now empty, which is why the work was buildable all along. The
+> consistency pass surfaced this: it refuses `in-progress` on a story whose
+> prerequisites are unmet, so the false edges could not survive an honest status.
+
+> **Rewritten 2026-08-06 (SAFE-CMS surge audit).** The prose below previously
+> described a greenfield state — "no model, no router, no event type carries
+> audit data", "no Postgres table or Alembic migration exists". All of that is
+> false: SAFE-CMS-009 delivered most of this story during the surge without the
+> row ever being updated. Verified against code at `88e54db`.
+
+**Delivered (SAFE-CMS-009):**
+- `backend/auditlog/` exists: `models.py` (`AuditEvent`), `protocols.py`, `service.py`, `exceptions.py`, and `adapters/{in_memory,postgres}.py`.
+- Migration `0016_audit_log.py` creates `audit_log` with both required covering indexes — `ix_audit_log_tenant_occurred_at (tenant_id, occurred_at DESC)` and `ix_audit_log_actor_occurred_at (actor_user_id, occurred_at DESC)` — plus a third on `knowledge_base_id`.
+- `GET /audit/events` and `GET /audit/status` are mounted (`backend/api/app.py`), both `require_role("admin")`, with tenant/actor/action/time filters and pagination.
+- 16 actions are audited today: `auth.{login.start,login.failure,callback.success,callback.failure,logout}`, `knowledge_base.{create,delete}`, `alert.{acknowledge,assignment.update,status.update}`, `case.{create,promote,update,alert.attach,feedback.create}`, `explanation.review.update`.
+- Writes are non-blocking — failures are swallowed and captured in a bounded in-process buffer surfaced at `GET /audit/status`.
+- Coverage on `backend/auditlog/` is **91%** (13 tests), against the ≥85% the story asks for.
+
+**Not delivered — why this is `in-progress`, not `done`:**
+- The `file` (JSONL append-only) and `null` sink adapters were never built; only `postgres` and `in_memory` exist. The protocol is also named `AuditLogRepository`, not `AuditSinkProtocol`, and its method is not `record`.
+- The metric `chili_audit_write_failures_total` does not exist anywhere in the tree. `GET /audit/status` covers the same need for a human but is per-process, in-memory, capped at 100 entries, and lost on restart — it is not a scrapeable counter.
+- Two hook ACs are **structurally blocked on stories that have not landed**, so they could never have shipped here: the config-write hook depends on `config.07` (the story itself flags this as a cross-edge) and the session-revocation hook depends on `_security.08`. The KB grant/revoke hook is moot — no grants endpoints exist on `backend/api/routers/knowledgebases.py`.
+
+> **Disposition (2026-08-06):** kept as a single `in-progress` story rather than
+> closing the delivered scope and chartering the residual. The nine stories in
+> `Unblocks` therefore stay blocked, and the ready set continues to understate
+> available work — an accepted, deliberate cost of not recording an unfinished
+> story as done. Revisit if the ready set becomes a planning bottleneck.
 
 ### Acceptance Criteria
-- [ ] A new `backend/auditlog/` module is added with `AuditEvent` Pydantic model (`event_id: UUID`, `occurred_at: datetime`, `tenant_id: str`, `actor_user_id: str`, `actor_email: str | None`, `actor_roles: list[str]`, `action: str` — e.g. `auth.login.success`, `kb.delete`, `kb.access.granted`, `config.update`, `alert.ack`, `evidence_pack.mutate`, `session.revoke` — `resource_type: str`, `resource_id: str`, `before: dict | None`, `after: dict | None`, `correlation_id: str`, `client_ip: str | None`, `user_agent: str | None`, `outcome: Literal["success","failure"]`, `failure_reason: str | None`).
-- [ ] `AuditSinkProtocol` is defined with `record(event: AuditEvent)`; adapters land for `postgres` (default in production), `file` (JSONL append-only, dev/test), and `null` (auth-disabled local).
-- [ ] An Alembic migration adds an `audit_log` table with the columns above plus a covering index on `(tenant_id, occurred_at DESC)` and `(actor_user_id, occurred_at DESC)`.
-- [ ] Hooks are added at the source sites: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` failures; `POST/DELETE /knowledgebases/{id}/grants`; `DELETE /knowledgebases/{id}`; `POST /config/...` writes (once `config.07` lands — cross-edge); `POST /alerts/{id}/ack`; evidence-pack mutations; session-revocation endpoints from `_security.08`.
-- [ ] `GET /audit/events` admin-only endpoint supports filter by tenant, actor, action prefix, time range, and pagination.
-- [ ] Audit writes never block the request: failures append to a bounded in-memory buffer that retries, and a metric `chili_audit_write_failures_total` is emitted.
-- [ ] Coverage ≥ 85% on `backend/auditlog/`.
+- [x] A new `backend/auditlog/` module is added with `AuditEvent` Pydantic model (`event_id: UUID`, `occurred_at: datetime`, `tenant_id: str`, `actor_user_id: str`, `actor_email: str | None`, `actor_roles: list[str]`, `action: str` — e.g. `auth.login.success`, `kb.delete`, `kb.access.granted`, `config.update`, `alert.ack`, `evidence_pack.mutate`, `session.revoke` — `resource_type: str`, `resource_id: str`, `before: dict | None`, `after: dict | None`, `correlation_id: str`, `client_ip: str | None`, `user_agent: str | None`, `outcome: Literal["success","failure"]`, `failure_reason: str | None`). — `backend/auditlog/models.py`.
+- [ ] `AuditSinkProtocol` is defined with `record(event: AuditEvent)`; adapters land for `postgres` (default in production), `file` (JSONL append-only, dev/test), and `null` (auth-disabled local). — **partial:** the protocol exists as `AuditLogRepository` (`backend/auditlog/protocols.py:10`) and the `postgres` adapter is real, but `file` and `null` were never built; the second adapter is `in_memory`.
+- [x] An Alembic migration adds an `audit_log` table with the columns above plus a covering index on `(tenant_id, occurred_at DESC)` and `(actor_user_id, occurred_at DESC)`. — `backend/database/migrations/versions/0016_audit_log.py:21,46,58`; a third index on `knowledge_base_id` was added beyond the AC.
+- [ ] Hooks are added at the source sites: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` failures; `POST/DELETE /knowledgebases/{id}/grants`; `DELETE /knowledgebases/{id}`; `POST /config/...` writes (once `config.07` lands — cross-edge); `POST /alerts/{id}/ack`; evidence-pack mutations; session-revocation endpoints from `_security.08`. — **partial:** auth, KB create/delete, alert ack/assign/status, case mutations and explanation reviews are hooked (16 actions). Config writes await `config.07`; session revocation awaits `_security.08`; KB grant endpoints do not exist to hook.
+- [x] `GET /audit/events` admin-only endpoint supports filter by tenant, actor, action prefix, time range, and pagination. — `backend/api/routers/audit.py:16-21`, admin-gated, registered at `backend/api/app.py`.
+- [ ] Audit writes never block the request: failures append to a bounded in-memory buffer that retries, and a metric `chili_audit_write_failures_total` is emitted. — **partial:** non-blocking writes and the bounded buffer exist (`backend/auditlog/service.py:58-79`), surfaced at `GET /audit/status`. The named metric does not exist; the buffer is per-process, capped at 100, and lost on restart, so failures are not observable fleet-wide.
+- [x] Coverage ≥ 85% on `backend/auditlog/`. — measured **91%** across 13 tests (`pytest tests/auditlog tests/api/test_audit_router.py --cov=auditlog`).
 
 ### Verification
 - `cd backend && pytest tests/auditlog/ tests/api/test_audit_router.py --cov=auditlog --cov-fail-under=85`
