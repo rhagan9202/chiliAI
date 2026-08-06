@@ -121,6 +121,32 @@ class InMemoryScoreRunRepository:
         self._batches[key] = stored
         return _copy_batch(stored)
 
+    def get_batch(self, *, run_id: str, batch_number: int) -> ScoreBatch | None:
+        batch = self._batches.get((run_id, batch_number))
+        return _copy_batch(batch) if batch is not None else None
+
+    def claim_batch(
+        self,
+        *,
+        run_id: str,
+        batch_number: int,
+        now: datetime,
+    ) -> ScoreBatch | None:
+        key = (run_id, batch_number)
+        batch = self._batches.get(key)
+        if batch is None or batch.status != "queued":
+            return None
+        claimed = batch.model_copy(
+            update={
+                "status": "running",
+                "attempts": batch.attempts + 1,
+                "started_at": batch.started_at or now,
+                "updated_at": now,
+            }
+        )
+        self._batches[key] = claimed
+        return _copy_batch(claimed)
+
     def list_batches(
         self,
         *,

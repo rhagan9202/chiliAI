@@ -57,6 +57,29 @@ class ScoreRunRepositoryProtocol(Protocol):
 
     def upsert_batch(self, batch: ScoreBatch) -> ScoreBatch: ...
 
+    def get_batch(self, *, run_id: str, batch_number: int) -> ScoreBatch | None: ...
+
+    def claim_batch(
+        self,
+        *,
+        run_id: str,
+        batch_number: int,
+        now: datetime,
+    ) -> ScoreBatch | None:
+        """Transition a ``queued`` batch to ``running`` and count the attempt.
+
+        Returns ``None`` when the batch is absent or is not ``queued``. The
+        caller must treat that as "another worker owns this unit" and stop,
+        not as an error: Redis Streams redelivers, and ``reclaim_stale_pending``
+        can hand the same event to a second worker, so this is the guard that
+        stops two workers scoring one batch.
+
+        Keyed on ``(run_id, batch_number)`` rather than the batch id because
+        that is the natural key both storage layers already index on, and it is
+        what ``ScoreBatchQueuedEvent`` carries.
+        """
+        ...
+
     def list_batches(
         self,
         *,

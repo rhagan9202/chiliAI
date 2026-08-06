@@ -232,3 +232,57 @@ def test_delete_by_kb_removes_runs_batches_and_idempotency_index() -> None:
     ) is None
     assert repository.get_run("keep") is not None
     assert len(repository.list_batches(run_id="keep")) == 1
+
+
+def test_claim_batch_transitions_queued_to_running_and_counts_the_attempt() -> None:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+
+    claimed = repository.claim_batch(
+        run_id="score-run-1", batch_number=0, now=BASE_TIME
+    )
+
+    assert claimed is not None
+    assert claimed.status == "running"
+    assert claimed.attempts == 1
+    assert claimed.started_at == BASE_TIME
+
+
+def test_claim_batch_returns_none_when_another_worker_already_claimed_it() -> None:
+    """The claim is the concurrency guard: a second caller must get nothing.
+
+    Redis Streams redelivers, and `reclaim_stale_pending` can hand the same
+    event to a second worker. Without this, both execute the same batch.
+    """
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+
+    first = repository.claim_batch(run_id="score-run-1", batch_number=0, now=BASE_TIME)
+    second = repository.claim_batch(run_id="score-run-1", batch_number=0, now=BASE_TIME)
+
+    assert first is not None
+    assert second is None
+
+
+def test_claim_batch_returns_none_for_an_unknown_batch() -> None:
+    repository = InMemoryScoreRunRepository()
+    assert repository.claim_batch(run_id="nope", batch_number=0, now=BASE_TIME) is None
+
+
+def test_get_batch_returns_a_detached_copy() -> None:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+
+    fetched = repository.get_batch(run_id="score-run-1", batch_number=0)
+    assert fetched is not None
+    fetched.status = "failed"  # type: ignore[assignment]
+
+    assert repository.get_batch(run_id="score-run-1", batch_number=0).status == "queued"
+
+
+def test_get_batch_returns_none_for_an_unknown_batch() -> None:
+    repository = InMemoryScoreRunRepository()
+    assert repository.get_batch(run_id="nope", batch_number=0) is None
