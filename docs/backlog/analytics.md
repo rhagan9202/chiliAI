@@ -1309,7 +1309,8 @@ so that downstream features can consume scored entities consistently.
 ## Story analytics.36: True `entity_label` on Flow B (analytics-pipeline) alerts
 
 **ID:** analytics.36
-**Status:** planned
+**Status:** done
+**Done:** 2026-08-06 · reconciled during the SAFE-CMS surge audit — the work had landed earlier and the row was never flipped
 **Prerequisites:** [monitoring.02]
 **Unblocks:** []
 **Estimated size:** S
@@ -1324,11 +1325,11 @@ so that downstream features can consume scored entities consistently.
 - The `MonitoringService.evaluate()` path (observation-only, no entity fetch) is out of scope for this story — it would require a new graph read to resolve a label, which the alerts.36 line-item explicitly deferred. This story only closes the Flow B (analytics-pipeline / `_run_explainability_stage`) half.
 
 ### Acceptance Criteria
-- [ ] `build_explanation_context` (or `ExplanationContext`) surfaces the focal entity's display value it already fetched, without adding a new graph call.
-- [ ] `_run_explainability_stage` uses that surfaced value for `AlertCreatedReference.entity_label`, falling back to `entity_id` only when the entity has no configured display property (or the entity lookup itself returned `None`).
-- [ ] Display value resolution respects `DomainConfig.ui.display_fields[entity_type].title` when configured (matching how the frontend already picks a title field per entity type) rather than hardcoding a property name — no domain-specific property (`provider`, `npi`, etc.) is hardcoded into `agent/` or `analytics/` code.
-- [ ] Regression test: an alert generated end-to-end through the analytics pipeline for a KB whose domain config declares a display-field title shows that property's value (not the raw entity id) in `alert_history.entity_label` and in `GET /alerts`.
-- [ ] `entity_label` still defaults safely (to `entity_id`) for domain configs with no `ui.display_fields` entry for the entity type, and for entities missing the configured property — no `KeyError`/`None`-display regression.
+- [x] `build_explanation_context` (or `ExplanationContext`) surfaces the focal entity's display value it already fetched, without adding a new graph call. — **deviation:** implemented as a dedicated `_resolve_entity_label` helper (`backend/agent/coordinator.py:2378`) that *does* perform one keyed graph read per alert rather than threading the value out of `build_explanation_context`. The in-code rationale is that the read is negligible beside the GNN/risk/explainability work already done for the same entity, and it keeps the two functions decoupled. The AC's "no new graph call" constraint was therefore knowingly traded for simpler plumbing.
+- [x] `_run_explainability_stage` uses that surfaced value for `AlertCreatedReference.entity_label`, falling back to `entity_id` only when the entity has no configured display property (or the entity lookup itself returned `None`). — `backend/agent/coordinator.py:2453`; `GraphError` and `None` both fall back to `entity_id`.
+- [x] Display value resolution respects `DomainConfig.ui.display_fields[entity_type].title` when configured rather than hardcoding a property name. — `entity_display_label` in `backend/config/display.py:26`; no domain-specific property appears in `agent/` or `analytics/`.
+- [x] Regression test: an alert generated end-to-end through the analytics pipeline shows the configured property's value in `alert_history.entity_label` and in `GET /alerts`. — `backend/tests/agent/test_alert_display_label.py`, plus `tests/monitoring/test_postgres_alert_history.py:183,319`.
+- [x] `entity_label` still defaults safely for domain configs with no `ui.display_fields` entry and for entities missing the configured property — no `KeyError`/`None`-display regression. — **deviation:** the final fallback rung is `f"{type_label} {entity.id}"` (e.g. `Provider npi-123`), not a bare `entity_id`. Deliberate, per UXA-304: a bare id reads as an internal handle. The no-crash guarantee the AC asked for holds.
 
 ### Verification
 - `pytest backend/tests/agent/test_alerts_created_graph_flow.py -q` — green, including the new display-label regression test.

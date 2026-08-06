@@ -242,9 +242,13 @@ def render_status_rollup(stories: dict[str, Story]) -> str:
     )
     for s in stories.values():
         by_file[s.file.name][s.status] += 1
+    # Dropped is a real status and is counted in Total, so it needs its own
+    # column: without it the Planned/In-progress/Done columns visibly fail to
+    # sum to Total on any file that has dropped stories, which reads as an
+    # arithmetic bug in the table rather than a missing category.
     lines = [
-        "| File | Planned | In-progress | Done | Total | % done |",
-        "|------|---------|-------------|------|-------|--------|",
+        "| File | Planned | In-progress | Done | Dropped | Total | % done |",
+        "|------|---------|-------------|------|---------|-------|--------|",
     ]
     grand = {"planned": 0, "in-progress": 0, "done": 0, "dropped": 0}
     for fname in sorted(by_file):
@@ -253,7 +257,7 @@ def render_status_rollup(stories: dict[str, Story]) -> str:
         pct = (counts["done"] * 100 // total) if total else 0
         lines.append(
             f"| {fname} | {counts['planned']} | {counts['in-progress']} | "
-            f"{counts['done']} | {total} | {pct}% |"
+            f"{counts['done']} | {counts['dropped']} | {total} | {pct}% |"
         )
         for k, v in counts.items():
             grand[k] += v
@@ -261,7 +265,7 @@ def render_status_rollup(stories: dict[str, Story]) -> str:
     gpct = (grand["done"] * 100 // gtotal) if gtotal else 0
     lines.append(
         f"| **Total** | {grand['planned']} | {grand['in-progress']} | "
-        f"{grand['done']} | {gtotal} | {gpct}% |"
+        f"{grand['done']} | {grand['dropped']} | {gtotal} | {gpct}% |"
     )
     return "\n".join(lines)
 

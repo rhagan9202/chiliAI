@@ -1118,7 +1118,7 @@ Sprint 2026-28 U2 (frontend.27) shipped the canvas-side support **dormant and un
 ## Story frontend.30: Give `/policy` a first-class nav placement (or record the direct-URL posture)
 
 **ID:** frontend.30
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
@@ -1139,9 +1139,11 @@ a code defect: adding `policy` to `enabled_pages`/role `pages` in
 `backend/config/defaults/*.yaml` is all it takes to surface it.
 
 ### Acceptance Criteria
-- [ ] Decision recorded: either `policy` is added to the appropriate packs' `enabled_pages` + role `pages` (analyst at minimum on the CMS pack), or this direct-URL posture is documented in `docs/demo/README.md` and the pack YAML comments as intentional.
-- [ ] If surfaced: sidebar shows the Policy entry under the granted roles across the CMS packs; `chili_app/e2e/demo-walkthrough.spec.ts` navigates via the sidebar instead of a raw `page.goto`.
-- [ ] Existing nav-less direct rendering keeps working either way (deep links from `make demo-cms` output must not break).
+- [x] Decision recorded: either `policy` is added to the appropriate packs' `enabled_pages` + role `pages` (analyst at minimum on the CMS pack), or this direct-URL posture is documented in `docs/demo/README.md` and the pack YAML comments as intentional. — **Surfaced**, not deferred: `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml:855,859` grant `policy` to both analyst and admin.
+- [ ] If surfaced: sidebar shows the Policy entry under the granted roles across the CMS packs; `chili_app/e2e/demo-walkthrough.spec.ts` navigates via the sidebar instead of a raw `page.goto`. — **Half met.** The sidebar entry exists (`chili_app/src/components/layout/Sidebar.tsx:52`), but the e2e still deep-links: `chili_app/e2e/demo-walkthrough.spec.ts:195` is `page.goto('/policy?kb=…')`. Until that navigates via the sidebar, nothing regression-guards the nav entry — it could be dropped from a pack and the suite would stay green.
+- [x] Existing nav-less direct rendering keeps working either way (deep links from `make demo-cms` output must not break). — the `page.goto` at `:195` is itself the standing proof.
+
+> **Status note (2026-08-06, SAFE-CMS surge audit):** the config half of this story shipped and the row was never updated, so it sat in the "start today" ready set as unstarted work. Moved to `in-progress` rather than `done`: the remaining e2e assertion is small but real, and closing it now would leave the nav entry permanently untested.
 
 ### Verification
 - `make dev` + browser: sidebar shows/omits Policy per the decision; `/policy?kb=<id>` still renders standalone.
