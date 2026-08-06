@@ -28,6 +28,7 @@ from governance.models import (
     GovernanceEvalRun,
     GovernanceMetricResult,
 )
+from governance.service import GovernanceEvalService
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from playbooks.adapters.in_memory import InMemoryPlaybookRepository
 from playbooks.models import PlaybookImportArtifact, PlaybookSnapshot
@@ -112,6 +113,7 @@ def test_list_playbooks_returns_seed_and_published_versions() -> None:
         service,
         config,
         _admin(),
+        _eval_service_with_approvals(SEED_PLAYBOOK_ID),
     )
     listed = playbooks_router.list_playbooks(
         "kb-1",
@@ -143,6 +145,9 @@ def test_list_playbooks_reports_published_pagination_metadata() -> None:
     repository, service = _repository_service(config)
     admin = _admin()
 
+    eval_service = _eval_service_with_approvals(
+        SEED_PLAYBOOK_ID, "peer_outlier_provider_review"
+    )
     for playbook_id in (SEED_PLAYBOOK_ID, "peer_outlier_provider_review"):
         playbooks_router.publish_playbook(
             "kb-1",
@@ -153,6 +158,7 @@ def test_list_playbooks_reports_published_pagination_metadata() -> None:
             service,
             config,
             admin,
+            eval_service,
         )
 
     listed = playbooks_router.list_playbooks(
@@ -186,6 +192,7 @@ def test_published_playbooks_are_scoped_to_knowledge_base() -> None:
         service,
         config,
         _admin(),
+        _eval_service_with_approvals(SEED_PLAYBOOK_ID),
     )
 
     kb_1 = playbooks_router.list_playbooks(
@@ -311,6 +318,7 @@ def test_publish_playbook_requires_admin_and_uses_authenticated_actor() -> None:
         service,
         config,
         User(user_id="admin-from-token", roles=["admin"], knowledge_base_ids=["kb-1"]),
+        _eval_service_with_approvals(SEED_PLAYBOOK_ID),
     )
 
     app = create_app()
@@ -445,6 +453,7 @@ def test_export_import_round_trips_domain_artifact() -> None:
         service,
         config,
         admin,
+        _eval_service_with_approvals(SEED_PLAYBOOK_ID),
     )
     exported = playbooks_router.export_playbooks(
         "kb-1",
@@ -488,6 +497,23 @@ def _playbook_api_app(
     app.dependency_overrides[get_playbook_service] = lambda: service
     app.dependency_overrides[get_governance_eval_repository] = lambda: eval_repository
     return app
+
+
+def _eval_service_with_approvals(*playbook_ids: str) -> GovernanceEvalService:
+    """A governance service pre-approved for the given playbooks at ``v1``.
+
+    Publishing requires an approved eval baseline. Tests below that exercise
+    other behaviour satisfy that gate with a real service rather than bypassing
+    it, so the gate stays enforced on every call path.
+    """
+    return GovernanceEvalService(
+        repository=InMemoryGovernanceEvalRepository(
+            [
+                _approved_eval_run(playbook_id=playbook_id, version="v1")
+                for playbook_id in playbook_ids
+            ]
+        )
+    )
 
 
 def _approved_eval_run(*, playbook_id: str, version: str) -> GovernanceEvalRun:

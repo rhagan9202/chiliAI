@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.contracts import (
@@ -129,8 +127,8 @@ def _capability_response(manifest: CapabilityManifest) -> CapabilityManifestResp
         examples=[
             CapabilityExampleResponse(
                 name=example.name,
-                input=cast(dict[str, object], dict(example.input)),
-                output=cast(dict[str, object], dict(example.output)),
+                input=dict(example.input),
+                output=dict(example.output),
             )
             for example in manifest.examples
         ],

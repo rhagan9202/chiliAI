@@ -126,6 +126,8 @@ venv = ".venv"
 extraPaths = ["."]
 include = [
     "agent",
+    "auditlog",
+    "capabilities",
     "conversations",
     "analytics/gnn",
     "analytics/metrics",
@@ -140,7 +142,10 @@ include = [
     "api/middleware/rbac.py",
     "api/middleware/session_store.py",
     "api/routers/alerts.py",
+    "api/routers/audit.py",
+    "api/routers/capabilities.py",
     "api/routers/governance.py",
+    "api/routers/playbooks.py",
     "api/routers/records.py",
     "api/routers/investigation.py",
     "api/routers/knowledgebases.py",
@@ -161,6 +166,8 @@ include = [
     "vectorstore",
     "workflow_definitions",
     "tests/agent",
+    "tests/auditlog",
+    "tests/capabilities",
     "tests/conversations",
     "tests/connectors",
     "tests/analytics/gnn",
