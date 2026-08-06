@@ -513,15 +513,12 @@ def _projection_where_clause(query: RiskProjectionQuery) -> tuple[str, tuple[obj
 def _json_list(value: object) -> list[str]:
     if value is None:
         return []
-    if isinstance(value, str):
-        loaded = json.loads(value)
-    else:
-        loaded = value
+    loaded: object = json.loads(value) if isinstance(value, str) else value
     if not isinstance(loaded, list):
         return []
     return [
         str(item)
-        for item in loaded
+        for item in cast(list[object], loaded)
         if item is not None
     ]
 
@@ -575,14 +572,14 @@ def _typology_ids_from_factor_json(
     value: object,
     feature_typology_index: dict[str, list[str]],
 ) -> list[str]:
-    factors = json.loads(value) if isinstance(value, str) else value
+    factors: object = json.loads(value) if isinstance(value, str) else value
     if not isinstance(factors, list):
         return []
     typology_ids: set[str] = set()
-    for factor in factors:
+    for factor in cast(list[object], factors):
         if not isinstance(factor, dict):
             continue
-        factor_name = factor.get("factor_name")
+        factor_name = cast(dict[str, object], factor).get("factor_name")
         if factor_name is None:
             continue
         typology_ids.update(feature_typology_index.get(str(factor_name), ()))

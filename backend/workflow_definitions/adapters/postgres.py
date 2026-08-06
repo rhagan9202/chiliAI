@@ -250,14 +250,21 @@ def _steps_json(steps: list[WorkflowStepDefinition]) -> str:
 
 
 def _decode_string_list(value: object) -> list[str]:
-    raw = json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
+    raw: object = (
+        json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
+    )
     if not isinstance(raw, list):
         raise ValueError("workflow_definition_snapshots JSON value is not a list.")
-    return [str(item) for item in raw]
+    return [str(item) for item in cast(list[object], raw)]
 
 
 def _decode_steps(value: object) -> list[WorkflowStepDefinition]:
-    raw = json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
+    raw: object = (
+        json.loads(value) if isinstance(value, (str, bytes, bytearray)) else value
+    )
     if not isinstance(raw, list):
         raise ValueError("workflow_definition_snapshots.steps is not a list.")
-    return [WorkflowStepDefinition.model_validate(item) for item in raw]
+    return [
+        WorkflowStepDefinition.model_validate(item)
+        for item in cast(list[object], raw)
+    ]

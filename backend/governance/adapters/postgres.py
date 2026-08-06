@@ -231,7 +231,10 @@ def _decode_metrics(value: object) -> list[GovernanceMetricResult]:
     raw = _decode_json(value)
     if not isinstance(raw, list):
         raise ValueError("governance_eval_runs.metrics is not a list.")
-    return [GovernanceMetricResult.model_validate(item) for item in raw]
+    return [
+        GovernanceMetricResult.model_validate(item)
+        for item in cast(list[object], raw)
+    ]
 
 
 def _decode_drift_summary(value: object) -> GovernanceDriftSummary:
@@ -248,7 +251,7 @@ def _decode_string_list(value: object) -> list[str]:
     raw = _decode_json(value)
     if not isinstance(raw, list):
         raise ValueError("governance_eval_runs JSON value is not a list.")
-    return [str(item) for item in raw]
+    return [str(item) for item in cast(list[object], raw)]
 
 
 def _decode_json(value: object) -> object:
