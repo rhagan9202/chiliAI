@@ -504,6 +504,21 @@ class ScoreRunStatusChangedEvent(EventBase):
     catalog_version: str
     replay_of_run_id: str | None = None
 
+class ScoreBatchQueuedEvent(EventBase):
+    """One score-all batch is ready to execute.
+
+    Carries identifiers only. The executor reloads the batch and its run from
+    the repository, so a redelivered event — which may be arbitrarily old after
+    a reclaim — can never resurrect a stale snapshot of mutable state.
+    """
+
+    event_type: Literal["score.batch.queued"] = "score.batch.queued"
+    knowledge_base_id: str
+    run_id: str
+    batch_id: str
+    batch_number: int = Field(ge=0)
+
+
 
 AnyEvent = (
     KnowledgeBaseCreatedEvent
@@ -525,6 +540,7 @@ AnyEvent = (
     | GnnAnalyzedEvent
     | RiskScoredEvent
     | IdentityLinkDecisionRecordedEvent
+    | ScoreBatchQueuedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -576,6 +592,7 @@ __all__ = [
     "GraphUpdatedDocumentReference",
     "GraphUpdatedEvent",
     "IdentityLinkDecisionRecordedEvent",
+    "ScoreBatchQueuedEvent",
     "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",
     "KnowledgeBaseDeletedEvent",
