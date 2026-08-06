@@ -255,6 +255,41 @@ CREATE TABLE public.risk_score_history (
     factors jsonb NOT NULL,
     assessed_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.score_batches (
+    id text NOT NULL,
+    run_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    batch_number integer NOT NULL,
+    status text NOT NULL,
+    entity_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    error_summary text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    CONSTRAINT ck_score_batches_status CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text, 'failed'::text, 'canceled'::text, 'replayed'::text])))
+);
+CREATE TABLE public.score_runs (
+    id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    status text NOT NULL,
+    requested_by text,
+    idempotency_key text,
+    model_version text NOT NULL,
+    catalog_version text NOT NULL,
+    replay_of_run_id text,
+    entity_cursor text,
+    total_entities integer DEFAULT 0 NOT NULL,
+    scored_entities integer DEFAULT 0 NOT NULL,
+    failed_entities integer DEFAULT 0 NOT NULL,
+    error_summary text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    CONSTRAINT ck_score_runs_status CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text, 'failed'::text, 'canceled'::text, 'replayed'::text])))
+);
 CREATE TABLE public.scorecard_runs (
     knowledge_base_id text NOT NULL,
     run_id text NOT NULL,
@@ -352,6 +387,12 @@ ALTER TABLE ONLY public.risk_projections
     ADD CONSTRAINT risk_projections_pkey PRIMARY KEY (knowledge_base_id, entity_id);
 ALTER TABLE ONLY public.risk_score_history
     ADD CONSTRAINT risk_score_history_pkey PRIMARY KEY (request_id);
+ALTER TABLE ONLY public.score_batches
+    ADD CONSTRAINT score_batches_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.score_batches
+    ADD CONSTRAINT score_batches_run_id_batch_number_key UNIQUE (run_id, batch_number);
+ALTER TABLE ONLY public.score_runs
+    ADD CONSTRAINT score_runs_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.scorecard_runs
     ADD CONSTRAINT scorecard_runs_knowledge_base_id_template_id_scope_type_sco_key UNIQUE (knowledge_base_id, template_id, scope_type, scope_id, period_start, period_end, source_snapshot_hash);
 ALTER TABLE ONLY public.scorecard_runs
@@ -392,11 +433,16 @@ CREATE INDEX ix_raw_records_payload ON public.raw_records USING gin (payload);
 CREATE INDEX ix_risk_projections_kb_score ON public.risk_projections USING btree (knowledge_base_id, overall_score DESC, scored_at DESC);
 CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btree (knowledge_base_id, status, risk_level);
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
+CREATE INDEX ix_score_batches_run_status ON public.score_batches USING btree (run_id, status, batch_number);
+CREATE INDEX ix_score_runs_kb_status ON public.score_runs USING btree (knowledge_base_id, status, created_at DESC);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
 CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX observations_observed_at_idx ON public.observations USING btree (observed_at DESC);
 CREATE UNIQUE INDEX ux_policy_items_item_id ON public.policy_items USING btree (knowledge_base_id, item_id);
+CREATE UNIQUE INDEX ux_score_runs_kb_idempotency ON public.score_runs USING btree (knowledge_base_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+ALTER TABLE ONLY public.score_batches
+    ADD CONSTRAINT score_batches_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.score_runs(id) ON DELETE CASCADE;
 -- timescaledb hypertables (hypertable_name|num_dimensions)
 entity_metric_history|1
 observations|1
