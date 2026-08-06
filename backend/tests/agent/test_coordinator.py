@@ -5392,7 +5392,16 @@ def test_run_worker_survives_transient_drain_error(
                 health_settings=HealthSettings(host="127.0.0.1", port=free_port)
             )
         )
-        await asyncio.sleep(0.1)
+        # Wait for the observable condition — repeated drain attempts — rather than
+        # a fixed wall-clock budget. Worker startup alone costs ~40ms on an idle
+        # machine and can exceed 95ms under load, which raced the old 0.1s sleep and
+        # made this test fail intermittently in full-suite runs. Break early if the
+        # worker died so a real resilience regression surfaces as its own error below
+        # rather than as a timeout.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 10.0
+        while calls["n"] < 2 and not task.done() and loop.time() < deadline:
+            await asyncio.sleep(0.01)
         task.cancel()
         # run_worker swallows CancelledError for graceful shutdown; if resilience
         # were broken, the first RuntimeError would propagate here instead.

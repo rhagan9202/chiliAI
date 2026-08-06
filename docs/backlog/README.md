@@ -14,34 +14,34 @@
 
 ## Status roll-up
 <!-- BEGIN: status-rollup -->
-| File | Planned | In-progress | Done | Total | % done |
-|------|---------|-------------|------|-------|--------|
-| _cicd.md | 20 | 1 | 0 | 21 | 0% |
-| _infra.md | 19 | 0 | 0 | 19 | 0% |
-| _multitenancy.md | 16 | 0 | 0 | 16 | 0% |
-| _observability.md | 11 | 1 | 0 | 13 | 0% |
-| _plugins.md | 16 | 0 | 0 | 16 | 0% |
-| _security.md | 11 | 0 | 1 | 12 | 8% |
-| agent.md | 20 | 0 | 1 | 21 | 4% |
-| analytics.md | 29 | 0 | 6 | 36 | 16% |
-| api.md | 27 | 0 | 1 | 29 | 3% |
-| config.md | 14 | 0 | 1 | 15 | 6% |
-| database.md | 12 | 0 | 1 | 13 | 7% |
-| embeddings.md | 12 | 0 | 0 | 12 | 0% |
-| events.md | 13 | 2 | 1 | 16 | 6% |
-| frontend.md | 27 | 0 | 3 | 30 | 10% |
-| graph.md | 18 | 0 | 2 | 20 | 10% |
-| ingestion.md | 23 | 0 | 12 | 35 | 34% |
-| knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
-| llm.md | 17 | 0 | 0 | 17 | 0% |
-| monitoring.md | 20 | 0 | 1 | 21 | 4% |
-| rag.md | 17 | 0 | 0 | 17 | 0% |
-| records.md | 14 | 2 | 1 | 17 | 5% |
-| scorecards.md | 3 | 0 | 0 | 3 | 0% |
-| shared.md | 17 | 1 | 0 | 18 | 0% |
-| storage.md | 14 | 0 | 0 | 14 | 0% |
-| vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 417 | 7 | 31 | 458 | 6% |
+| File | Planned | In-progress | Done | Dropped | Total | % done |
+|------|---------|-------------|------|---------|-------|--------|
+| _cicd.md | 20 | 1 | 0 | 0 | 21 | 0% |
+| _infra.md | 19 | 0 | 0 | 0 | 19 | 0% |
+| _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
+| _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
+| _plugins.md | 16 | 0 | 0 | 0 | 16 | 0% |
+| _security.md | 10 | 1 | 1 | 0 | 12 | 8% |
+| agent.md | 20 | 0 | 1 | 0 | 21 | 4% |
+| analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
+| api.md | 27 | 0 | 1 | 1 | 29 | 3% |
+| config.md | 14 | 0 | 1 | 0 | 15 | 6% |
+| database.md | 12 | 0 | 1 | 0 | 13 | 7% |
+| embeddings.md | 12 | 0 | 0 | 0 | 12 | 0% |
+| events.md | 13 | 2 | 1 | 0 | 16 | 6% |
+| frontend.md | 26 | 1 | 3 | 0 | 30 | 10% |
+| graph.md | 18 | 0 | 2 | 0 | 20 | 10% |
+| ingestion.md | 23 | 0 | 12 | 0 | 35 | 34% |
+| knowledgebases.md | 13 | 0 | 0 | 0 | 13 | 0% |
+| llm.md | 17 | 0 | 0 | 0 | 17 | 0% |
+| monitoring.md | 20 | 0 | 1 | 0 | 21 | 4% |
+| rag.md | 17 | 0 | 0 | 0 | 17 | 0% |
+| records.md | 14 | 2 | 1 | 0 | 17 | 5% |
+| scorecards.md | 3 | 0 | 0 | 0 | 3 | 0% |
+| shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
+| storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
+| vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
+| **Total** | 414 | 9 | 32 | 3 | 458 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -50,9 +50,7 @@
 - [_cicd.01] _cicd — size S — prereqs done
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
-- [analytics.36] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
-- [frontend.30] frontend — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
@@ -77,7 +75,9 @@
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
-- …39 more
+- [embeddings.06] embeddings — size M — prereqs done
+- [frontend.06] frontend — size M — prereqs done
+- …37 more
 <!-- END: ready-set -->
 
 ## Critical path

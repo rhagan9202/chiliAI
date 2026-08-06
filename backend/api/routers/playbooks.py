@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from api.contracts import (
@@ -219,7 +217,9 @@ def publish_playbook(
     service: PlaybookService = Depends(get_playbook_service),
     domain_config: DomainConfig = Depends(get_domain_config),
     user: User = Depends(require_role("admin")),
-    governance_eval_service: Any = Depends(get_governance_eval_service),
+    governance_eval_service: GovernanceEvalService = Depends(
+        get_governance_eval_service
+    ),
 ) -> PlaybookSnapshotResponse:
     """Publish a config-authored seed playbook as an immutable snapshot."""
     del playbook_repository
@@ -229,13 +229,11 @@ def publish_playbook(
         user,
         domain_config,
     )
-    if isinstance(governance_eval_service, GovernanceEvalService) and (
-        not governance_eval_service.has_approved_eval(
-            knowledge_base_id=knowledge_base_id,
-            artifact_kind="playbook",
-            artifact_id=playbook_id,
-            artifact_version=payload.version,
-        )
+    if not governance_eval_service.has_approved_eval(
+        knowledge_base_id=knowledge_base_id,
+        artifact_kind="playbook",
+        artifact_id=playbook_id,
+        artifact_version=payload.version,
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

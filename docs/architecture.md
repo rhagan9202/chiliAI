@@ -465,8 +465,15 @@ policy/                         # Durable, KB-scoped policy intelligence (BL-011
         ├── in_memory.py        # InMemoryPolicyItemRepository
         └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
 governance/                     # KB-scoped release readiness (SAFE-CMS-020)
-    ├── models.py               # version inventory, approvals, feedback trends, blockers
-    └── service.py              # GovernanceReportService over playbooks/workflows/reviews
+    ├── models.py               # version inventory, eval runs/metrics/drift, approvals,
+    │                           #   feedback trends, blockers
+    ├── repository.py           # GovernanceEvalRepository protocol
+    ├── service.py              # GovernanceEvalService (eval-run lifecycle, baseline
+    │                           #   approval, has_approved_eval) + GovernanceReportService
+    └── adapters/
+        ├── in_memory.py        # InMemoryGovernanceEvalRepository
+        └── postgres.py         # PostgresGovernanceEvalRepository (governance_eval_runs,
+                                #   migrations 0022_governance_eval_runs / 0023_…source_refs)
 scorecards/                     # Config-driven statutory scorecard runs (af_housing)
     ├── evaluation.py           # Pure evaluate_template() over SourceRecords; no I/O
     ├── service.py              # ScorecardService + ScorecardSourceRecordLoader protocol
@@ -531,7 +538,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 | `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
-| `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews | `policy`, `agent`, `analytics.explainability` model/repository protocols | `api`, persistence adapters, worker internals |
+| `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews; durable eval-run lifecycle with baseline approval. `GovernanceEvalService.has_approved_eval` is an **enforced** gate — `POST /knowledgebases/{kb}/playbooks/{id}/publish` returns 409 without an approved baseline | `policy`, `agent`, `analytics.explainability` model/repository protocols; `database.ConnectionProvider` | `api`, worker internals |
 | `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
 | `scorecards` | Config-driven scorecard evaluation (`evaluate_template`), durable run persistence, JSON/Markdown exports | `config` (ScorecardTemplateConfig), `shared`, `database.ConnectionProvider`; feed records arrive through the `ScorecardSourceRecordLoader` protocol implemented at the gateway | `records`, `api`, `ingestion` internals — never imports the records module directly |
 

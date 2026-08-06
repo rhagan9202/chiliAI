@@ -171,7 +171,7 @@ def _decode_string_list(value: object) -> list[str]:
     raw = _decode_json(value)
     if not isinstance(raw, list):
         raise AuditLogPersistenceError("audit_log.actor_roles did not decode to a list.")
-    return [str(item) for item in raw]
+    return [str(item) for item in cast(list[object], raw)]
 
 
 def _decode_outcome(value: object) -> AuditOutcome:
@@ -180,4 +180,4 @@ def _decode_outcome(value: object) -> AuditOutcome:
         raise AuditLogPersistenceError(
             f"audit_log.outcome has unexpected value '{raw}'."
         )
-    return cast(AuditOutcome, raw)
+    return raw

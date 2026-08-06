@@ -5,7 +5,7 @@ from pathlib import Path
 
 def test_workflow_definition_snapshots_migration_declares_table() -> None:
     migration = (
-        Path("backend")
+        Path(__file__).resolve().parents[2]
         / "database/migrations/versions/0021_workflow_definition_snapshots.py"
     ).read_text(encoding="utf-8")
 

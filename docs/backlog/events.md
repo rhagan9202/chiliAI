@@ -10,7 +10,7 @@
 **ID:** events.01
 **Status:** in-progress
 **Prerequisites:** []
-**Unblocks:** [_multitenancy.11, _security.05, _security.06, api.05, events.07, vectorstore.09]
+**Unblocks:** [_multitenancy.11, _security.05, api.05, events.07, vectorstore.09]
 **Estimated size:** L
 
 **As a** platform operator,

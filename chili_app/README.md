@@ -135,16 +135,33 @@ exactly and has no fixed release yet. Drop the override once a redocly
 release depends on `js-yaml >= 4.3.0`. CI's `npm audit --audit-level=high`
 gate enforces this.
 
-Two further `overrides` entries force `brace-expansion >= 5.0.8` and
-`minimatch >= 10.2.5` (GHSA-mh99-v99m-4gvg, unbounded-expansion OOM DoS):
-5.0.8 is the only patched brace-expansion release — there are no 1.x/2.x
-backports — and the minimatch 3/5 versions pinned by the `eslint` and
-`@redocly/openapi-core` chains call brace-expansion's pre-5.x default
-export, so minimatch is lifted tree-wide to 10.x, which consumes
+Two further `overrides` entries force `brace-expansion >= 5.0.9` and
+`minimatch >= 10.2.5` (unbounded-expansion OOM DoS): there are no 1.x/2.x
+brace-expansion backports, and the minimatch 3/5 versions pinned by the
+`eslint` and `@redocly/openapi-core` chains call brace-expansion's pre-5.x
+default export, so minimatch is lifted tree-wide to 10.x, which consumes
 brace-expansion 5 natively. Verified empirically: lint (including a
 deliberate-violation probe), unit tests, `codegen:api` (no schema drift),
 build, and the full-stack e2e suite. Drop both overrides once eslint and
 redocly ship on `minimatch >= 10` or brace-expansion backports land.
+
+The brace-expansion floor was raised from `5.0.8` to `5.0.9` on 2026-08-06:
+GHSA-rgw5-rvv9-x895 found a bypass of the original GHSA-mh99-v99m-4gvg
+mitigation and marked `4.0.0 - 5.0.8` vulnerable, which put the old floor
+itself inside the affected range. **A patched floor can become a vulnerable
+one — re-check these pins when auditing, don't assume a pinned version is
+still fixed.** The same pass took `ip-address` from 10.2.0 to 10.4.0
+(GHSA-mwp4-54f8-5fhr and two sibling SSRF/trust-boundary advisories,
+reached via `@mermaid-js/mermaid-cli` → `puppeteer` → `socks`). That one
+needed **no** override — `socks` already declares `ip-address: ^10.1.1`, so
+it was pure lockfile staleness, resolved with
+`npm update ip-address --package-lock-only`.
+
+Prefer `npm update <pkg> --package-lock-only` for advisory bumps that are
+already in-range. A plain `npm install --legacy-peer-deps` will *prune peer
+dependencies out of the lockfile* — it silently removed `puppeteer` (a peer
+of `@mermaid-js/mermaid-cli`, needed by `render:architecture`) along with 71
+transitive packages.
 
 The router is `react-router` v8 (the `react-router-dom` package was removed
 upstream in v8): core APIs import from `react-router`, DOM-specific ones

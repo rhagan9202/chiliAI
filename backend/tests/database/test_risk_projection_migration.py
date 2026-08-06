@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from importlib import import_module
 
+import pytest
+
 
 def test_risk_projection_migration_creates_projection_table(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migration = import_module("database.migrations.versions.0013_risk_projections")
     statements: list[str] = []
@@ -24,7 +26,7 @@ def test_risk_projection_migration_creates_projection_table(
 
 
 def test_risk_projection_migration_downgrade_drops_projection_table(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migration = import_module("database.migrations.versions.0013_risk_projections")
     statements: list[str] = []

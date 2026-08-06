@@ -10,7 +10,7 @@
 **ID:** database.01
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** [_multitenancy.05, _observability.10, _security.02, _security.06, agent.09, agent.18, llm.08, records.02, records.05, vectorstore.02]
+**Unblocks:** [_multitenancy.05, _observability.10, _security.02, agent.09, agent.18, llm.08, records.02, records.05, vectorstore.02]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 
