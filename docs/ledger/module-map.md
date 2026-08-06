@@ -2,6 +2,7 @@
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
 **Reviewed:** 2026-07-26 against the current working tree — analytics adapter names corrected, agent handler entries updated, and post-snapshot modules (`cases/`, `conversations/`, `knowledgebases/`, `policy/`, `scorecards/`) added.
+**Reviewed:** 2026-08-06 — the seven SAFE-CMS modules and three new `analytics/` submodules added below; the backend has **28 packages** (`ls backend/` is ground truth).
 
 Each entry covers: purpose, primary public exports, adapters (if any), and forbidden/allowed dependencies per CLAUDE.md.
 
@@ -304,6 +305,129 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 **Key exports:** `ScorecardService`, `create_scorecard_service`, `ScorecardSourceRecordLoader` (protocol), `ScorecardRunRepository` (protocol)
 
 **Adapters:** `InMemoryScorecardRunRepository`, `PostgresScorecardRunRepository`
+
+---
+
+## SAFE-CMS surge modules (added 2026-08-02 → 08-05)
+
+Seven top-level packages and three `analytics/` submodules landed during the
+surge and were absent from this map until 2026-08-06. Implementation depth
+varies sharply — the notes record what is actually wired, because several of
+these expose an API whose work nothing executes.
+
+## `auditlog/` — Append-Only Material-Action Ledger
+
+**Purpose:** Records material analyst/system actions (auth, KB lifecycle, alert triage, case mutations, explanation reviews, workflow-definition lifecycle, identity decisions). Writes are non-blocking; failures land in a bounded in-process buffer surfaced at `GET /audit/status`.
+
+**Key exports:** `AuditLogService`, `AuditEvent`, `AuditEventCreate`, `AuditEventQuery`, `AuditLogRepository` (protocol), `PLATFORM_TENANT_ID`
+
+**Adapters:** `InMemoryAuditLogRepository`, `PostgresAuditLogRepository` (`audit_log`, migration `0016`)
+
+**Tenancy:** every event is written under the single `PLATFORM_TENANT_ID`; KB scoping uses `knowledge_base_id`. `tenant_id` is never accepted from a request body.
+
+---
+
+## `capabilities/` — Typed Capability / Tool Registry
+
+**Purpose:** Catalog of capabilities available to workflows and agents, with input/output schemas, role/domain/environment permissions, side-effect class, and execution envelopes.
+
+**Key exports:** `CapabilityRegistryService`, `CapabilityManifest`, `CapabilityExecutionEnvelope`, `create_default_capability_registry_service`
+
+**Adapters:** none — the registry is an in-process constructor, not persisted.
+
+**Status:** browse + `authorize()` are real; there is **no dispatcher**. Nothing executes a capability through this registry in production.
+
+---
+
+## `connectors/` — Pull Connector Definitions
+
+**Purpose:** Connector registration, sync-run records, and quarantine tracking for scheduled/manual pulls.
+
+**Key exports:** `ConnectorService`, `ConnectorDefinition`, `ConnectorSyncRun`, `ConnectorRepositoryProtocol`
+
+**Adapters:** `InMemoryConnectorRepository` only — **no Postgres adapter and no migration**, so definitions and runs are process-lifetime.
+
+**Status:** metadata only. No source adapter, no scheduler, no ingestion events, no replay. `start_sync` writes a `queued` row nothing advances.
+
+---
+
+## `governance/` — Release Readiness & Eval Runs
+
+**Purpose:** Release-readiness reporting over playbooks, workflow definitions and explanation reviews, plus a durable eval-run lifecycle with baseline approval.
+
+**Key exports:** `GovernanceReportService`, `GovernanceEvalService`, `GovernanceEvalRepository` (protocol)
+
+**Adapters:** `InMemoryGovernanceEvalRepository`, `PostgresGovernanceEvalRepository` (`governance_eval_runs`, migrations `0022`/`0023`)
+
+**Status:** `has_approved_eval` is an enforced gate on playbook publish (409 without an approved baseline). Metrics are caller-supplied — there is no eval runner that scores data.
+
+---
+
+## `playbooks/` — Versioned Fraud Playbooks
+
+**Purpose:** Config-authored seed playbooks published as immutable DB snapshots, with export/import as domain-pack artifacts.
+
+**Key exports:** `PlaybookService`, `PlaybookSnapshot`, `PlaybookRepository` (protocol)
+
+**Adapters:** `InMemoryPlaybookRepository`, `PostgresPlaybookRepository` (`fraud_playbook_snapshots`, migrations `0019`/`0020`)
+
+---
+
+## `readiness/` — KB / Domain Readiness Aggregation
+
+**Purpose:** Aggregates readiness for the app-shell workspace control.
+
+**Key exports:** `ReadinessService`, `ReadinessReport`, `ReadinessIssue`
+
+**Adapters:** none.
+
+**Status:** probes four components (`knowledge_base`, `connectors`, `workflows`, `capabilities`) — **not** graph, vector, embeddings or analytics freshness. Its `no_connectors`/`no_workflows` blockers make a fully ingested KB report `ready: false`.
+
+---
+
+## `workflow_definitions/` — User-Authored Workflow Definitions
+
+**Purpose:** Definition CRUD, static validation against the capability registry, approval/retire lifecycle, and idempotent run handoff.
+
+**Key exports:** `WorkflowDefinitionService`, `WorkflowDefinition`, `WorkflowStepDefinition`, `WorkflowDefinitionRepository` (protocol)
+
+**Adapters:** `InMemoryWorkflowDefinitionRepository`, `PostgresWorkflowDefinitionRepository` (`workflow_definition_snapshots`, migration `0021`)
+
+**Status:** `run_definition` persists a `QUEUED` `WorkflowRun` and audits the request. **No executor** — no event is published and no worker consumes it, so steps never run. `condition`, `retry_policy`, `on_failure` are stored but never evaluated.
+
+---
+
+## `analytics/features/` — Feature Catalog
+
+**Purpose:** Reads the domain pack's versioned typology/feature catalog.
+
+**Key exports:** `FeatureCatalogService`, `create_feature_catalog_service`
+
+**Status:** catalog metadata is real; `list_entity_values` is a stub returning `[]`, and no durable feature-value store exists.
+
+---
+
+## `analytics/identity_resolution/` — Canonical Identity Links
+
+**Purpose:** Deterministic identity scoring, canonical link records, and audited steward merge/split decisions.
+
+**Key exports:** `IdentityDecisionService`, `IdentityLinkRecord`, `IdentityLinkRepository` (protocol)
+
+**Adapters:** `InMemoryIdentityLinkRepository`, `PostgresIdentityLinkRepository` (`identity_links`, migration `0018`)
+
+**Status:** no production path **creates** a link — `upsert_link`'s only non-test caller requires the link to exist already. `IdentityLinkDecisionRecordedEvent` is published with no consumer.
+
+---
+
+## `analytics/score_runs/` — Score-All Run Lifecycle
+
+**Purpose:** KB-scoped score-all run/batch state with idempotency keys, cancel and replay.
+
+**Key exports:** `ScoreRunService`, `ScoreRun`, `ScoreRunRepositoryProtocol`
+
+**Adapters:** `InMemoryScoreRunRepository` only — **no Postgres adapter and no migration**, so runs do not survive a restart.
+
+**Status:** state machine only. Nothing executes batches; `ScoreRunStatusChangedEvent` has no consumer.
 
 ---
 

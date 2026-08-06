@@ -113,7 +113,9 @@ Policy registry (`middleware/policy_registry.py`): `assert_complete(app)` called
 
 ## Session Store
 
-`SessionStoreProtocol` is an in-process dictionary-backed store by default. Production requires a Redis-backed store for multi-replica deployments (not yet wired — see architecture.md §12).
+`SessionStoreProtocol` has two adapters and the selection is **wired** (since 2026-07-15, BL-022): `get_session_store()` in `backend/api/dependencies.py` returns `InMemorySessionStore` when `AuthConfig.enabled` is false, and `RedisSessionStore` otherwise — raising `ConfigurationError` if `REDIS_URL` is unset rather than silently falling back to an in-process store that would break multi-replica deployments.
+
+> This section previously read "not yet wired", which stayed wrong for three weeks and invites a duplicate implementation of something that already exists.
 
 ```python
 class SessionRecord:

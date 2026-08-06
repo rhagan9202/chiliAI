@@ -42,8 +42,21 @@ DEFAULT ''`, `confidence double precision NOT NULL DEFAULT 0`, and `tags
 jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — `GET /alerts` has been
 served from `alert_history` since this branch, replacing the retired
 projection blob `api/_alert_store.py`, not seeded `ApiState`). Migration 0013
-adds `risk_projections` for persisted SAFE-CMS-003 risk read models. Head is
-`0013` — 16 tables total.
+adds `risk_projections` for persisted SAFE-CMS-003 risk read models.
+
+The SAFE-CMS surge added ten more (2026-08-02 → 08-05): `0014` alert triage
+operations, `0015` alert generation metadata, `0016` `audit_log`, `0017`
+`explanation_reviews`, `0018` `identity_links`, `0019` `fraud_playbook_snapshots`
+(+ `cases.playbook_ref`), `0020` playbook-snapshot KB scoping, `0021`
+`workflow_definition_snapshots`, `0022` `governance_eval_runs`, `0023`
+`governance_eval_runs.dataset_source_refs`.
+
+**Head is `0023_eval_dataset_refs` — 22 tables.** Derive both rather than
+trusting this line: `ls database/migrations/versions/` for the head, and
+`grep -c 'CREATE TABLE' database/migrations/snapshots/head.sql` for the table
+count. This sentence previously read "Head is `0013` — 16 tables total" for ten
+revisions after it stopped being true, which is exactly how a new migration gets
+authored as `0014_*` on top of an existing one.
 
 ## Commands
 

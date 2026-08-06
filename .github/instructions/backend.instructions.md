@@ -21,9 +21,18 @@ applyTo: "backend/**/*.py"
 | --- | --- |
 | API and orchestration | `api/`, `agent/`, `events/` |
 | Knowledge pipeline | `ingestion/` (documents), `records/` (structured/tabular), `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `knowledgebases/` |
-| Analytics and monitoring | `analytics/timeseries/`, `analytics/gnn/`, `analytics/risk/`, `analytics/explainability/`, `analytics/metrics/`, `analytics/peerstats/`, `monitoring/`, `scorecards/` |
-| Analyst workflows | `cases/`, `conversations/`, `policy/` |
+| Analytics and monitoring | `analytics/timeseries/`, `analytics/gnn/`, `analytics/risk/`, `analytics/explainability/`, `analytics/metrics/`, `analytics/peerstats/`, `analytics/features/`, `analytics/identity_resolution/`, `analytics/score_runs/`, `monitoring/`, `scorecards/` |
+| Analyst workflows | `cases/`, `conversations/`, `policy/`, `playbooks/` |
+| Governance and provenance | `auditlog/` (append-only material-action ledger), `governance/` (release readiness, eval runs, baseline approval) |
+| Agentic workflow platform | `workflow_definitions/` (user-authored definitions), `capabilities/` (typed capability/tool registry) |
+| Data sources and readiness | `connectors/` (pull connectors), `readiness/` (KB/domain readiness aggregation) |
 | Shared platform services | `shared/`, `config/`, `storage/`, `database/` |
+
+> This table is the "where does new code go" map and is auto-applied to every
+> `backend/**/*.py`. It omitted ten real packages for the whole SAFE-CMS surge —
+> the seven new top-level modules plus the three new `analytics/` submodules —
+> so it pointed at a module layout that no longer existed. There are **28**
+> backend packages; `ls backend/` is the check.
 
 - Keep modules loosely coupled and narrowly scoped. Each module owns its internal implementation and exposes a narrow public contract.
 - The `api/` module is a FastAPI gateway — thin routing, request validation, and dependency injection. **No business logic in routers.**

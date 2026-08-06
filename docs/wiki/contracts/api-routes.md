@@ -1,7 +1,16 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-07-26
+**Verified against codebase:** 2026-07-26 — **stale as of 2026-08-06, see below**
 **Source:** live `api.app:create_app()` route dump with `CHILI_ENV=local`, plus `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
+
+> ⚠ **The verification stamp above predates the SAFE-CMS surge.** Roughly half
+> the live route surface is absent here — the surge added nine router families
+> (`audit`, `capabilities`, `connectors`, `governance`, `identity`, `playbooks`,
+> `readiness`, `score_runs`, `workflow_definitions`) and this page was never
+> re-dumped. Treat it as a partial reference. `chili_app/openapi.json` is
+> CI-verified against the app on every run and is the reliable contract source;
+> `docs/ledger/http-routes.md` carries the family-by-family gap breakdown and
+> the command to re-derive the live set.
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
 

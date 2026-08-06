@@ -1,7 +1,14 @@
 # chiliAI Security Audit Checklist
 
-> Owner: Platform Security · Last reviewed: 2026-05-12 · Cadence: **quarterly**
+> Owner: Platform Security · Last reviewed: 2026-07-26 · Cadence: **quarterly**
 > (Jan / Apr / Jul / Oct), plus ad-hoc when a new external integration lands.
+>
+> The header previously read 2026-05-12 while the Findings log already carried a
+> dated 2026-07-26 entry — the stamp now matches the body. **A09 is out of date:**
+> it lists only correlation IDs, structlog and Prometheus, but an admin-gated
+> append-only audit ledger shipped with SAFE-CMS-009 (`backend/auditlog/`,
+> `GET /audit/events`, migration `0016_audit_log`). A full A01–A10 re-review
+> against the surge has not been done.
 
 This checklist maps OWASP Top 10 (2021) categories to specific chiliAI
 mitigations and the modules / story IDs that implement them. It is intentionally

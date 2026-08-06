@@ -1779,7 +1779,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and retired planning docs live under [`docs/archive/`](archive/). Current production-readiness gaps are tracked in the module backlogs under [`docs/backlog/`](backlog/) and the curated PM backlog under [`docs/project/planning/`](project/planning/).
+> **Last updated**: 2026-08-06 (SAFE-CMS surge reconciliation; the body carries surge content throughout — the previous "May 2026" stamp contradicted the file's own contents). For implementation status, verify the current code and tests first. Historical status reports and retired planning docs live under [`docs/archive/`](archive/). Current production-readiness gaps are tracked in the module backlogs under [`docs/backlog/`](backlog/) and the curated PM backlog under [`docs/project/planning/`](project/planning/).
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|

@@ -1,7 +1,14 @@
 # Module: frontend (chili_app)
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-05-28 — **stale as of 2026-08-06**
 **Source:** `chili_app/src/`
+
+> The page table and `src/api/` client list below predate the SAFE-CMS surge and
+> the UX audit. Missing at minimum: `/governance` (`GovernancePage.tsx`),
+> `/housing`, `/scorecards/:runId`, `NotFoundPage`, and ~10 api-client modules.
+> The `PolicyIntelligencePage` hook list names `usePolicyGaps`, `usePolicyGap`,
+> `usePolicyGapCases` and `useCreatePolicyBrief`, all of which were removed (see
+> `backend/policy/README.md`). `chili_app/src/app/router.tsx` is the ground truth.
 
 ## Purpose
 

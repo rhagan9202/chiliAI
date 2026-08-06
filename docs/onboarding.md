@@ -271,14 +271,34 @@ backend/
     gnn/        Graph neural network link prediction and clustering
     risk/       Risk scoring engine
     explainability/ Evidence pack generation
+    metrics/    Entity metric aggregation
+    peerstats/  Peer-group z-scores and cohort/peer analysis
+    features/   Domain-pack feature catalog reads
+    identity_resolution/ Canonical identity links + steward decisions
+    score_runs/ Score-all run lifecycle state
   agent/        Workflow / pipeline coordinator (async state machine)
-  monitoring/   Active monitoring: claim stream consumer, alert generation
+  monitoring/   Entity metric threshold evaluation and alert generation
   shared/       Domain types, cross-cutting protocols, small utilities — leaf dependency, no business logic
   config/       YAML/JSON domain config loading and validation
   events/       Redis Streams event bus abstraction
   storage/      Object/file storage abstraction (S3 / MinIO / local FS)
   database/     Postgres + TimescaleDB ConnectionProvider, Alembic migrations
+  knowledgebases/ KB and document metadata persistence
+  cases/        Durable, KB-scoped investigation cases
+  conversations/ Durable RAG chat persistence
+  policy/       Policy intelligence: rule evaluation and analyst triage
+  scorecards/   Config-driven statutory scorecard runs
+  auditlog/     Append-only ledger of material analyst/system actions
+  playbooks/    Versioned fraud playbooks + immutable published snapshots
+  workflow_definitions/ User-authored workflow definitions (no executor yet)
+  capabilities/ Typed capability/tool registry (catalog + authorize; no dispatcher)
+  connectors/   Pull connector definitions and sync runs (in-memory only)
+  readiness/    KB/domain readiness aggregation
+  governance/   Release readiness, eval runs, baseline approval
 ```
+
+All **28** packages are listed above; `ls backend/` is the ground truth. This
+tree previously stopped at `database/`, omitting fifteen real packages.
 
 ### 5.3 Cross-module interaction rules (strictly enforced)
 
@@ -1119,4 +1139,4 @@ Run `pytest --cov=mymodule --cov-report=term-missing` to see exactly which lines
 
 ---
 
-*Last updated: April 2026. For questions, open a GitHub Issue or Discussion in the repo.*
+*Last updated: 2026-08-06 (module list and local-run commands reconciled after the SAFE-CMS surge; other sections may still predate it). For questions, open a GitHub Issue or Discussion in the repo.*

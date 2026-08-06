@@ -9,9 +9,9 @@
 | File | Purpose |
 |------|---------|
 | [module-map.md](module-map.md) | Per-module purpose, public surface, adapters, and inter-module dependencies |
-| [protocol-contracts.md](protocol-contracts.md) | Every `Protocol` in the codebase — methods and implementing adapters |
-| [event-catalog.md](event-catalog.md) | Every event type in `backend/events/types.py` — payload shape, publisher, consumer |
-| [http-routes.md](http-routes.md) | Every FastAPI route — method, path, request/response models, required role |
+| [protocol-contracts.md](protocol-contracts.md) | Selected `Protocol`s — methods and implementing adapters. **Partial:** ~20 of ~30 public repository protocols; the SAFE-CMS repository protocols are absent |
+| [event-catalog.md](event-catalog.md) | Event types in `backend/events/types.py` — payload shape, publisher, consumer. Union reconciled to 32 members 2026-08-06; per-event sections still reflect the 2026-05-22 sweep |
+| [http-routes.md](http-routes.md) | FastAPI routes — method, path, request/response models, required role. **Partial:** 49 of 105 paths; see the coverage warning in the file |
 | [config-schema.md](config-schema.md) | `DomainConfig` top-level fields + medicare_fraud entity/relationship/feed inventory |
 | [tooling-inventory.md](tooling-inventory.md) | `tools/` CLI tools and `scripts/` shell drivers |
 
