@@ -16,7 +16,7 @@ def test_fraud_playbooks_migration_declares_snapshot_table() -> None:
 
 def test_playbook_snapshot_kb_scope_migration_repairs_existing_table() -> None:
     migration = (
-        Path("backend")
+        Path(__file__).resolve().parents[2]
         / "database/migrations/versions/0020_playbook_snapshot_kb_scope.py"
     ).read_text(encoding="utf-8")
 

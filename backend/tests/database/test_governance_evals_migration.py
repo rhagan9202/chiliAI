@@ -5,7 +5,7 @@ from pathlib import Path
 
 def test_governance_evals_migration_declares_eval_runs_table() -> None:
     migration = (
-        Path("backend")
+        Path(__file__).resolve().parents[2]
         / "database/migrations/versions/0022_governance_eval_runs.py"
     ).read_text(encoding="utf-8")
 
@@ -23,7 +23,7 @@ def test_governance_evals_migration_declares_eval_runs_table() -> None:
 
 def test_governance_eval_dataset_source_refs_migration_is_additive() -> None:
     migration = (
-        Path("backend")
+        Path(__file__).resolve().parents[2]
         / "database/migrations/versions/0023_governance_eval_dataset_source_refs.py"
     ).read_text(encoding="utf-8")
 

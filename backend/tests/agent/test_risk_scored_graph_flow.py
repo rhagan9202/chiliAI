@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from agent.coordinator import handle_event, handle_risk_scored_for_graph
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter
@@ -122,7 +123,9 @@ def test_risk_scored_event_projects_live_risk_read_model() -> None:
         event_bus=InMemoryEventBus(),
         risk_history_writer=writer,
         risk_projection_service=projection_service,
-        domain_config=load_config("backend/config/defaults/medicare_fraud.yaml"),
+        domain_config=load_config(
+            Path(__file__).resolve().parents[2] / "config/defaults/medicare_fraud.yaml"
+        ),
     )
 
     rows = projection_repository.list(
