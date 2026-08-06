@@ -62,9 +62,11 @@ auth:
   issuerUrl: ""
   audience: ""
 
-# Default config path inside the API/worker container.
+# Default config path inside the API/worker container. Must match
+# docker-compose.dev.yaml, docker-compose.yaml, .env.example and
+# infra/k8s/configmap.yaml — every deploy surface loads one pack.
 config:
-  path: "/app/config/defaults/medicare_fraud.yaml"
+  path: "/app/config/defaults/medicare_fraud_cms_desynpuf.yaml"
   logLevel: "INFO"
 
 # Existing K8s Secret object that provides secret env vars.
