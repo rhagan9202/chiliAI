@@ -2,6 +2,7 @@
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
 **Source:** `backend/config/schema.py`, `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml`
+**Reviewed:** 2026-08-06 — added the three SAFE-CMS fields (`typologies`, `feature_catalog`, `playbooks`) and noted `peer_stats.cohorts`. Sub-model sections below still reflect the 2026-05-22 sweep.
 
 ---
 
@@ -36,6 +37,9 @@
 | `alerts` | `AlertsConfig` | yes | — | Thresholds dict |
 | `ui` | `UiConfig \| None` | no | None | Navigation, display_fields, roles |
 | `default_reference_kb_id` | `str \| None` | no | None | Auto-attached "policy graph" KB; enables dual-graph reads when set |
+| `typologies` | `list[FraudTypologyConfig]` | no | `[]` | **Added SAFE-CMS-001.** Versioned fraud typologies; cross-validated against `entities`, `feature_catalog`, `policy_rules` and `playbooks` at load |
+| `feature_catalog` | `FeatureCatalogConfig` | no | `FeatureCatalogConfig()` | **Added SAFE-CMS-001.** Default-factory, not None. Versioned reusable feature definitions with source lineage |
+| `playbooks` | `PlaybooksConfig` | no | `PlaybooksConfig()` | **Added SAFE-CMS-013.** Default-factory, not None. Config-authored seed playbooks; published copies live in `fraud_playbook_snapshots` |
 
 ### Key sub-models
 

@@ -1,11 +1,11 @@
 # Module: analytics
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-06-16 · **Sub-module list reconciled:** 2026-08-06
 **Source:** `backend/analytics/`
 
 ## Purpose
 
-ML/AI capability modules. Six sub-modules, most following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`):
+ML/AI capability modules. **Nine** sub-modules, most following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`). The three added by the SAFE-CMS surge are documented in `docs/ledger/module-map.md` and are **not** detailed below — `features/` (catalog reads; `list_entity_values` is a stub), `identity_resolution/` (canonical links; no production writer), `score_runs/` (run state; no executor):
 
 | Sub-module | Responsibility |
 |-----------|---------------|

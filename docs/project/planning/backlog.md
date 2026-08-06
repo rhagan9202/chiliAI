@@ -8,7 +8,7 @@
 > - The 25 module backlogs under `docs/backlog/**` (see [docs/backlog/README.md](../../backlog/README.md))
 > - Drift items identified in PM runs (see History)
 >
-> The module backlogs remain the authoritative per-module breakdown. This file selects, prioritizes, and dependency-orders items for v1. Every status below was **code-verified against `prod` on 2026-07-12** (post domain-packs merge ff46080 and af_housing merge 23eed31).
+> The module backlogs remain the authoritative per-module breakdown. This file selects, prioritizes, and dependency-orders items for v1. Statuses were **code-verified against `prod` on 2026-07-12** (post domain-packs merge ff46080 and af_housing merge 23eed31). The `SAFE-CMS-001`…`020` rows added 2026-08-02→05 were **not** verified that way — a 2026-08-06 audit found the majority overstate delivery (4 substantially done, 13 partial, 3 not done against their own acceptance criteria). Verify a SAFE-CMS row against code before relying on it.
 
 ## Legend
 

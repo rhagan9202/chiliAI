@@ -2,8 +2,50 @@
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
 **Reviewed:** 2026-07-26 against `backend/api/app.py::create_app()` — added `/scorecards`, `/housing`, and the conditionally mounted `/admin/dev-seed`.
+**Coverage audited:** 2026-08-06.
 
-All routes mounted under the FastAPI app. Role column shows `require_role` argument; routes without a `dependencies=[Depends(require_role(...))]` call are marked `public`.
+> ## ⚠ This inventory is incomplete — 49 of 105 paths documented
+>
+> This file used to say "All routes mounted under the FastAPI app." That was
+> false: the SAFE-CMS surge added nine router families and none were recorded,
+> so **56 of 105 registered paths are missing** (117 HTTP operations + 2
+> WebSockets live in total).
+>
+> Undocumented paths by family, as of 2026-08-06:
+>
+> | Family | Missing | Why |
+> |---|---:|---|
+> | `/knowledgebases` | 27 | score-runs, connectors, playbooks, workflow-definitions, governance, readiness, capabilities, features are all mounted as KB sub-resources |
+> | `/cases` | 4 | dossier + export (SAFE-CMS-008) |
+> | `/config` | 4 | `packs`, `validate`, `apply`, `switch` — predate the surge |
+> | `/events` | 4 | `/events/dlq*` — predate the surge |
+> | `/alerts` | 3 | bulk status, assignment, status (SAFE-CMS-006) |
+> | `/analytics` | 3 | risk-projections, rebuild, peer-analysis |
+> | `/evidence-packs` | 3 | provenance + review (SAFE-CMS-004/010) |
+> | `/identity` | 3 | SAFE-CMS-012 |
+> | `/audit` | 2 | SAFE-CMS-009 |
+> | `/workflows` | 2 | detail-by-id, cancel |
+> | `/investigation` | 1 | |
+>
+> **Derive the live set rather than trusting the tables below**:
+>
+> ```bash
+> cd backend && CHILI_ENV=local \
+>   CHILI_CONFIG_PATH=config/defaults/medicare_fraud_cms_desynpuf.yaml \
+>   python -c "
+> from fastapi.routing import APIRoute
+> from api.app import create_app
+> for r in sorted(create_app().routes, key=lambda r: getattr(r,'path','')):
+>     if isinstance(r, APIRoute):
+>         print(sorted(r.methods - {'HEAD','OPTIONS'}), r.path)"
+> ```
+>
+> `chili_app/openapi.json` is the other ground truth and is CI-verified against
+> the app, so it never drifts — prefer it over this file for contract questions.
+
+The sections below cover the pre-surge surface. Role column shows the
+`require_role` argument; routes without a `dependencies=[Depends(require_role(...))]`
+call are marked `public`.
 
 ---
 

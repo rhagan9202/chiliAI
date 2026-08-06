@@ -81,7 +81,9 @@ backend/
 └── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
 ```
 
-`backend/tools/` is distinct from the repo-root `tools/` package (host-side demo/data-prep scripts driven over HTTP, see `tools/__init__.py`) — both share the bare name `tools` but are typechecked by *separate* pyright invocations (`backend/pyproject.toml`'s `[tool.pyright]` vs. `tools/pyrightconfig.json`; see either file's comment for why one process can't resolve both).
+There is exactly one `tools/` package, at the repo root (host-side demo/data-prep scripts driven over HTTP, see `tools/__init__.py`). It is typechecked by its own `tools/pyrightconfig.json` in a separate CI step ("Type-check tools/") rather than folded into `backend/pyproject.toml`'s `[tool.pyright]`, whose `include` is scoped to `backend/`.
+
+The split originally existed because a `backend/tools/` package shared the bare name and pyright resolves a module name to one location per Program. **`backend/tools/` was deleted on 2026-07-24** (with `demo_trigger_analytics.py`, when records ingest began driving Flow B natively); only a stale `__pycache__` remains. The two-invocation split is kept for isolation, not for a name collision.
 
 ## Cross-Module Interaction Rules
 

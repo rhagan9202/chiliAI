@@ -1,7 +1,7 @@
 # Event Catalog
 
-**Generated:** 2026-05-22 (merge commit `acae4ac`)
-**Source:** `backend/events/types.py`
+**Generated:** 2026-05-22 (merge commit `acae4ac`) · **Union reconciled:** 2026-08-06 (32 members)
+**Source:** `backend/events/types.py` — re-derive before relying on completeness; the per-event sections below still reflect the 2026-05-22 sweep.
 
 All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `source`, and `schema_version: int = 1`.
 
@@ -102,6 +102,18 @@ All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `so
 
 ## `AnyEvent` Union
 
+**32 members** as of 2026-08-06. Do not copy the list below into a `match` or
+an exhaustiveness check without re-deriving it — this block listed 28 while the
+code had 32, so anything built from it silently dropped four event types.
+Ground truth:
+
+```bash
+cd backend && python -c "
+from typing import get_args
+import events.types as t
+print(len(get_args(t.AnyEvent)))"
+```
+
 ```python
 AnyEvent = (
     KnowledgeBaseCreatedEvent | KnowledgeBaseDeletedEvent |
@@ -113,6 +125,18 @@ AnyEvent = (
     RiskScoredEvent | ExplainabilityGeneratedEvent | AgentWorkflowStartedEvent |
     AlertsCreatedEvent | AlertCreatedEvent | PipelineProgressEvent |
     AnalysisFailedEvent | DocumentsFailedEvent |
-    ClaimsReceivedEvent | ClaimsIngestedEvent | RecordsIngestedEvent
+    ClaimsReceivedEvent | ClaimsIngestedEvent | RecordsIngestedEvent |
+    # --- previously undocumented ---
+    ConfigUpdatedEvent | DocumentsExtractionWarningEvent |
+    IdentityLinkDecisionRecordedEvent | ScoreRunStatusChangedEvent
 )
 ```
+
+### Previously undocumented events
+
+| Event | `event_type` | Notes |
+|---|---|---|
+| `ConfigUpdatedEvent` | `config.updated` | Emitted on domain-pack apply/switch. |
+| `DocumentsExtractionWarningEvent` | `documents.extraction_warning` | Non-fatal extraction warnings (ingestion.35). |
+| `IdentityLinkDecisionRecordedEvent` | `identity.link_decision.recorded` | SAFE-CMS-012 steward merge/split. **Published with no consumer** — codec-registered and emitted, but nothing subscribes, so identity changes do not propagate to graph or read models. |
+| `ScoreRunStatusChangedEvent` | `score_run.status_changed` | SAFE-CMS-002 score-run lifecycle. Codec-registered for decode; **no worker consumes it**, so queued score-run batches are never executed. |

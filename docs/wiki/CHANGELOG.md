@@ -2,6 +2,44 @@
 
 ---
 
+## 2026-08-06 — SAFE-CMS surge documentation reconciliation
+
+The 2026-07-30 → 08-05 SAFE-CMS surge landed ~142 commits and seven new backend
+modules while touching only five reference docs. It has **no entry of its own in
+this changelog** because it was never logged here; this entry records the
+reconciliation rather than the surge.
+
+### Changes
+
+| Page | Change |
+| --- | --- |
+| `modules/analytics.md` | "Six sub-modules" → **nine**; `features/`, `identity_resolution/` and `score_runs/` named with their real implementation depth. Detail sections still predate the surge. |
+| `modules/frontend.md` | Stamp marked stale. Page table and `src/api/` list omit `/governance`, `/housing`, `/scorecards/:runId`, `NotFoundPage` and ~10 api clients; the `PolicyIntelligencePage` hook list names four removed hooks. |
+| `contracts/api-routes.md` | "Verified 2026-07-26 — live route dump" marked stale: ~half the live surface is absent (nine router families added by the surge). Points at `chili_app/openapi.json` as the CI-verified source. |
+| `flows/auth-flow.md` | "Redis-backed store … not yet wired" corrected — `RedisSessionStore` has been DI-wired since 2026-07-15 and raises rather than silently falling back. |
+
+### Ledger changes (same pass)
+
+`ledger/module-map.md` gained ten entries (seven surge modules + three
+`analytics/` submodules); `ledger/event-catalog.md` reconciled 28 → **32**
+`AnyEvent` members; `ledger/http-routes.md` marked partial (**49 of 105 paths**)
+with a family-by-family gap table; `ledger/config-schema.md` gained `typologies`,
+`feature_catalog` and `playbooks`; `ledger/README.md` stopped claiming
+"every route"/"every protocol".
+
+**Method:** counts derived from the running app and the source tree, not read
+off the prior docs — 28 packages via `ls backend/`, 117 HTTP operations + 2
+WebSockets via a live `create_app()` route dump, 32 events via
+`get_args(AnyEvent)`, migration head + 22 tables via the versions directory and
+`snapshots/head.sql`.
+
+**Known-remaining:** per-event sections in the event catalog, per-route tables
+in both route inventories, and the `modules/frontend.md` page table are all
+still pre-surge. Several surge modules ship an API whose work nothing executes —
+that is recorded in `ledger/module-map.md` rather than implied away.
+
+---
+
 ## 2026-07-24 — analytics.34 closed: records ingest triggers Flow B natively
 
 ### Changes
