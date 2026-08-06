@@ -262,7 +262,7 @@ def test_case_create_update_and_feedback_record_audit_events() -> None:
     assert feedback.status_code == 200
 
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+        AuditEventQuery(knowledge_base_id="kb-1")
     )
     assert [event.action for event in page.items] == [
         "case.feedback.create",
@@ -310,7 +310,7 @@ def test_case_promote_and_attach_record_audit_events() -> None:
     assert attached.status_code == 200
 
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+        AuditEventQuery(knowledge_base_id="kb-1")
     )
     assert [event.action for event in page.items] == [
         "case.alert.attach",

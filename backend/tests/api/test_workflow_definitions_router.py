@@ -116,7 +116,6 @@ def _app_harness() -> tuple[
         definition_repository,
         run_store,
         audit_service,
-        tenant_id="tenant-1",
     )
     app.dependency_overrides[get_domain_config] = _domain_config
     app.dependency_overrides[get_knowledge_base_repository] = _knowledge_base_repository
@@ -130,7 +129,7 @@ def _audit_correlation_id(
     action: str,
 ) -> str:
     events = audit_service.list_events(
-        AuditEventQuery(tenant_id="tenant-1", action_prefix=action)
+        AuditEventQuery(action_prefix=action)
     ).items
     assert len(events) == 1
     return events[0].correlation_id

@@ -73,6 +73,7 @@ from api.contracts import (
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.adapters.postgres import PostgresAuditLogRepository
 from auditlog.models import (
+    PLATFORM_TENANT_ID,
     AuditEvent,
     AuditEventCreate,
     AuditEventQuery,
@@ -926,7 +927,7 @@ def _audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
 
 
 def get_audit_event_list_payload(
-    tenant_id: str = Query(..., min_length=1),
+    tenant_id: str | None = Query(default=None, min_length=1),
     knowledge_base_id: str | None = Query(default=None, min_length=1),
     actor_user_id: str | None = Query(default=None, min_length=1),
     action_prefix: str | None = Query(default=None, min_length=1),
@@ -1158,7 +1159,6 @@ def _assemble_case_dossier(
             )
     audit_page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id=case.knowledge_base_id,
             knowledge_base_id=case.knowledge_base_id,
             resource_type="case",
             resource_id=case.id,
@@ -1375,7 +1375,7 @@ def record_case_audit_event(
 
     audit_service.record(
         AuditEventCreate(
-            tenant_id=knowledge_base_id,
+            tenant_id=PLATFORM_TENANT_ID,
             knowledge_base_id=knowledge_base_id,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
@@ -1409,7 +1409,7 @@ def record_alert_audit_event(
 
     audit_service.record(
         AuditEventCreate(
-            tenant_id=knowledge_base_id,
+            tenant_id=PLATFORM_TENANT_ID,
             knowledge_base_id=knowledge_base_id,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
@@ -1452,7 +1452,7 @@ def record_explanation_review_audit_event(
     }
     audit_service.record(
         AuditEventCreate(
-            tenant_id=knowledge_base_id,
+            tenant_id=PLATFORM_TENANT_ID,
             knowledge_base_id=knowledge_base_id,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
@@ -1490,7 +1490,7 @@ def record_knowledge_base_audit_event(
 
     audit_service.record(
         AuditEventCreate(
-            tenant_id=knowledge_base_id,
+            tenant_id=PLATFORM_TENANT_ID,
             knowledge_base_id=knowledge_base_id,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
@@ -1529,7 +1529,7 @@ def record_auth_audit_event(
 
     audit_service.record(
         AuditEventCreate(
-            tenant_id="platform",
+            tenant_id=PLATFORM_TENANT_ID,
             actor_user_id=actor_user_id,
             actor_email=actor_email,
             actor_roles=list(actor_roles or []),

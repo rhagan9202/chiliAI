@@ -292,7 +292,7 @@ def test_create_knowledge_base_records_audit_event(
     assert response.status_code == 201
     kb_id = response.json()["id"]
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id=kb_id, knowledge_base_id=kb_id)
+        AuditEventQuery(knowledge_base_id=kb_id)
     )
     assert [event.action for event in page.items] == ["knowledge_base.create"]
     event = page.items[0]
@@ -735,7 +735,6 @@ def test_delete_knowledge_base_records_audit_event(
     assert response.status_code == 204
     page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id=kb_id,
             knowledge_base_id=kb_id,
             action_prefix="knowledge_base.delete",
         )

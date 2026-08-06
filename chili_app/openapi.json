@@ -6851,12 +6851,6 @@
             "minLength": 1,
             "title": "Knowledge Base Id",
             "type": "string"
-          },
-          "tenant_id": {
-            "default": "platform",
-            "minLength": 1,
-            "title": "Tenant Id",
-            "type": "string"
           }
         },
         "required": [
@@ -14055,11 +14049,18 @@
           {
             "in": "query",
             "name": "tenant_id",
-            "required": true,
+            "required": false,
             "schema": {
-              "minLength": 1,
-              "title": "Tenant Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
             }
           },
           {

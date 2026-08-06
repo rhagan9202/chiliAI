@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from auditlog.models import AuditEventCreate
+from auditlog.models import PLATFORM_TENANT_ID, AuditEventCreate
 from auditlog.service import AuditLogService
 from analytics.identity_resolution.models import (
     IdentityLinkDecisionRecord,
@@ -158,7 +158,7 @@ class IdentityDecisionService:
             return
         self._audit_log_service.record(
             AuditEventCreate(
-                tenant_id=request.tenant_id,
+                tenant_id=PLATFORM_TENANT_ID,
                 knowledge_base_id=request.knowledge_base_id,
                 occurred_at=after.updated_at,
                 actor_user_id=request.actor_user_id,

@@ -129,7 +129,6 @@ def record_identity_link_decision(
     try:
         stored = service.record_decision(
             IdentityLinkDecisionRequest(
-                tenant_id=payload.tenant_id,
                 knowledge_base_id=payload.knowledge_base_id,
                 link_id=link_id,
                 decision=payload.decision,

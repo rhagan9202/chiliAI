@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.models import MetadataValue, WorkflowRun, WorkflowRunStatus, WorkflowStepState
-from auditlog.models import AuditEventCreate, JsonSummary
+from auditlog.models import PLATFORM_TENANT_ID, AuditEventCreate, JsonSummary
 from auditlog.service import AuditLogService
 from capabilities.service import (
     CapabilityRegistryService,
@@ -76,7 +76,6 @@ class WorkflowDefinitionService:
         audit_service: AuditLogService,
         *,
         capability_registry: CapabilityRegistryService | None = None,
-        tenant_id: str = "default",
     ) -> None:
         self._repository = repository
         self._run_store = run_store
@@ -84,7 +83,6 @@ class WorkflowDefinitionService:
         self._capability_registry = (
             capability_registry or create_default_capability_registry_service()
         )
-        self._tenant_id = tenant_id
 
     def list_definitions(
         self,
@@ -452,7 +450,7 @@ class WorkflowDefinitionService:
             audit_metadata.update(metadata)
         self._audit_service.record(
             AuditEventCreate(
-                tenant_id=self._tenant_id,
+                tenant_id=PLATFORM_TENANT_ID,
                 knowledge_base_id=definition.knowledge_base_id,
                 actor_user_id=actor_user_id,
                 actor_email=actor_email,

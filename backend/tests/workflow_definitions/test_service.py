@@ -79,7 +79,6 @@ def _service(
             definition_repository,
             workflow_run_store,
             audit_service,
-            tenant_id="tenant-1",
         ),
         definition_repository,
         workflow_run_store,
@@ -89,7 +88,7 @@ def _service(
 
 def _audit_events(audit_service: AuditLogService) -> list[AuditEvent]:
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="tenant-1", action_prefix="workflow_definition.")
+        AuditEventQuery(action_prefix="workflow_definition.")
     )
     return list(reversed(page.items))
 

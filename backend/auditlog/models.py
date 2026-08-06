@@ -3,12 +3,31 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, cast
+from typing import Final, Literal, cast
 
 from pydantic import BaseModel, Field
 
 AuditOutcome = Literal["success", "failure"]
 JsonSummary = dict[str, object | None]
+
+PLATFORM_TENANT_ID: Final[str] = "platform"
+"""The single tenant every audit event is written under.
+
+chiliAI has no tenancy implementation yet — every story in
+``docs/backlog/_multitenancy.md`` is still `planned` — so ``tenant_id`` cannot
+carry a real tenant. Writers previously each improvised one: the knowledge-base
+id (cases, alerts, KBs, evidence reviews), ``"platform"`` (auth), or
+``"default"`` (workflow definitions, via an unset constructor argument). Because
+``tenant_id`` was also a *mandatory* read filter, that split the ledger into
+mutually invisible namespaces and made "a complete timeline of material actions
+for a KB" — the thing the audit ledger exists to answer — unobtainable by any
+single query.
+
+Until real multitenancy lands, every event is written under this constant and
+knowledge-base scoping uses the dedicated ``knowledge_base_id`` field. When
+tenancy does arrive, this is the seam to replace: resolve the tenant from the
+authenticated principal rather than from anything a caller supplies.
+"""
 
 
 class AuditEventCreate(BaseModel):
@@ -59,7 +78,12 @@ class AuditEvent(BaseModel):
 class AuditEventQuery(BaseModel):
     """Filters for reading audit events."""
 
-    tenant_id: str = Field(min_length=1)
+    # Optional, unlike the write side. It was mandatory, which meant a caller
+    # had to guess which namespace a writer had used; scoping by
+    # knowledge_base_id alone now returns a KB's complete timeline regardless of
+    # the tenant a historical row was written under. Kept as a filter so the
+    # field stays useful once real tenancy exists.
+    tenant_id: str | None = Field(default=None, min_length=1)
     knowledge_base_id: str | None = None
     actor_user_id: str | None = None
     action_prefix: str | None = None

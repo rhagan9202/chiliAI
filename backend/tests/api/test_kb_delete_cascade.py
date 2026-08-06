@@ -320,7 +320,6 @@ def test_delete_kb_returns_207_on_partial_failure(
 
     audit_page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id=kb_id,
             knowledge_base_id=kb_id,
             action_prefix="knowledge_base.delete",
         )
