@@ -89,11 +89,19 @@ requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
-           "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
-           "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*", "connectors*", "governance*", "readiness*",
-           "workflow_definitions*"]
+# Denylist, not an allowlist. The previous allowlist required every new module
+# to be registered by hand, and seven never were — auditlog, capabilities,
+# cases, knowledgebases, playbooks, policy and scorecards were all absent from
+# the built wheel while 106 import sites in shipped packages referenced them,
+# so a wheel install failed at `import api.app`. It went unnoticed because the
+# Dockerfile installs dependencies from pyproject and then COPYs the source
+# tree, and local development uses an editable install; neither path consults
+# this list. Every directory with an __init__.py now ships except the tests.
+#
+# `build*`/`dist*` must stay excluded: a wheel build stages sources into
+# `build/lib/`, so a second build would otherwise rediscover them as
+# `build.lib.agent` and ship 387 duplicate modules.
+exclude = ["tests*", "build*", "dist*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
