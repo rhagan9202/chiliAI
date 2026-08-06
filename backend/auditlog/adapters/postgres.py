@@ -92,8 +92,12 @@ class PostgresAuditLogRepository:
 
 
 def _build_where(query: AuditEventQuery) -> tuple[str, list[object]]:
-    clauses = ["tenant_id = %s"]
-    params: list[object] = [query.tenant_id]
+    # "1=1" keeps the AND-join below uniform now that every filter is optional.
+    clauses = ["1=1"]
+    params: list[object] = []
+    if query.tenant_id is not None:
+        clauses.append("tenant_id = %s")
+        params.append(query.tenant_id)
     if query.knowledge_base_id is not None:
         clauses.append("knowledge_base_id = %s")
         params.append(query.knowledge_base_id)

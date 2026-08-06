@@ -543,7 +543,10 @@ class IdentityLinkDecisionRequestPayload(BaseModel):
 
     knowledge_base_id: str = Field(min_length=1)
     decision: IdentityLinkDecisionValue
-    tenant_id: str = Field(default="platform", min_length=1)
+    # No tenant_id: it used to be accepted here, defaulted to "platform", and was
+    # forwarded unvalidated into the audit ledger. A steward could post an
+    # arbitrary value and file their own merge/split decision under a tenant no
+    # supervisor query would look in. The ledger now stamps the tenant itself.
     correlation_id: str | None = Field(default=None, min_length=1)
     comment: str | None = None
 

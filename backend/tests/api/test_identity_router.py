@@ -16,7 +16,7 @@ from analytics.identity_resolution import (
 import api.dependencies as dependencies
 from api.app import create_app
 from api.middleware.auth import User, get_current_user
-from auditlog.models import AuditEventQuery
+from auditlog.models import PLATFORM_TENANT_ID, AuditEventQuery
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.service import AuditLogService
 from config.loader import load_config
@@ -170,7 +170,6 @@ def test_record_identity_decision_returns_link_and_writes_audit_metadata() -> No
             "actor_user_id": "steward-1",
             "actor_email": "steward-1@example.test",
             "actor_roles": ["data_steward"],
-            "tenant_id": "tenant-identity",
             "correlation_id": "corr-identity-api",
             "comment": "same entity after source review",
         },
@@ -183,12 +182,47 @@ def test_record_identity_decision_returns_link_and_writes_audit_metadata() -> No
     assert event_bus.published_events[0].correlation_id == "corr-identity-api"
     events = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="tenant-identity",
             knowledge_base_id="kb1",
             action_prefix="identity_link.",
         )
     )
     assert events.total_items == 1
+
+
+def test_caller_supplied_tenant_id_cannot_reach_the_audit_ledger() -> None:
+    """Regression guard for the audit-evasion vector this endpoint used to carry.
+
+    `tenant_id` was an accepted request field forwarded unvalidated into the
+    ledger, so a steward could post one arbitrary value and file their own
+    merge/split under a tenant no KB- or platform-scoped supervisor query would
+    look in. The event must land under the platform tenant regardless of what
+    the caller sends, and must be reachable by a plain KB-scoped query.
+    """
+
+    client, repository, _, audit_service = _identity_client()
+    repository.upsert_link(_link())
+
+    response = client.post(
+        "/identity/links/identity_link%3Akb1%3Acanonical-1%3Asource-1/decision",
+        json={
+            "knowledge_base_id": "kb1",
+            "decision": "approve_merge",
+            "actor_user_id": "steward-1",
+            "tenant_id": "attacker-chosen-tenant",
+        },
+    )
+
+    assert response.status_code == 200
+    events = audit_service.list_events(
+        AuditEventQuery(knowledge_base_id="kb1", action_prefix="identity_link.")
+    )
+    assert events.total_items == 1
+    assert events.items[0].tenant_id == PLATFORM_TENANT_ID
+    # And nothing was filed under the value the caller tried to choose.
+    hidden = audit_service.list_events(
+        AuditEventQuery(tenant_id="attacker-chosen-tenant")
+    )
+    assert hidden.total_items == 0
 
 
 def test_get_canonical_identity_detail_hides_unauthorized_kb() -> None:
@@ -241,7 +275,6 @@ def test_record_identity_decision_uses_authenticated_actor_metadata() -> None:
             "actor_user_id": "forged-user",
             "actor_email": "forged@example.test",
             "actor_roles": ["admin"],
-            "tenant_id": "tenant-identity",
         },
     )
 
@@ -250,7 +283,6 @@ def test_record_identity_decision_uses_authenticated_actor_metadata() -> None:
     assert payload["decision_history"][0]["actor_user_id"] == "analyst-1"
     events = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="tenant-identity",
             knowledge_base_id="kb1",
             action_prefix="identity_link.",
         )
@@ -271,7 +303,6 @@ def test_record_identity_decision_hides_unauthorized_kb() -> None:
         json={
             "knowledge_base_id": "kb1",
             "decision": "approve_merge",
-            "tenant_id": "tenant-identity",
         },
     )
 
@@ -285,7 +316,6 @@ def test_record_identity_decision_hides_unauthorized_kb() -> None:
     assert event_bus.published_events == []
     events = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="tenant-identity",
             knowledge_base_id="kb1",
             action_prefix="identity_link.",
         )

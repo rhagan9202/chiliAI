@@ -5181,11 +5181,6 @@ export interface components {
             decision: "approve_merge" | "reject_merge" | "split_identity";
             /** Knowledge Base Id */
             knowledge_base_id: string;
-            /**
-             * Tenant Id
-             * @default platform
-             */
-            tenant_id: string;
         };
         /**
          * IdentityLinkResponse
@@ -8589,8 +8584,8 @@ export interface operations {
     };
     list_audit_events_audit_events_get: {
         parameters: {
-            query: {
-                tenant_id: string;
+            query?: {
+                tenant_id?: string | null;
                 knowledge_base_id?: string | null;
                 actor_user_id?: string | null;
                 action_prefix?: string | null;

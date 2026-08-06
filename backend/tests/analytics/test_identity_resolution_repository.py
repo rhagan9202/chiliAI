@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-from pydantic import ValidationError
 
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.models import AuditEventQuery
@@ -123,7 +121,6 @@ def test_identity_decision_service_publishes_event_and_audit_entry() -> None:
             actor_user_id="steward-1",
             actor_email="steward-1@example.test",
             actor_roles=["data_steward"],
-            tenant_id="tenant-identity",
             correlation_id="corr-identity-1",
         )
     )
@@ -137,7 +134,6 @@ def test_identity_decision_service_publishes_event_and_audit_entry() -> None:
     assert event.decisions[0].canonical_entity_id == "canonical:1"
     page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="tenant-identity",
             knowledge_base_id="kb1",
             action_prefix="identity_link.",
         )
@@ -148,12 +144,14 @@ def test_identity_decision_service_publishes_event_and_audit_entry() -> None:
     assert page.items[0].metadata["canonical_entity_id"] == "canonical:1"
 
 
-def test_identity_decision_request_rejects_empty_tenant_id() -> None:
-    with pytest.raises(ValidationError, match="tenant_id"):
-        IdentityLinkDecisionRequest(
-            tenant_id="",
-            knowledge_base_id="kb1",
-            link_id="identity_link:kb1:canonical-1:source-1",
-            decision="approve_merge",
-            actor_user_id="steward-1",
-        )
+def test_identity_decision_request_has_no_caller_supplied_tenant() -> None:
+    """A steward must not be able to choose the tenant their decision is filed under.
+
+    `IdentityLinkDecisionRequest` used to carry `tenant_id`, defaulted to
+    "platform" and populated straight from the request body, so a caller could
+    file a merge/split under a tenant no supervisor query would look in. The
+    ledger stamps the tenant itself now; this asserts the field is gone rather
+    than merely unused.
+    """
+
+    assert "tenant_id" not in IdentityLinkDecisionRequest.model_fields

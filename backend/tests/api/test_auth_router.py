@@ -153,7 +153,7 @@ def test_login_records_audit_event(app_with_auth: FastAPI) -> None:
 
     assert response.status_code == 307
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="platform", action_prefix="auth.login")
+        AuditEventQuery(action_prefix="auth.login")
     )
     assert [event.action for event in page.items] == ["auth.login.start"]
     event = page.items[0]
@@ -318,7 +318,7 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     assert saved.refresh_token == "ref-tok"
     assert saved.id_token == "id-tok"
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="platform", action_prefix="auth.callback")
+        AuditEventQuery(action_prefix="auth.callback")
     )
     assert [event.action for event in page.items] == ["auth.callback.success"]
     event = page.items[0]
@@ -381,7 +381,7 @@ def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
     assert response.status_code == 400
     assert "state" in response.json()["detail"].lower()
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="platform", action_prefix="auth.callback")
+        AuditEventQuery(action_prefix="auth.callback")
     )
     assert [event.action for event in page.items] == ["auth.callback.failure"]
     event = page.items[0]
@@ -708,7 +708,7 @@ def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
     with pytest.raises(SessionNotFoundError):
         store.get("sid-out")
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="platform", action_prefix="auth.logout")
+        AuditEventQuery(action_prefix="auth.logout")
     )
     assert [event.action for event in page.items] == ["auth.logout"]
     event = page.items[0]

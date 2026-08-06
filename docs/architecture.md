@@ -465,6 +465,13 @@ policy/                         # Durable, KB-scoped policy intelligence (BL-011
         ├── protocols.py        # PolicyItemRepository (upsert/get/list/update/delete_by_kb)
         ├── in_memory.py        # InMemoryPolicyItemRepository
         └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
+auditlog/                       # Append-only material-action ledger (SAFE-CMS-009)
+    ├── models.py               # AuditEvent/Create/Query/Page + PLATFORM_TENANT_ID
+    ├── protocols.py            # AuditLogRepository
+    ├── service.py              # AuditLogService — non-blocking writes, bounded failure buffer
+    └── adapters/
+        ├── in_memory.py        # InMemoryAuditLogRepository
+        └── postgres.py         # PostgresAuditLogRepository (audit_log, migration 0016_audit_log)
 governance/                     # KB-scoped release readiness (SAFE-CMS-020)
     ├── models.py               # version inventory, eval runs/metrics/drift, approvals,
     │                           #   feedback trends, blockers
@@ -540,6 +547,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 | `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
 | `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews; durable eval-run lifecycle with baseline approval. `GovernanceEvalService.has_approved_eval` is an **enforced** gate — `POST /knowledgebases/{kb}/playbooks/{id}/publish` returns 409 without an approved baseline | `policy`, `agent`, `analytics.explainability` model/repository protocols; `database.ConnectionProvider` | `api`, worker internals |
+| `auditlog` | Append-only ledger of material analyst/system actions. **Tenancy:** every event is written under the single `PLATFORM_TENANT_ID` constant and KB scoping uses the dedicated `knowledge_base_id` field — writers must never derive a tenant, and `tenant_id` is never accepted from a request body. `AuditEventQuery.tenant_id` is an optional filter, so a KB-scoped query returns that KB's complete timeline across every writer | `shared.utils`, `database.ConnectionProvider` | `api`, worker internals — modules record through `AuditLogService.record` only |
 | `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
 | `scorecards` | Config-driven scorecard evaluation (`evaluate_template`), durable run persistence, JSON/Markdown exports | `config` (ScorecardTemplateConfig), `shared`, `database.ConnectionProvider`; feed records arrive through the `ScorecardSourceRecordLoader` protocol implemented at the gateway | `records`, `api`, `ingestion` internals — never imports the records module directly |
 

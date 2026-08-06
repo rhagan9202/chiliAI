@@ -119,7 +119,6 @@ def test_create_and_list_evidence_review_records_sanitized_audit_event() -> None
 
     audit_page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="kb-1",
             knowledge_base_id="kb-1",
             action_prefix="explanation.review.",
         )
@@ -169,7 +168,6 @@ def test_updating_evidence_review_records_update_audit_event() -> None:
     assert updated.json()["update_count"] == 1
     audit_page = audit_service.list_events(
         AuditEventQuery(
-            tenant_id="kb-1",
             knowledge_base_id="kb-1",
             action_prefix="explanation.review.",
         )

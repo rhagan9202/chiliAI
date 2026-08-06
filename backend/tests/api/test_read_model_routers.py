@@ -288,7 +288,7 @@ def test_acknowledge_alert_records_audit_ledger_event() -> None:
 
     assert response.status_code == 200
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+        AuditEventQuery(knowledge_base_id="kb-1")
     )
     assert [event.action for event in page.items] == ["alert.acknowledge"]
     event = page.items[0]
@@ -346,7 +346,7 @@ def test_assign_and_status_update_record_audit_ledger_events() -> None:
     assert transitioned.status_code == 200
 
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+        AuditEventQuery(knowledge_base_id="kb-1")
     )
     assert [event.action for event in page.items] == [
         "alert.status.update",
@@ -478,7 +478,7 @@ def test_bulk_alert_status_records_audit_only_for_updated_alerts() -> None:
 
     assert response.status_code == 200
     page = audit_service.list_events(
-        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+        AuditEventQuery(knowledge_base_id="kb-1")
     )
     assert [event.action for event in page.items] == [
         "alert.status.update",

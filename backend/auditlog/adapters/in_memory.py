@@ -32,7 +32,7 @@ class InMemoryAuditLogRepository:
 
 
 def _matches_query(event: AuditEvent, query: AuditEventQuery) -> bool:
-    if event.tenant_id != query.tenant_id:
+    if query.tenant_id is not None and event.tenant_id != query.tenant_id:
         return False
     if query.knowledge_base_id is not None and event.knowledge_base_id != query.knowledge_base_id:
         return False

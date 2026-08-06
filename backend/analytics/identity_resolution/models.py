@@ -162,7 +162,6 @@ class IdentityLinkPage(BaseModel):
 class IdentityLinkDecisionRequest(BaseModel):
     """Request to record a steward decision against an identity link."""
 
-    tenant_id: str = Field(default="platform", min_length=1)
     knowledge_base_id: str = Field(min_length=1)
     link_id: str = Field(min_length=1)
     decision: IdentityLinkDecision
