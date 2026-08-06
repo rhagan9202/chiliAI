@@ -6,7 +6,11 @@ metadata:
     app.kubernetes.io/name: chili
     app.kubernetes.io/component: config
 data:
-  CHILI_CONFIG_PATH: "/app/config/defaults/medicare_fraud.yaml"
+  # Must match docker-compose.dev.yaml, docker-compose.yaml and .env.example.
+  # This previously pointed at the generic `medicare_fraud` exemplar while every
+  # compose surface loaded `medicare_fraud_cms_desynpuf`, so Kubernetes ran a
+  # different product from dev and docker-prod.
+  CHILI_CONFIG_PATH: "/app/config/defaults/medicare_fraud_cms_desynpuf.yaml"
   REDIS_URL: "redis://chili-redis:6379"
   NEO4J_URI: "bolt://neo4j:7687"
   QDRANT_URL: "http://qdrant:6333"

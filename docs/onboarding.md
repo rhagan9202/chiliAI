@@ -194,7 +194,7 @@ Then in separate terminals:
 # API server
 cd backend
 source .venv/bin/activate
-CHILI_CONFIG_PATH=config/defaults/medicare_fraud.yaml \
+CHILI_CONFIG_PATH=config/defaults/medicare_fraud_cms_desynpuf.yaml \
 REDIS_URL=redis://localhost:6379 \
 NEO4J_URI=bolt://localhost:7687 \
 QDRANT_URL=http://localhost:6333 \
@@ -208,7 +208,7 @@ uvicorn api.app:create_app --factory --reload --port 8000
 # Pipeline worker
 cd backend
 source .venv/bin/activate
-CHILI_CONFIG_PATH=config/defaults/medicare_fraud.yaml \
+CHILI_CONFIG_PATH=config/defaults/medicare_fraud_cms_desynpuf.yaml \
 REDIS_URL=redis://localhost:6379 \
 python -m agent.coordinator
 ```

@@ -399,8 +399,9 @@ backend/
 │   ├── overlay.py              # Base + environment overlay merge (ADR 0001)
 │   ├── schema.py               # Pydantic DomainConfig + sub-models
 │   ├── defaults/               # Complete, independently loadable domain packs
-│   │   ├── medicare_fraud.yaml
-│   │   ├── medicare_fraud_cms_desynpuf.yaml  # CMS DE-SynPUF + NPPES feeds (9 feeds)
+│   │   ├── medicare_fraud.yaml               # generic exemplar; NOT loaded by any deploy surface
+│   │   ├── medicare_fraud_cms_desynpuf.yaml  # THE deployed CMS pack — DE-SynPUF + NPPES
+│   │   │                                     #   (9 feeds, 9 typologies, 21 features, 3 playbooks)
 │   │   ├── department_air_force_housing.yaml # DAF housing pack (6 feeds, UH/MFH scorecard templates)
 │   │   └── food_supply_chain.yaml
 │   └── overlays/                # Partial environment overlays (not pack-catalog packs)
@@ -1495,6 +1496,8 @@ ui:
 1. **Active-pack pointer** — `data/config/active_pack.json`, a small JSON state file written atomically (temp file + `os.replace`) by `POST /config/apply|switch`. Both the API and worker containers mount the same `chili-object-data` volume at `/app/data`, so the pointer is the shared channel through which a hot-swap survives restarts and propagates between containers. It deliberately bypasses the config-derived `ObjectStore` (that would be circular — the object-store backend comes from the config being resolved). Relocatable via `CHILI_ACTIVE_PACK_STATE_PATH`; `clear_active_pack()` deletes it.
 2. **`CHILI_CONFIG_PATH`** environment variable — used only when no pointer exists.
 3. Error — no silent default.
+
+**One pack across every deploy surface (2026-08-06).** `docker-compose.dev.yaml`, `docker-compose.yaml`, `.env.example`, `infra/k8s/configmap.yaml` and `infra/helm/chili/values.yaml` all default `CHILI_CONFIG_PATH` to **`medicare_fraud_cms_desynpuf.yaml`**. They did not previously: the two `infra/` surfaces pointed at `medicare_fraud.yaml` while every compose surface loaded DE-SynPUF, so Kubernetes ran a materially different product from dev and docker-prod. Compounding it, the SAFE-CMS-001 typology/feature/playbook layer existed **only** in the exemplar, so on the pack every deployment actually loaded, `GET /config/domain` returned zero typologies, zero features and zero playbooks — every downstream surface (typology labels and filters, the Signals feature panel, playbook badges) was dark. That layer now lives in the DE-SynPUF pack with all references rewritten onto its real feeds, peer metrics, timeseries metrics and policy rules. `medicare_fraud.yaml` is retained as the generic exemplar and as the fixture several tests load directly; it is not loaded by any deploy surface. When adding a deploy surface, point it at the DE-SynPUF pack.
 
 Consequence: once a pack has been switched via the UI/API, the persisted pointer **overrides** `CHILI_CONFIG_PATH` on every subsequent boot until it is cleared (switch back, or delete the state file).
 
