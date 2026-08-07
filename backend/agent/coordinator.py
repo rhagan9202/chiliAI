@@ -308,6 +308,7 @@ from workflow_definitions.adapters.postgres import (
 from workflow_definitions.repository import WorkflowDefinitionRepository
 from connectors.adapters.in_memory import InMemoryConnectorRepository
 from connectors.adapters.postgres import PostgresConnectorRepository
+from connectors.reconciler import ConnectorSyncReconciler
 from connectors.repository import ConnectorRepositoryProtocol
 from connectors.service import ConnectorService
 from connectors.sources.filesystem import FilesystemSourceAdapter
@@ -4841,6 +4842,19 @@ async def run_worker(
                         if stale_score_runs:
                             logger.warning(
                                 "Reconciled %s stale score run(s)", stale_score_runs
+                            )
+                    # Same tick, same cutoff, same reason: a connector sync run
+                    # also advances by enqueueing its own successor, so one lost
+                    # page event leaves it `running` with nothing to explain why.
+                    if deps.connector_repository is not None:
+                        stale_syncs = ConnectorSyncReconciler(
+                            deps.connector_repository
+                        ).reconcile_stale_runs(
+                            max_age_seconds=stale_workflow_max_age_seconds
+                        )
+                        if stale_syncs:
+                            logger.warning(
+                                "Reconciled %s stale connector sync run(s)", stale_syncs
                             )
                 # Domain hot-swap: poll config.updated and, if the active
                 # config changed, atomically swap the dependency set here —
