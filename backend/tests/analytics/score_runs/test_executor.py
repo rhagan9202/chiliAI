@@ -18,6 +18,7 @@ from shared.types import Entity
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import ScoreBatchQueuedEvent, ScoreRunQueuedEvent
 from execution.deps import ExecutionDeps
+from shared.utils import utc_now
 
 BASE_TIME = datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc)
 _RUN_ID = "score-run-1"
@@ -380,3 +381,58 @@ def test_enumeration_is_idempotent_under_duplicate_delivery() -> None:
     run = repository.get_run(_RUN_ID)
     assert len(repository.list_batches(run_id=_RUN_ID)) == 1
     assert run is not None and run.total_entities == 1
+
+
+def test_executor_resumes_a_batch_abandoned_by_a_dead_worker() -> None:
+    """The mid-run worker-death path.
+
+    Worker A claims the batch and dies; its event sits in the Redis pending
+    list until reclaim_stale_pending hands it to worker B. Without a reclaim
+    window B could not take it, the batch would stall, and the reconciler would
+    fail the whole run instead of resuming it.
+    """
+    repository, deps, risk_service = _seed(batches=[["e1"]])
+    abandoned = datetime(2026, 8, 7, 0, 0, tzinfo=timezone.utc)
+    repository.claim_batch(run_id=_RUN_ID, batch_number=0, now=abandoned)
+
+    processed = handle_score_batch_queued(_event(), deps)
+
+    run = repository.get_run(_RUN_ID)
+    batch = repository.get_batch(run_id=_RUN_ID, batch_number=0)
+    assert processed == 1
+    assert [r.entity_id for r in risk_service.requests] == ["e1"]
+    assert batch is not None and batch.attempts == 2
+    assert run is not None and run.status == "completed"
+
+
+def test_executor_does_not_steal_a_batch_a_live_worker_is_running() -> None:
+    repository, deps, risk_service = _seed(batches=[["e1"]])
+    repository.claim_batch(run_id=_RUN_ID, batch_number=0, now=utc_now())
+
+    processed = handle_score_batch_queued(_event(), deps)
+
+    assert processed == 0
+    assert risk_service.requests == []
+
+
+def test_a_batch_reclaimed_too_many_times_is_failed_not_retried_forever() -> None:
+    """A batch that kills its worker every time must not loop indefinitely."""
+    repository, deps, risk_service = _seed(batches=[["e1"]])
+    abandoned = datetime(2026, 8, 7, 0, 0, tzinfo=timezone.utc)
+    batch = repository.get_batch(run_id=_RUN_ID, batch_number=0)
+    assert batch is not None
+    repository.upsert_batch(
+        batch.model_copy(
+            update={"status": "running", "attempts": 5, "updated_at": abandoned}
+        )
+    )
+
+    processed = handle_score_batch_queued(_event(), deps)
+
+    reloaded = repository.get_batch(run_id=_RUN_ID, batch_number=0)
+    run = repository.get_run(_RUN_ID)
+    assert processed == 1
+    assert risk_service.requests == []  # not re-scored
+    assert reloaded is not None and reloaded.status == "failed"
+    assert run is not None and run.status == "completed"
+    assert run.failed_entities == 1

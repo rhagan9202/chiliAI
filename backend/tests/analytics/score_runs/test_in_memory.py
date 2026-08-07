@@ -286,3 +286,64 @@ def test_get_batch_returns_a_detached_copy() -> None:
 def test_get_batch_returns_none_for_an_unknown_batch() -> None:
     repository = InMemoryScoreRunRepository()
     assert repository.get_batch(run_id="nope", batch_number=0) is None
+
+
+def test_claim_batch_reclaims_a_running_batch_older_than_the_threshold() -> None:
+    """A worker killed mid-batch leaves it `running` with the event in the PEL.
+
+    reclaim_stale_pending hands that event to another worker; without this the
+    claim returns None, the batch is stuck forever, and the whole run is
+    eventually failed by the reconciler instead of resuming.
+    """
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+    repository.claim_batch(run_id="score-run-1", batch_number=0, now=BASE_TIME)
+
+    later = BASE_TIME + timedelta(minutes=30)
+    reclaimed = repository.claim_batch(
+        run_id="score-run-1",
+        batch_number=0,
+        now=later,
+        stale_running_before=later - timedelta(minutes=10),
+    )
+
+    assert reclaimed is not None
+    assert reclaimed.status == "running"
+    assert reclaimed.attempts == 2  # the reclaim is a second attempt
+
+
+def test_claim_batch_does_not_reclaim_a_batch_still_within_the_threshold() -> None:
+    """A healthy in-flight batch must never be stolen from its worker."""
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+    repository.claim_batch(run_id="score-run-1", batch_number=0, now=BASE_TIME)
+
+    soon = BASE_TIME + timedelta(seconds=30)
+    assert (
+        repository.claim_batch(
+            run_id="score-run-1",
+            batch_number=0,
+            now=soon,
+            stale_running_before=soon - timedelta(minutes=10),
+        )
+        is None
+    )
+
+
+def test_claim_batch_without_a_threshold_never_reclaims() -> None:
+    """Default behaviour is unchanged: only `queued` batches are claimable."""
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+    repository.claim_batch(run_id="score-run-1", batch_number=0, now=BASE_TIME)
+
+    assert (
+        repository.claim_batch(
+            run_id="score-run-1",
+            batch_number=0,
+            now=BASE_TIME + timedelta(hours=5),
+        )
+        is None
+    )

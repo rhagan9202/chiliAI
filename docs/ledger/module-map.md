@@ -429,7 +429,9 @@ these expose an API whose work nothing executes.
 
 **Status:** executes. `analytics/score_runs/executor.py` consumes `score.run.queued` (enumerate the KB's entities and create batches) and `score.batch.queued` (score one batch, then chain to the next or complete the run), dispatched through `execution/`. Run counters are summed from per-batch outcomes rather than incremented, so a replayed batch cannot double-count. `ScoreRunReconciler` fails runs that stop progressing, since a lost chain event would otherwise leave a run `running` forever.
 
-**Known gaps:** `GraphRepository.get_entities` is not paginated, so enumeration still materialises the full entity list once — in the worker, where it is retryable, rather than in the HTTP request. And `claim_batch` only transitions `queued → running`, so a batch left `running` by a killed worker cannot be re-claimed: the redelivered event is a no-op and the stale reconciler eventually fails the whole run rather than resuming it. Both are follow-ups, not shipped behaviour.
+**Worker death mid-batch is survivable.** `claim_batch` takes a reclaim window: a batch left `running` past `CHILI_SCORE_BATCH_STALE_SECONDS` (default 900) may be taken over by another worker when `reclaim_stale_pending` redelivers its event. Racing is safe — scoring is keyed on a deterministic request id, so two workers converge on the same rows — and `CHILI_SCORE_BATCH_MAX_ATTEMPTS` (default 5) stops a batch that kills its worker from being reclaimed forever, failing it so the run can still terminate.
+
+**Known gap:** `GraphRepository.get_entities` is not paginated, so enumeration still materialises the full entity list once — in the worker, where it is retryable, rather than in the HTTP request. True streaming enumeration needs a paginated graph read.
 
 ---
 

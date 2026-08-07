@@ -11,6 +11,8 @@ an entity below the signal floor is a failed entity, not a failed batch.
 from __future__ import annotations
 
 import logging
+import os
+from datetime import timedelta
 
 from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
 from analytics.risk.service_models import RiskAssessmentRequest
@@ -25,7 +27,34 @@ __all__ = ["handle_score_batch_queued", "handle_score_run_queued"]
 
 logger = logging.getLogger(__name__)
 
+def _positive_int_from_env(name: str, default: int) -> int:
+    """Read a positive int from the environment, falling back on anything odd."""
+
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("%s=%r is not an integer; using %s", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("%s=%s must be positive; using %s", name, value, default)
+        return default
+    return value
+
+
 _TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "canceled", "replayed"})
+
+# How long a batch may sit `running` before another worker may take it over.
+# Must exceed the time a healthy batch takes: too short and two workers score
+# the same batch concurrently. That is safe — scoring is keyed on a
+# deterministic request id, so they converge on the same rows — but wasteful.
+_STALE_BATCH_SECONDS = _positive_int_from_env("CHILI_SCORE_BATCH_STALE_SECONDS", 900)
+
+# A batch that kills its worker every time would otherwise be reclaimed
+# forever. attempts counts claims, so this caps the takeover loop.
+_MAX_BATCH_ATTEMPTS = _positive_int_from_env("CHILI_SCORE_BATCH_MAX_ATTEMPTS", 5)
 
 
 def score_request_id(*, run_id: str, batch_number: int, entity_id: str) -> str:
@@ -72,12 +101,47 @@ def handle_score_batch_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
         )
         return 0
 
+    now = utc_now()
+    existing = repository.get_batch(
+        run_id=event.run_id, batch_number=event.batch_number
+    )
+    if existing is not None and existing.attempts >= _MAX_BATCH_ATTEMPTS:
+        # Reclaimed too many times: something about this batch takes down its
+        # worker. Fail it rather than looping, so the run can still terminate
+        # and the failure is visible on the batch.
+        repository.upsert_batch(
+            existing.model_copy(
+                update={
+                    "status": "failed",
+                    "failed_entities": len(existing.entity_ids),
+                    "error_summary": "max_attempts_exceeded",
+                    "finished_at": now,
+                    "updated_at": now,
+                }
+            )
+        )
+        _reconcile_run_counters(repository, run_id=run.id)
+        _advance(
+            repository,
+            deps,
+            run_id=run.id,
+            knowledge_base_id=run.knowledge_base_id,
+            correlation_id=event.correlation_id,
+        )
+        return 1
+
     batch = repository.claim_batch(
-        run_id=event.run_id, batch_number=event.batch_number, now=utc_now()
+        run_id=event.run_id,
+        batch_number=event.batch_number,
+        now=now,
+        # Reclaim a batch abandoned by a worker that died mid-flight: its event
+        # is redelivered by reclaim_stale_pending, and without this the claim
+        # fails, the batch stalls, and the reconciler fails the whole run.
+        stale_running_before=now - timedelta(seconds=_STALE_BATCH_SECONDS),
     )
     if batch is None:
-        # Not queued: already claimed by another worker, or this is a
-        # redelivery of a batch that finished. Neither is an error.
+        # Still owned by a live worker, or a redelivery of a finished batch.
+        # Neither is an error.
         return 0
 
     if run.started_at is None:

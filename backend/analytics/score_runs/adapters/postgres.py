@@ -233,7 +233,12 @@ class PostgresScoreRunRepository:
         return None if row is None else _batch_from_row(row)
 
     def claim_batch(
-        self, *, run_id: str, batch_number: int, now: datetime
+        self,
+        *,
+        run_id: str,
+        batch_number: int,
+        now: datetime,
+        stale_running_before: datetime | None = None,
     ) -> ScoreBatch | None:
         """Atomically transition a `queued` batch to `running`.
 
@@ -249,10 +254,25 @@ class PostgresScoreRunRepository:
                            attempts = attempts + 1,
                            started_at = COALESCE(started_at, %s),
                            updated_at = %s
-                     WHERE run_id = %s AND batch_number = %s AND status = 'queued'
+                     WHERE run_id = %s AND batch_number = %s
+                       AND (
+                            status = 'queued'
+                            OR (
+                                %s::timestamptz IS NOT NULL
+                                AND status = 'running'
+                                AND updated_at < %s::timestamptz
+                            )
+                       )
                     RETURNING {_BATCH_COLUMNS}
                     """,
-                    (now, now, run_id, batch_number),
+                    (
+                        now,
+                        now,
+                        run_id,
+                        batch_number,
+                        stale_running_before,
+                        stale_running_before,
+                    ),
                 ).fetchone()
                 conn.commit()
             except Exception:

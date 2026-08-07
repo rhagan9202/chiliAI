@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -179,3 +179,44 @@ def test_entity_ids_survive_a_jsonb_round_trip(provider: ConnectionProvider) -> 
 
     assert stored is not None
     assert stored.entity_ids == []
+
+
+def test_claim_batch_reclaims_a_batch_abandoned_by_a_dead_worker(
+    provider: ConnectionProvider,
+) -> None:
+    """The conditional UPDATE must widen to `running` past the threshold."""
+    repository = PostgresScoreRunRepository(provider)
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+    repository.claim_batch(run_id="score-run-pg-1", batch_number=0, now=BASE_TIME)
+
+    later = BASE_TIME + timedelta(minutes=30)
+    reclaimed = repository.claim_batch(
+        run_id="score-run-pg-1",
+        batch_number=0,
+        now=later,
+        stale_running_before=later - timedelta(minutes=10),
+    )
+
+    assert reclaimed is not None
+    assert reclaimed.attempts == 2
+
+
+def test_claim_batch_leaves_a_live_workers_batch_alone(
+    provider: ConnectionProvider,
+) -> None:
+    repository = PostgresScoreRunRepository(provider)
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(batch_number=0))
+    repository.claim_batch(run_id="score-run-pg-1", batch_number=0, now=BASE_TIME)
+
+    soon = BASE_TIME + timedelta(seconds=30)
+    assert (
+        repository.claim_batch(
+            run_id="score-run-pg-1",
+            batch_number=0,
+            now=soon,
+            stale_running_before=soon - timedelta(minutes=10),
+        )
+        is None
+    )

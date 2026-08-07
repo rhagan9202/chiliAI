@@ -131,10 +131,13 @@ class InMemoryScoreRunRepository:
         run_id: str,
         batch_number: int,
         now: datetime,
+        stale_running_before: datetime | None = None,
     ) -> ScoreBatch | None:
         key = (run_id, batch_number)
         batch = self._batches.get(key)
-        if batch is None or batch.status != "queued":
+        if batch is None:
+            return None
+        if batch.status != "queued" and not _is_reclaimable(batch, stale_running_before):
             return None
         claimed = batch.model_copy(
             update={
@@ -194,6 +197,14 @@ class InMemoryScoreRunRepository:
         for key in batch_keys:
             del self._batches[key]
         return len(run_ids)
+
+
+def _is_reclaimable(batch: ScoreBatch, stale_running_before: datetime | None) -> bool:
+    """True when a `running` batch has been abandoned long enough to re-take."""
+
+    if stale_running_before is None or batch.status != "running":
+        return False
+    return batch.updated_at < stale_running_before
 
 
 def _copy_run(run: ScoreRun) -> ScoreRun:

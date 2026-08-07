@@ -65,6 +65,7 @@ class ScoreRunRepositoryProtocol(Protocol):
         run_id: str,
         batch_number: int,
         now: datetime,
+        stale_running_before: datetime | None = None,
     ) -> ScoreBatch | None:
         """Transition a ``queued`` batch to ``running`` and count the attempt.
 
@@ -73,6 +74,17 @@ class ScoreRunRepositoryProtocol(Protocol):
         not as an error: Redis Streams redelivers, and ``reclaim_stale_pending``
         can hand the same event to a second worker, so this is the guard that
         stops two workers scoring one batch.
+
+        ``stale_running_before`` additionally reclaims a batch left ``running``
+        by a worker that died mid-batch: its event sits in the Redis pending
+        list until ``reclaim_stale_pending`` hands it to another worker, and
+        without a reclaim window that worker could never take it, so the batch
+        would stall and the whole run would be failed by the reconciler instead
+        of resuming. Pass ``None`` (the default) for queued-only claiming.
+
+        Reclaiming is safe to race: scoring is keyed on a deterministic request
+        id, so two workers scoring one batch converge on the same rows rather
+        than duplicating them.
 
         Keyed on ``(run_id, batch_number)`` rather than the batch id because
         that is the natural key both storage layers already index on, and it is
