@@ -2837,6 +2837,11 @@ export interface components {
             domain_compatibility: components["schemas"]["CapabilityDomainCompatibilityResponse"];
             /** Examples */
             examples?: components["schemas"]["CapabilityExampleResponse"][];
+            /**
+             * Executable
+             * @default false
+             */
+            executable: boolean;
             health: components["schemas"]["CapabilityHealthResponse"];
             /** Input Schema */
             input_schema: {

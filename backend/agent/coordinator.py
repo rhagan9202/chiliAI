@@ -294,6 +294,8 @@ from monitoring.metrics import observe_pipeline_stage
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.adapters.postgres import PostgresAuditLogRepository
 from auditlog.service import AuditLogService
+from analytics.peerstats.adapters.protocols import PeerSignalReaderProtocol
+from analytics.peerstats.peer_analysis import PeerAnalysisService
 from capabilities.builtin_executors import register_builtin_capability_executors
 from capabilities.service import (
     CapabilityRegistryService,
@@ -1364,9 +1366,25 @@ def build_worker_dependencies() -> WorkerDependencies:
     capability_registry = create_default_capability_registry_service()
     # Bind the capabilities this process can actually run. Without this every
     # workflow step authorizes and then fails `capability_not_executable`.
+    # Peer analysis reads persisted derived signals — the same store the worker
+    # already writes them to — so the reader is the store it holds.
+    peer_analysis_service = PeerAnalysisService(
+        cast(PeerSignalReaderProtocol, derived_signal_store),
+        cohort_definitions=list(config.peer_stats.cohorts)
+        if config.peer_stats is not None
+        else [],
+    )
     register_builtin_capability_executors(
         connector_service=ConnectorService(connector_repository),
+        # Not bound in the worker: the RAG stack is assembled from bridges in
+        # `api/_rag_bridges` (embeddings -> vectorstore -> graph -> LLM), and a
+        # worker import of `api.` would invert the module boundary. `rag.query`
+        # therefore reports `capability_not_executable` here — truthfully —
+        # until those bridges move somewhere both processes may import.
+        rag_service=None,
+        peer_analysis_service=peer_analysis_service,
         capability_registry=capability_registry,
+        capabilities_config=config.capabilities,
         domain_name=config.domain.name,
         environment_tag=os.environ.get("CHILI_ENV", "").strip().lower() or None,
     )

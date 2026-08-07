@@ -893,6 +893,11 @@ class CapabilityManifestResponse(BaseModel):
     input_schema: dict[str, object]
     output_schema: dict[str, object]
     side_effect_class: CapabilitySideEffectClassValue
+    # Whether this process has an executor bound for the capability.
+    # A manifest can be registered, browsable and authorizable while
+    # nothing can run it; an author picking from this list needs to know
+    # that before authoring a workflow, not after running one.
+    executable: bool = False
     permission: CapabilityPermissionResponse
     domain_compatibility: CapabilityDomainCompatibilityResponse
     health: CapabilityHealthResponse

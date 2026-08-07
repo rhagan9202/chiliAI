@@ -103,3 +103,27 @@ def test_capability_browse_returns_404_for_out_of_scope_kb() -> None:
         response = client.get(BASE_URL)
 
     assert response.status_code == 404
+
+
+def test_the_browse_api_says_which_capabilities_can_actually_run() -> None:
+    """A registered capability is not necessarily a runnable one.
+
+    An author picking from this list needs to know before authoring a workflow,
+    not after running one and reading `capability_not_executable`.
+    """
+    from capabilities.executors import clear_executors, register_executor
+
+    clear_executors()
+    try:
+        register_executor("connector.sync.status", lambda payload, context: {})
+        app = _app_harness()
+        _set_user(app, _user("analyst"))
+
+        with TestClient(app) as client:
+            response = client.get(BASE_URL)
+
+        items = {item["capability_id"]: item["executable"] for item in response.json()["items"]}
+        assert items["connector.sync.status"] is True
+        assert items["evidence.checklist.generate"] is False
+    finally:
+        clear_executors()
