@@ -16,16 +16,43 @@ exactly that reason.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 
 __all__ = [
     "CapabilityExecutor",
+    "ExecutionContext",
     "clear_executors",
     "get_executor",
     "register_executor",
     "registered_capability_ids",
 ]
 
-CapabilityExecutor = Callable[[Mapping[str, object]], Mapping[str, object]]
+@dataclass(frozen=True, slots=True)
+class ExecutionContext:
+    """Who is calling, and under what authorization — separate from tool input.
+
+    ``execute()`` has already authorized the call using exactly these values, so
+    an executor reading them is re-checking rather than deciding. The point is
+    that a capability needing to know its caller has a channel that is not the
+    business payload: the actor previously travelled *inside* the payload,
+    because the signature had nowhere else to put it, and every capability saw
+    ``actor_roles`` as a business field it had to know to ignore.
+
+    Frozen, with ``actor_roles`` as a tuple: an executor must not be able to
+    edit the authorization it was handed, and a mutable field on a frozen
+    dataclass is a lie about immutability.
+    """
+
+    actor_user_id: str
+    actor_roles: tuple[str, ...]
+    domain_name: str | None
+    environment_tag: str | None
+    knowledge_base_id: str | None
+
+
+CapabilityExecutor = Callable[
+    [Mapping[str, object], ExecutionContext], Mapping[str, object]
+]
 
 _EXECUTORS: dict[str, CapabilityExecutor] = {}
 

@@ -9,7 +9,7 @@ this executor calls the methods it was written to call.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 
 import pytest
 
@@ -23,7 +23,12 @@ from agent.models import (
 )
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.service import AuditLogService
-from capabilities.executors import clear_executors, register_executor
+from capabilities.executors import (
+    CapabilityExecutor,
+    ExecutionContext,
+    clear_executors,
+    register_executor,
+)
 from capabilities.service import create_default_capability_registry_service
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import AnyEvent, RecordsIngestedEvent, WorkflowStepQueuedEvent
@@ -111,7 +116,7 @@ class _Harness:
         self,
         *,
         steps: list[WorkflowStepDefinition],
-        executor: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+        executor: CapabilityExecutor | None = None,
         actor_roles: list[str] | None = None,
         actor_user_id: str | None = _ACTOR,
     ) -> None:
@@ -168,11 +173,15 @@ class _Harness:
         ]
 
 
-def _ok_executor(payload: Mapping[str, object]) -> Mapping[str, object]:
+def _ok_executor(
+    payload: Mapping[str, object], context: ExecutionContext
+) -> Mapping[str, object]:
     return {"risk_level": "high", "peer_count": 12}
 
 
-def _boom_executor(payload: Mapping[str, object]) -> Mapping[str, object]:
+def _boom_executor(
+    payload: Mapping[str, object], context: ExecutionContext
+) -> Mapping[str, object]:
     raise RuntimeError("capability exploded")
 
 
@@ -503,15 +512,17 @@ def test_a_role_that_cannot_call_the_capability_fails_the_step() -> None:
     assert harness.step("enrich").status == WorkflowStepStatus.FAILED
 
 
-def test_the_payload_carries_the_actor_for_capabilities_that_need_it() -> None:
-    """`CapabilityExecutor` has no context argument, so the actor rides along.
+def test_the_payload_carries_business_input_only() -> None:
+    """The actor reaches an executor through ExecutionContext, not the payload.
 
-    `connector.sync.status` re-authorizes internally and would see no roles
-    otherwise, denying every workflow-dispatched call.
+    It used to ride in the payload because `CapabilityExecutor` had no context
+    argument, so every capability saw `actor_roles` as a business field.
     """
     seen: list[Mapping[str, object]] = []
 
-    def _capture(payload: Mapping[str, object]) -> Mapping[str, object]:
+    def _capture(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         seen.append(payload)
         return {}
 
@@ -519,6 +530,6 @@ def test_the_payload_carries_the_actor_for_capabilities_that_need_it() -> None:
 
     handle_workflow_step_queued(_event("enrich"), harness.deps)
 
-    assert seen[0]["actor_user_id"] == _ACTOR
-    assert seen[0]["actor_roles"] == _ROLES
+    assert "actor_user_id" not in seen[0]
+    assert "actor_roles" not in seen[0]
     assert seen[0]["knowledge_base_id"] == _KB_ID

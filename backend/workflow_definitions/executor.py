@@ -409,17 +409,10 @@ def _outputs_so_far(run: WorkflowRun) -> dict[str, dict[str, object]]:
 def _payload_for(
     run: WorkflowRun, step: WorkflowStepDefinition
 ) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "knowledge_base_id": run.knowledge_base_id,
-        # The actor travels in the payload because `CapabilityExecutor` is
-        # `Mapping -> Mapping` with no context argument. `execute()` has
-        # already authorized this call, so an executor reading these is
-        # re-checking rather than deciding — but a capability that needs to
-        # know who asked has no other channel. If more capabilities need
-        # context than payload, that signature is the thing to widen.
-        "actor_user_id": run.actor_user_id,
-        "actor_roles": list(run.actor_roles),
-    }
+    # Business input only. The calling actor reaches an executor through
+    # `ExecutionContext`, not through here — it used to ride in the payload
+    # because the executor signature had nowhere else to put it.
+    payload: dict[str, object] = {"knowledge_base_id": run.knowledge_base_id}
     for key, value in run.metadata.items():
         if key.startswith("input."):
             payload[key.removeprefix("input.")] = value

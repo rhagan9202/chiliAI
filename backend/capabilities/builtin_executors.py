@@ -14,10 +14,9 @@ truthful "registered but not implemented" rather than a pretend success.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
-from typing import cast
+from collections.abc import Mapping
 
-from capabilities.executors import register_executor
+from capabilities.executors import ExecutionContext, register_executor
 from capabilities.service import CapabilityRegistryService
 from connectors.service import ConnectorService
 from connectors.status_adapter import (
@@ -75,24 +74,22 @@ def _connector_sync_status_executor(
     weaker check — and reusing the tested adapter is worth more than saving it.
     """
 
-    def _run(payload: Mapping[str, object]) -> Mapping[str, object]:
-        knowledge_base_id = payload.get("knowledge_base_id")
+    def _run(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
+        knowledge_base_id = payload.get("knowledge_base_id") or context.knowledge_base_id
         connector_id = payload.get("connector_id")
         if not isinstance(knowledge_base_id, str) or not isinstance(connector_id, str):
             raise ValueError(
                 "connector.sync.status requires string 'knowledge_base_id' and "
                 "'connector_id' inputs."
             )
-        raw_roles = payload.get("actor_roles")
-        actor_roles: Sequence[str] = (
-            [str(role) for role in cast(list[object], raw_roles)]
-            if isinstance(raw_roles, list)
-            else []
-        )
         envelope = execute_connector_sync_status_capability(
             connector_service=connector_service,
             capability_registry=capability_registry,
-            actor_roles=actor_roles,
+            # From the context, which `execute()` already authorized against —
+            # no longer dug out of the business payload and re-narrowed.
+            actor_roles=list(context.actor_roles),
             knowledge_base_id=knowledge_base_id,
             connector_id=connector_id,
             domain_name=domain_name,
