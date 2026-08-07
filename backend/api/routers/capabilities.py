@@ -20,7 +20,7 @@ from api.dependencies import (
 )
 from api.middleware.auth import User
 from api.middleware.rbac import require_role
-from capabilities.executors import registered_capability_ids
+from capabilities.builtin_executors import WORKER_EXECUTABLE_CAPABILITY_IDS
 from capabilities.models import CapabilityManifest, CapabilityQuery
 from capabilities.service import CapabilityRegistryService
 from config.schema import DomainConfig
@@ -103,7 +103,7 @@ def list_capabilities(
 def _capability_response(manifest: CapabilityManifest) -> CapabilityManifestResponse:
     return CapabilityManifestResponse(
         capability_id=manifest.capability_id,
-        executable=manifest.capability_id in registered_capability_ids(),
+        executable=manifest.capability_id in WORKER_EXECUTABLE_CAPABILITY_IDS,
         version=manifest.version,
         module=manifest.module,
         label=manifest.label,

@@ -11,7 +11,9 @@ disagrees with the registry only when the API supplies one.
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import time
 from typing import cast
 
@@ -26,6 +28,8 @@ _EXECUTABLE_CAPABILITY = "connector.sync.status"
 # Registered but with no executor bound — the honest "not implemented" path.
 _UNBOUND_CAPABILITY = "analytics.peer_context"
 _APPROVAL_CAPABILITY = "case.note.draft"
+_POSTGRES_CONTAINER = os.environ.get("CHILI_E2E_PG_CONTAINER", "chiliai-postgres-1")
+_WORKER_CONTAINER = os.environ.get("CHILI_E2E_WORKER_CONTAINER", "chiliai-worker-1")
 
 
 def _requests():
@@ -149,6 +153,68 @@ def _poll_until(
         f"Run {run_id} never reached {sorted(statuses)} in {_TIMEOUT_SECONDS}s; "
         f"last seen: {last}"
     )
+
+
+def _psql(sql: str) -> str:
+    """Run SQL in the dev Postgres container.
+
+    Preferred over a test-only HTTP route: an endpoint that exists solely for
+    tests is a permanent liability bought for a temporary convenience.
+    """
+    result = subprocess.run(
+        ["docker", "exec", _POSTGRES_CONTAINER, "psql", "-U", "chili", "-d", "chili",
+         "-tAc", sql],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def _seed_peer_signal(kb_id: str, *, entity_id: str, metric_name: str) -> None:
+    """A persisted derived signal for analytics.peer_context to read.
+
+    The capability is a *read* over signals the analytics pipeline computes; a
+    brand-new knowledge base has none, so the step would legitimately fail for
+    want of data rather than for want of a binding.
+    """
+    _psql(
+        "INSERT INTO entity_derived_signals (knowledge_base_id, entity_id, "
+        "entity_type, metric_name, interval_start, peer_group_key, "
+        "aggregate_value, peer_mean, peer_std, z_score, signal_value, weight, "
+        "rationale, correlation_id, computed_at) VALUES ("
+        f"'{kb_id}', '{entity_id}', 'provider', '{metric_name}', "
+        "'2026-08-01T00:00:00Z', 'provider:TN', 100, 40, 10, 6.0, 0.9, 1.0, "
+        "'above peers', 'corr-e2e', now()) ON CONFLICT DO NOTHING"
+    )
+
+
+def _worker_step_states(workflow_id: str) -> dict[str, dict[str, object]]:
+    """Step records as the worker persisted them.
+
+    A run can reach `completed` with every step skipped, so the run status
+    alone cannot show that a capability actually executed.
+    """
+    script = (
+        "import json, os\n"
+        "from agent.adapters.redis_store import RedisWorkflowRunStore\n"
+        "store = RedisWorkflowRunStore(redis_url=os.environ['REDIS_URL'])\n"
+        f"run = store.get_run({workflow_id!r})\n"
+        "print(json.dumps({s.step_name: {'status': s.status.value, "
+        "'attempts': s.attempts, 'metadata': dict(s.metadata)} for s in run.steps}))\n"
+    )
+    result = subprocess.run(
+        ["docker", "exec", _WORKER_CONTAINER, "python", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}")
+    return cast("dict[str, dict[str, object]]", json.loads(result.stdout.strip().splitlines()[-1]))
+
 
 
 def test_a_workflow_run_executes_its_step_end_to_end(base_url: str) -> None:
@@ -319,3 +385,85 @@ def test_a_definition_may_reference_every_registered_capability(
     )
 
     assert response.status_code == 200, response.text
+
+
+def test_the_browse_api_advertisement_matches_what_the_worker_binds(
+    base_url: str,
+) -> None:
+    """`executable` must describe the process that runs workflow steps.
+
+    The executor map is module-level state *per process*, and the API registers
+    nothing — so reading its own registry made the browse API report every
+    capability as unrunnable while the worker was happily running two. The flag
+    is now a declared fact about the worker, guarded against drift by
+    `test_the_declared_worker_set_matches_what_binding_produces`.
+    """
+    kb_id = _create_kb(base_url, "Capability Advertisement")
+    requests = _requests()
+
+    response = requests.get(
+        f"{base_url}/knowledgebases/{kb_id}/capabilities", timeout=30
+    )
+
+    assert response.status_code == 200, response.text
+    items = cast("list[dict[str, object]]", _json(response)["items"])
+    executable = {
+        str(item["capability_id"]) for item in items if item.get("executable")
+    }
+    assert executable == {"connector.sync.status", "analytics.peer_context"}, executable
+
+
+def test_a_workflow_runs_every_capability_the_browse_api_calls_executable(
+    base_url: str,
+) -> None:
+    """The advertisement must be true, not aspirational.
+
+    Asserted through the worker's own step records rather than the run status:
+    a run reaches `completed` with every step skipped just as readily as with
+    every step executed.
+    """
+    kb_id = _create_kb(base_url, "Capability Reachability")
+    _register_connector(base_url, kb_id, "e2e-reach-conn")
+    _seed_peer_signal(kb_id, entity_id="npi-e2e", metric_name="billing_amount")
+    _create_and_approve(
+        base_url,
+        kb_id,
+        definition_id="e2e-reachable",
+        allowed=["connector.sync.status", "analytics.peer_context"],
+        steps=[
+            {
+                "step_id": "status",
+                "label": "Sync status",
+                "capability_ref": "connector.sync.status",
+            },
+            {
+                "step_id": "peers",
+                "label": "Peer context",
+                "capability_ref": "analytics.peer_context",
+            },
+        ],
+    )
+
+    run_id = _run(
+        base_url,
+        kb_id,
+        "e2e-reachable",
+        inputs={
+            "connector_id": "e2e-reach-conn",
+            "entity_id": "npi-e2e",
+            "metric_name": "billing_amount",
+        },
+    )
+    run = _poll_until(base_url, run_id, statuses={"completed", "failed"})
+
+    assert run["status"] == "completed", run
+    steps = _worker_step_states(run_id)
+    assert steps["status"]["status"] == "completed"
+    assert steps["peers"]["status"] == "completed"
+    # Executed, not skipped — a skipped step never increments attempts.
+    assert cast("int", steps["status"]["attempts"]) >= 1
+    assert cast("int", steps["peers"]["attempts"]) >= 1
+    # The flattened manifest shape, from real persisted signals.
+    peer_output = cast("dict[str, object]", steps["peers"]["metadata"])
+    assert peer_output["metric_name"] == "billing_amount"
+    assert "z_score" in peer_output

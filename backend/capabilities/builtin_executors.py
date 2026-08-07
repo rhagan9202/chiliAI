@@ -34,11 +34,37 @@ from connectors.status_adapter import (
 )
 from rag.protocols import RagServiceProtocol
 
-__all__ = ["PEER_CONTEXT_CAPABILITY_ID", "register_builtin_capability_executors"]
+__all__ = [
+    "PEER_CONTEXT_CAPABILITY_ID",
+    "WORKER_EXECUTABLE_CAPABILITY_IDS",
+    "register_builtin_capability_executors",
+]
 
 logger = logging.getLogger(__name__)
 
 PEER_CONTEXT_CAPABILITY_ID = "analytics.peer_context"
+
+# Capabilities the **worker** binds, which is what "executable" means: a
+# workflow step runs in the worker, not in the API.
+#
+# Declared rather than observed because the executor map is module-level state
+# *per process* — the API can register nothing and still be asked which
+# capabilities a workflow may use. Reading its own empty registry made the
+# browse API report every capability as unrunnable while the worker was
+# happily running two.
+#
+# `rag.query` is absent deliberately: its stack is assembled from bridges in
+# `api/_rag_bridges`, which the worker cannot import without inverting the
+# module boundary.
+#
+# `test_the_declared_worker_set_matches_what_binding_produces` fails if this
+# drifts from what `register_builtin_capability_executors` actually binds.
+WORKER_EXECUTABLE_CAPABILITY_IDS: frozenset[str] = frozenset(
+    {
+        CONNECTOR_SYNC_STATUS_CAPABILITY_ID,
+        PEER_CONTEXT_CAPABILITY_ID,
+    }
+)
 
 
 def register_builtin_capability_executors(

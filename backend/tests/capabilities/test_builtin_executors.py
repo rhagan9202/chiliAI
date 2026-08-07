@@ -240,3 +240,21 @@ def test_peer_context_refuses_when_the_domain_disables_peer_stats() -> None:
     assert envelope.success is False
     assert envelope.error_message is not None
     assert "peer_stats" in envelope.error_message
+
+
+def test_the_declared_worker_set_matches_what_binding_produces() -> None:
+    """Two representations of one fact must not drift.
+
+    `WORKER_EXECUTABLE_CAPABILITY_IDS` is what the browse API reports, because
+    the executor map is per-process state and the API registers nothing. This
+    fails if the declaration and the actual binding disagree — which is how the
+    API came to report every capability as unrunnable while the worker was
+    running two.
+    """
+    from capabilities.builtin_executors import WORKER_EXECUTABLE_CAPABILITY_IDS
+
+    # Exactly the services the worker supplies: rag is None there by the
+    # api/_rag_bridges module-boundary constraint.
+    bound, _ = _bind(rag_service=None)
+
+    assert bound == WORKER_EXECUTABLE_CAPABILITY_IDS

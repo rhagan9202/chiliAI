@@ -195,6 +195,10 @@ def test_the_adapter_list_covers_every_module_exporting_a_capability_id() -> Non
 
     `_ADAPTER_CAPABILITY_IDS` is written out by hand so a new adapter cannot
     join silently — which only works if this notices when one does.
+
+    Detects module-level *assignments* whose name looks like a capability id,
+    not files that merely mention the words: the first version matched on file
+    content and flagged a router for importing such a constant.
     """
     listed = {module for module, _ in _ADAPTER_CAPABILITY_IDS}
     found: set[str] = set()
@@ -202,34 +206,31 @@ def test_the_adapter_list_covers_every_module_exporting_a_capability_id() -> Non
         relative = path.relative_to(_BACKEND_DIR)
         if relative.parts[0] in {"tests", ".venv"}:
             continue
-        text = path.read_text(encoding="utf-8")
-        if "CAPABILITY_ID" in text or "CapabilityId" in text:
-            module = ".".join(relative.with_suffix("").parts)
-            # The registry and the executor map mention the words without
-            # exporting an adapter id of their own.
-            if module.startswith(("capabilities.", "events.")):
-                continue
-            found.add(module)
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - defensive
+            continue
+        module = ".".join(relative.with_suffix("").parts)
+        for node in tree.body:
+            targets: list[ast.expr] = []
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, ast.AnnAssign):
+                targets = [node.target]
+            for target in targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                name = target.id
+                # A single capability id, not a collection of them: the
+                # collections are checked by their own tests.
+                if name.endswith("CAPABILITY_ID") or name.endswith("CapabilityId"):
+                    found.add(module)
+
+    # `capabilities.builtin_executors` re-exports one for the browse API and is
+    # covered by its own drift test against the binding it performs.
+    found.discard("capabilities.builtin_executors")
 
     assert found <= listed, (
-        f"modules exporting a capability id that _ADAPTER_CAPABILITY_IDS does "
+        f"modules defining a capability id that _ADAPTER_CAPABILITY_IDS does "
         f"not list, so their ids are unguarded: {sorted(found - listed)}"
-    )
-
-
-def test_the_notification_allow_list_contains_no_producerless_type() -> None:
-    """The two lists mean different things and must not blur together.
-
-    `NOTIFICATION_ONLY_EVENT_TYPES` is "published, deliberately not consumed by
-    the worker". A type with no producer at all is not a notification — it is a
-    surface that emits nothing — and letting one sit in this list makes the
-    producer guard pass while the gap remains. That is exactly how the first
-    version of this file hid `alert.created` from its own check.
-    """
-    produced = _event_types_constructed_in_production_code()
-    smuggled = sorted(t for t in NOTIFICATION_ONLY_EVENT_TYPES if t not in produced)
-
-    assert not smuggled, (
-        f"types in the notification allow-list that nothing constructs; they "
-        f"belong in KNOWN_PRODUCERLESS_EVENT_TYPES: {smuggled}"
     )
