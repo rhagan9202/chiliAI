@@ -361,7 +361,7 @@ Idempotency is the run's own cursor: a page event whose cursor does not match `r
 
 **Operational notes:** every filesystem path is confined to `CHILI_CONNECTOR_FS_ROOT` (default `/imports`, bind-mounted from `sample_data/connector_imports/` in the dev compose); the adapter has no unbounded mode. A `ConnectorSourceError` — path outside the root, missing directory, stale cursor — fails the run with the reason recorded, because no retry can fix it; anything else propagates for the worker's normal retry/DLQ handling. Page size is `CHILI_CONNECTOR_PAGE_LIMIT` (default 500).
 
-**Remaining gap:** there is no reconciler for connector sync runs. A run whose page event is lost entirely — as opposed to failing — stays `running` indefinitely. `analytics/score_runs/reconciler.py` is the pattern to copy when this is closed.
+`ConnectorSyncReconciler` fails runs that stop progressing, driven from the same worker tick and the same cutoff as the workflow and score-run sweeps. It re-reads each candidate before writing, so a page landing mid-sweep leaves the run alone. `queued` counts as well as `running` — a kickoff event lost before the first page leaves a run that never moves at all. The scan is served by `ix_connector_sync_runs_status_updated` (migration `0026`); the pre-existing index leads with `connector_id`, which a cross-KB sweep does not filter on.
 
 ---
 
@@ -417,7 +417,9 @@ Idempotency is the step's own status: a step already COMPLETED, FAILED or SKIPPE
 
 The approval gate is server-side and fails closed. A parked run is `AWAITING_APPROVAL`, which is **not** terminal and is excluded from stale reconciliation (`RECONCILABLE_RUN_STATUSES`) — an approval left overnight is not a stalled run.
 
-**Remaining gaps:** there is no approval *endpoint*, so a parked run is currently unparked only by writing `approved.<step_id>` onto the run's metadata. The dashboard does not count or filter `awaiting_approval`, so a parked run is visible but not surfaced. And `BUILT_IN_WORKFLOW_CAPABILITIES` is now derived from the registry rather than hand-listed — it had named `playbook.step` and `human.approval`, which have no manifest.
+`POST /workflows/{run_id}/steps/{step_id}/approve` records the decision **and** republishes `workflow.step.queued`, which is what actually resumes the run: the executor's parking event was already acked, so recording the approval alone leaves the run exactly as stuck. The run is released to `QUEUED`, not `RUNNING` — the executor claims the step itself. `/reject` fails the run and requires a reason. Both require `admin` (platform RBAC is admin/analyst/service/viewer; "supervisor" is a *domain pack* role name), and the service refuses self-approval: a gate an actor can satisfy for their own run is not a gate.
+
+**Remaining gaps:** The dashboard does not count or filter `awaiting_approval`, so a parked run is visible but not surfaced. And `BUILT_IN_WORKFLOW_CAPABILITIES` is now derived from the registry rather than hand-listed — it had named `playbook.step` and `human.approval`, which have no manifest.
 
 ---
 
@@ -454,6 +456,8 @@ The approval gate is server-side and fails closed. A parked run is `AWAITING_APP
 **Status:** executes. `analytics/score_runs/executor.py` consumes `score.run.queued` (enumerate the KB's entities and create batches) and `score.batch.queued` (score one batch, then chain to the next or complete the run), dispatched through `execution/`. Run counters are summed from per-batch outcomes rather than incremented, so a replayed batch cannot double-count. `ScoreRunReconciler` fails runs that stop progressing, since a lost chain event would otherwise leave a run `running` forever.
 
 **Worker death mid-batch is survivable.** `claim_batch` takes a reclaim window: a batch left `running` past `CHILI_SCORE_BATCH_STALE_SECONDS` (default 900) may be taken over by another worker when `reclaim_stale_pending` redelivers its event. Racing is safe — scoring is keyed on a deterministic request id, so two workers converge on the same rows — and `CHILI_SCORE_BATCH_MAX_ATTEMPTS` (default 5) stops a batch that kills its worker from being reclaimed forever, failing it so the run can still terminate.
+
+`replay_failed_batches` publishes `score.batch.queued` for the first replayed batch. It previously published only `score_run.status_changed` — a notification the worker does not consume — so a replayed run was created with queued batches and executed nothing (live-confirmed 2026-08-07, fixed the same day).
 
 **Known gap:** `GraphRepository.get_entities` is not paginated, so enumeration still materialises the full entity list once — in the worker, where it is retryable, rather than in the HTTP request. True streaming enumeration needs a paginated graph read.
 
