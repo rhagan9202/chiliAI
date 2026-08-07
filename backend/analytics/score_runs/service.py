@@ -238,6 +238,24 @@ class ScoreRunService:
             for index, batch in enumerate(failed_batches)
         ]
         self._publish_status(run)
+        if self._event_bus is not None and replay_batches:
+            # Start the chain. `_publish_status` emits `score_run.status_changed`,
+            # which is a *notification* the worker does not subscribe to — so
+            # without this the replayed run is durable and completely inert:
+            # queued forever, with nothing to explain why.
+            #
+            # Only the first batch. The executor enqueues batch N+1 from batch
+            # N, so publishing all of them would run them concurrently and
+            # defeat the sequencing the chain exists to provide.
+            self._event_bus.publish(
+                ScoreBatchQueuedEvent(
+                    correlation_id=run.id,
+                    knowledge_base_id=run.knowledge_base_id,
+                    run_id=run.id,
+                    batch_id=replay_batches[0].id,
+                    batch_number=replay_batches[0].batch_number,
+                )
+            )
         return ScoreRunStartResult(run=run, batches=replay_batches, created=True)
 
     def list_batches(self, *, run_id: str) -> list[ScoreBatch]:
