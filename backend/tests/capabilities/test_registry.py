@@ -315,3 +315,49 @@ def test_capability_adapters_require_authorization_context() -> None:
             assert signature.parameters[name].default is inspect.Parameter.empty, (
                 f"{function.__name__} defaults `{name}`."
             )
+
+
+def test_manifest_environment_tags_use_the_real_environment_vocabulary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tag a caller passes is CHILI_ENV, so the two must agree.
+
+    They had drifted: manifests declared support for a "test" environment that
+    is not a valid CHILI_ENV at all, and omitted "local" — the default for the
+    entire dev stack — and "staging". Once authorize() started failing closed
+    on the environment gate, that made every capability call under the dev
+    stack deny with `capability_environment_denied`.
+    """
+    from api.dependencies import load_chili_environment
+    from shared.environments import SUPPORTED_ENVIRONMENT_TAGS
+
+    # Through the public resolver rather than its private allow-list: this
+    # asserts every declared tag is a value CHILI_ENV will actually accept.
+    for tag in SUPPORTED_ENVIRONMENT_TAGS:
+        monkeypatch.setenv("CHILI_ENV", tag)
+        assert load_chili_environment() == tag
+
+    for manifest in create_default_capability_registry_service().list_capabilities().items:
+        tags = set(manifest.domain_compatibility.environment_tags)
+        unknown = tags - set(SUPPORTED_ENVIRONMENT_TAGS)
+        assert not unknown, (
+            f"Capability '{manifest.capability_id}' declares environments that "
+            f"CHILI_ENV can never hold: {sorted(unknown)}"
+        )
+
+
+def test_every_shipped_capability_is_usable_in_local_development() -> None:
+    """A capability nothing can call on the dev stack is untestable by hand."""
+    service = create_default_capability_registry_service()
+
+    for manifest in service.list_capabilities().items:
+        envelope = service.authorize(
+            manifest.capability_id,
+            actor_roles=["admin"],
+            domain_name=manifest.domain_compatibility.supported_domains[0],
+            environment_tag="local",
+        )
+        assert envelope.success is True, (
+            f"'{manifest.capability_id}' cannot be invoked locally: "
+            f"{envelope.error_code}"
+        )

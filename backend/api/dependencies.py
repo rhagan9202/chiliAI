@@ -123,6 +123,7 @@ from policy.exceptions import (
 )
 from policy.models import PolicyItem
 from policy.service import PolicyService, create_policy_service
+from shared.environments import SUPPORTED_ENVIRONMENT_TAGS
 from shared.utils import utc_now
 from api.state import ApiState, create_api_state
 from config.loader import ConfigLoadError, load_config
@@ -465,7 +466,9 @@ def _raise_unsupported_backend(
 # part of step 1 of swap-once-success (validate; nothing mutated on failure).
 # ---------------------------------------------------------------------------
 
-_ALLOWED_ENVIRONMENTS = frozenset({"local", "dev", "staging", "production"})
+# Same vocabulary a capability manifest declares support for; see
+# shared/environments.py for why these must not drift apart.
+_ALLOWED_ENVIRONMENTS = frozenset(SUPPORTED_ENVIRONMENT_TAGS)
 _AUTH_REQUIRED_ENVIRONMENTS = frozenset({"staging", "production"})
 
 
