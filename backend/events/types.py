@@ -518,6 +518,20 @@ class ScoreBatchQueuedEvent(EventBase):
     batch_id: str
     batch_number: int = Field(ge=0)
 
+class ScoreRunQueuedEvent(EventBase):
+    """A score-all run needs its entity list enumerated and batched.
+
+    Emitted when a run is started without an explicit entity list. Enumeration
+    is a unit of work in its own right: doing it in the HTTP request meant a
+    large knowledge base failed the request before any executor ran (risk R2).
+    """
+
+    event_type: Literal["score.run.queued"] = "score.run.queued"
+    knowledge_base_id: str
+    run_id: str
+    batch_size: int = Field(default=100, gt=0)
+
+
 
 
 AnyEvent = (
@@ -541,6 +555,7 @@ AnyEvent = (
     | RiskScoredEvent
     | IdentityLinkDecisionRecordedEvent
     | ScoreBatchQueuedEvent
+    | ScoreRunQueuedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -593,6 +608,7 @@ __all__ = [
     "GraphUpdatedEvent",
     "IdentityLinkDecisionRecordedEvent",
     "ScoreBatchQueuedEvent",
+    "ScoreRunQueuedEvent",
     "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",
     "KnowledgeBaseDeletedEvent",

@@ -14,13 +14,14 @@ import logging
 
 from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
 from analytics.risk.service_models import RiskAssessmentRequest
+from analytics.score_runs.models import ScoreBatch
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
-from events.types import AnyEvent, ScoreBatchQueuedEvent
+from events.types import AnyEvent, ScoreBatchQueuedEvent, ScoreRunQueuedEvent
 from execution.deps import ExecutionDeps
 from execution.registry import register_handler
 from shared.utils import utc_now
 
-__all__ = ["handle_score_batch_queued"]
+__all__ = ["handle_score_batch_queued", "handle_score_run_queued"]
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,78 @@ def handle_score_batch_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
     return 1
 
 
+def handle_score_run_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
+    """Enumerate a run's entities, create its batches, and start the chain.
+
+    Runs started without an explicit entity list arrive here first. Enumeration
+    lives in the executor rather than the HTTP request so a large knowledge base
+    cannot fail the request before any work is durable (risk R2).
+
+    Note: `GraphRepository.get_entities` is not paginated, so this still
+    materialises the full entity list once — in the worker, where it is
+    retryable and the run row already exists. True streaming enumeration needs a
+    paginated graph read and is deliberately out of scope here.
+    """
+
+    if not isinstance(event, ScoreRunQueuedEvent):
+        return 0
+    repository = deps.score_run_repository
+    graph_repository = deps.graph_repository
+    event_bus = deps.event_bus
+    if repository is None or graph_repository is None or event_bus is None:
+        logger.debug("Score-run enumeration is not configured; skipping.")
+        return 0
+
+    run = repository.get_run(event.run_id)
+    if run is None or run.status in _TERMINAL_RUN_STATUSES:
+        return 0
+    if repository.list_batches(run_id=run.id):
+        # Already enumerated: this is a redelivery. Re-enumerating would
+        # duplicate batches and inflate total_entities.
+        return 0
+
+    entity_ids = [
+        entity.id for entity in graph_repository.get_entities(run.knowledge_base_id)
+    ]
+    if not entity_ids:
+        repository.update_run(
+            run.id, status="completed", total_entities=0, finished_at=utc_now()
+        )
+        return 1
+
+    now = utc_now()
+    for batch_number, chunk in enumerate(_chunk(entity_ids, event.batch_size)):
+        repository.upsert_batch(
+            ScoreBatch(
+                id=f"{run.id}-batch-{batch_number}",
+                run_id=run.id,
+                knowledge_base_id=run.knowledge_base_id,
+                batch_number=batch_number,
+                status="queued",
+                entity_ids=list(chunk),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    repository.update_run(run.id, total_entities=len(entity_ids))
+
+    first = repository.list_batches(run_id=run.id, status="queued")[0]
+    event_bus.publish(
+        ScoreBatchQueuedEvent(
+            correlation_id=event.correlation_id,
+            knowledge_base_id=run.knowledge_base_id,
+            run_id=run.id,
+            batch_id=first.id,
+            batch_number=first.batch_number,
+        )
+    )
+    return 1
+
+
+def _chunk(items: list[str], size: int) -> list[list[str]]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
 def _reconcile_run_counters(
     repository: ScoreRunRepositoryProtocol, *, run_id: str
 ) -> None:
@@ -181,3 +254,4 @@ def _active_catalog_version(deps: ExecutionDeps) -> str | None:
 
 
 register_handler("score.batch.queued", handle_score_batch_queued)
+register_handler("score.run.queued", handle_score_run_queued)

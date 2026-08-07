@@ -7,11 +7,16 @@ from datetime import datetime, timezone
 from analytics.risk.exceptions import RiskInsufficientSignalsError
 from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
-from analytics.score_runs.executor import handle_score_batch_queued
+from analytics.score_runs.executor import (
+    handle_score_batch_queued,
+    handle_score_run_queued,
+)
 from analytics.score_runs.models import ScoreBatch, ScoreRun
 from config.schema import DomainConfig
+from graph.adapters.in_memory import InMemoryGraphRepository
+from shared.types import Entity
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import ScoreBatchQueuedEvent
+from events.types import ScoreBatchQueuedEvent, ScoreRunQueuedEvent
 from execution.deps import ExecutionDeps
 
 BASE_TIME = datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc)
@@ -110,6 +115,31 @@ def _seed(
     repository.update_run(_RUN_ID, total_entities=total)
     risk_service = _StubRiskService()
     return repository, _deps(repository, risk_service=risk_service), risk_service
+
+
+def _run_queued_event(*, batch_size: int = 100) -> ScoreRunQueuedEvent:
+    return ScoreRunQueuedEvent(
+        correlation_id="corr-1",
+        knowledge_base_id=_KB,
+        run_id=_RUN_ID,
+        batch_size=batch_size,
+    )
+
+
+def _deps_with_graph(
+    repository: InMemoryScoreRunRepository,
+    graph: InMemoryGraphRepository,
+    *,
+    batch_size: int = 100,
+) -> ExecutionDeps:
+    base = _deps(repository)
+    return ExecutionDeps(
+        event_bus=base.event_bus,
+        risk_service=base.risk_service,
+        score_run_repository=repository,
+        graph_repository=graph,
+        domain_config=base.domain_config,
+    )
 
 
 def test_executor_scores_every_entity_in_the_batch() -> None:
@@ -279,3 +309,74 @@ def test_batch_records_its_own_outcome() -> None:
     assert batch is not None
     assert batch.scored_entities == 1
     assert batch.failed_entities == 1
+
+
+def test_executor_enumerates_and_creates_batches_for_a_deferred_run() -> None:
+    """A run started with entity_ids=None has no batches; the executor builds them.
+
+    Enumeration moved out of the HTTP request (risk R2), so the first unit of
+    work for such a run is enumeration, not scoring.
+    """
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    graph = InMemoryGraphRepository()
+    graph.upsert_entities(
+        _KB, [Entity(id=f"e{n}", type="provider") for n in range(1, 4)]
+    )
+    deps = _deps_with_graph(repository, graph)
+
+    processed = handle_score_run_queued(_run_queued_event(batch_size=2), deps)
+
+    batches = repository.list_batches(run_id=_RUN_ID)
+    run = repository.get_run(_RUN_ID)
+    assert processed == 1
+    assert [b.entity_ids for b in batches] == [["e1", "e2"], ["e3"]]
+    assert run is not None and run.total_entities == 3
+
+
+def test_enumeration_publishes_only_the_first_batch() -> None:
+    """The chain advances one unit at a time; the executor enqueues successors."""
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    graph = InMemoryGraphRepository()
+    graph.upsert_entities(
+        _KB, [Entity(id=f"e{n}", type="provider") for n in range(1, 4)]
+    )
+    deps = _deps_with_graph(repository, graph)
+
+    handle_score_run_queued(_run_queued_event(batch_size=1), deps)
+
+    queued = [
+        event
+        for event in deps.event_bus.published_events  # type: ignore[union-attr]
+        if event.event_type == "score.batch.queued"
+    ]
+    assert [event.batch_number for event in queued] == [0]
+
+
+def test_enumerating_an_empty_knowledge_base_completes_the_run() -> None:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    deps = _deps_with_graph(repository, InMemoryGraphRepository())
+
+    handle_score_run_queued(_run_queued_event(), deps)
+
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.status == "completed"
+    assert run.total_entities == 0
+
+
+def test_enumeration_is_idempotent_under_duplicate_delivery() -> None:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    graph = InMemoryGraphRepository()
+    graph.upsert_entities(_KB, [Entity(id="e1", type="provider")])
+    deps = _deps_with_graph(repository, graph)
+
+    handle_score_run_queued(_run_queued_event(), deps)
+    handle_score_run_queued(_run_queued_event(), deps)  # redelivered
+
+    run = repository.get_run(_RUN_ID)
+    assert len(repository.list_batches(run_id=_RUN_ID)) == 1
+    assert run is not None and run.total_entities == 1

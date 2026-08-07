@@ -1,6 +1,6 @@
 # Event Catalog
 
-**Generated:** 2026-05-22 (merge commit `acae4ac`) · **Union reconciled:** 2026-08-06 (33 members)
+**Generated:** 2026-05-22 (merge commit `acae4ac`) · **Union reconciled:** 2026-08-07 (34 members)
 **Source:** `backend/events/types.py` — re-derive before relying on completeness; the per-event sections below still reflect the 2026-05-22 sweep.
 
 All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `source`, and `schema_version: int = 1`.
@@ -102,7 +102,7 @@ All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `so
 
 ## `AnyEvent` Union
 
-**33 members** as of 2026-08-06. Do not copy the list below into a `match` or
+**34 members** as of 2026-08-07. Do not copy the list below into a `match` or
 an exhaustiveness check without re-deriving it — this block listed 28 while the
 code had 32, so anything built from it silently dropped four event types.
 Ground truth:
@@ -130,7 +130,7 @@ AnyEvent = (
     ConfigUpdatedEvent | DocumentsExtractionWarningEvent |
     IdentityLinkDecisionRecordedEvent | ScoreRunStatusChangedEvent |
     # --- executor events ---
-    ScoreBatchQueuedEvent
+    ScoreBatchQueuedEvent | ScoreRunQueuedEvent
 )
 ```
 
@@ -142,4 +142,5 @@ AnyEvent = (
 | `DocumentsExtractionWarningEvent` | `documents.extraction_warning` | Non-fatal extraction warnings (ingestion.35). |
 | `IdentityLinkDecisionRecordedEvent` | `identity.link_decision.recorded` | SAFE-CMS-012 steward merge/split. **Published with no consumer** — codec-registered and emitted, but nothing subscribes, so identity changes do not propagate to graph or read models. |
 | `ScoreRunStatusChangedEvent` | `score_run.status_changed` | SAFE-CMS-002 score-run lifecycle. Published by `ScoreRunService` for operator/UI refresh; not itself a work trigger. |
+| `ScoreRunQueuedEvent` | `score.run.queued` | A run started without an explicit entity list needs enumerating. Consumed by `analytics/score_runs/executor.py`, which lists the KB's entities and creates the batches — enumeration in the HTTP request failed large KBs before any work was durable. |
 | `ScoreBatchQueuedEvent` | `score.batch.queued` | One score-all batch ready to execute. Consumed by `analytics/score_runs/executor.py`. Carries identifiers only — the executor reloads state, so a redelivered event cannot resurrect a stale snapshot. |
