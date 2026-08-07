@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Sequence
+
 from agent.adapters.protocols import WorkflowRunPage, WorkflowRunStoreProtocol
 from agent.definitions import default_workflow_registry
 from agent.exceptions import (
@@ -9,6 +12,7 @@ from agent.exceptions import (
     AgentStateStoreError,
     IdempotencyKeyConflictError,
     WorkflowAlreadyTerminalError,
+    WorkflowApprovalError,
 )
 from agent.models import (
     SYSTEM_METADATA_KEYS,
@@ -20,8 +24,14 @@ from agent.models import (
 )
 from agent.service_models import WorkflowSubmissionRequest, WorkflowSubmissionResponse
 from events.protocols import EventBus
-from events.types import AgentWorkflowStartedEvent, AgentWorkflowStartedReference
+from events.types import (
+    AgentWorkflowStartedEvent,
+    AgentWorkflowStartedReference,
+    WorkflowStepQueuedEvent,
+)
 from shared.utils import generate_id, utc_now
+
+logger = logging.getLogger(__name__)
 
 
 class AgentService:
@@ -151,6 +161,142 @@ class AgentService:
             status=status,
             limit=limit,
             offset=offset,
+        )
+
+    def approve_step(
+        self,
+        workflow_id: str,
+        step_id: str,
+        *,
+        actor_user_id: str,
+        actor_roles: Sequence[str],
+    ) -> WorkflowRun:
+        """Approve a parked step and resume the run.
+
+        Both halves are required. The workflow executor parks a run by setting
+        ``AWAITING_APPROVAL`` and returning, and the worker acks that event
+        regardless — so recording the approval without republishing leaves the
+        run exactly as stuck as before, with no event in flight to resume from.
+        """
+
+        approval_key = f"approved.{step_id}"
+        # Checked before the parked-state guard, not after: a successful
+        # approval releases the run to QUEUED, so a client retry would
+        # otherwise be rejected as "not awaiting approval" — a 409 for an
+        # operation that already succeeded.
+        already = self._run_store.get_run(workflow_id)
+        if already.metadata.get(approval_key):
+            return already
+
+        run = self._require_parked_run(workflow_id, step_id)
+        if run.actor_user_id is not None and run.actor_user_id == actor_user_id:
+            # A gate an actor can satisfy for their own run is not a gate.
+            raise WorkflowApprovalError(
+                f"Actor '{actor_user_id}' requested run '{workflow_id}' and may "
+                "not approve their own step."
+            )
+
+        metadata = dict(run.metadata)
+        metadata[approval_key] = actor_user_id
+        metadata[f"approved_at.{step_id}"] = utc_now().isoformat()
+        updated = self._run_store.update_run(
+            workflow_id,
+            WorkflowRunUpdate(
+                # QUEUED, not RUNNING: the executor claims the step itself, and
+                # pre-setting RUNNING would make this indistinguishable from a
+                # run already in flight.
+                status=WorkflowRunStatus.QUEUED,
+                metadata=metadata,
+                updated_at=utc_now(),
+            ),
+        )
+        self._publish_step(updated, step_id)
+        logger.info(
+            "Workflow step approved run=%s step=%s approver=%s",
+            workflow_id,
+            step_id,
+            actor_user_id,
+        )
+        return updated
+
+    def reject_step(
+        self,
+        workflow_id: str,
+        step_id: str,
+        *,
+        actor_user_id: str,
+        actor_roles: Sequence[str],
+        reason: str,
+    ) -> WorkflowRun:
+        """Reject a parked step, failing the run with the reason recorded.
+
+        No step event is published: a rejected run is terminal, and the reason
+        is the only useful artifact a reviewer leaves behind.
+        """
+
+        run = self._require_parked_run(workflow_id, step_id)
+        metadata = dict(run.metadata)
+        metadata[f"rejected.{step_id}"] = actor_user_id
+        metadata["last_error"] = reason
+        updated = self._run_store.update_run(
+            workflow_id,
+            WorkflowRunUpdate(
+                status=WorkflowRunStatus.FAILED,
+                metadata=metadata,
+                updated_at=utc_now(),
+            ),
+        )
+        logger.info(
+            "Workflow step rejected run=%s step=%s approver=%s reason=%s",
+            workflow_id,
+            step_id,
+            actor_user_id,
+            reason,
+        )
+        return updated
+
+    def _require_parked_run(self, workflow_id: str, step_id: str) -> WorkflowRun:
+        """Load a run that is genuinely awaiting approval on this step.
+
+        Raises ``WorkflowRunNotFoundError`` for a missing run and
+        ``WorkflowApprovalError`` for one in the wrong state — the router maps
+        those to 404 and 409, which are different things to an operator acting
+        on a stale page.
+        """
+
+        run = self._run_store.get_run(workflow_id)
+        if run.status is not WorkflowRunStatus.AWAITING_APPROVAL:
+            raise WorkflowApprovalError(
+                f"Workflow run '{workflow_id}' is not awaiting approval "
+                f"(status: {run.status.value})."
+            )
+        if not any(state.step_name == step_id for state in run.steps):
+            raise WorkflowApprovalError(
+                f"Workflow run '{workflow_id}' has no step '{step_id}'."
+            )
+        return run
+
+    def _publish_step(self, run: WorkflowRun, step_id: str) -> None:
+        """Re-enqueue the parked step so the executor picks it back up."""
+
+        definition_id = run.metadata.get("definition_id")
+        version = run.metadata.get("definition_version")
+        if not isinstance(definition_id, str) or not isinstance(version, str):
+            # Without the snapshot identity the executor cannot resolve the
+            # step, so publishing would dead-letter rather than resume.
+            raise WorkflowApprovalError(
+                f"Workflow run '{run.workflow_id}' does not record the workflow "
+                "definition it started against, so it cannot be resumed."
+            )
+        self._event_bus.publish(
+            WorkflowStepQueuedEvent(
+                correlation_id=run.workflow_id,
+                knowledge_base_id=run.knowledge_base_id,
+                workflow_id=run.workflow_id,
+                definition_id=definition_id,
+                version=version,
+                step_id=step_id,
+            )
         )
 
     def cancel_workflow(self, workflow_id: str) -> WorkflowRun:

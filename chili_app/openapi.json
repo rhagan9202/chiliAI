@@ -12747,6 +12747,24 @@
         "title": "WorkflowRunStatus",
         "type": "string"
       },
+      "WorkflowStepApprovalRequest": {
+        "description": "Approve a workflow run parked at a human-approval gate.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "WorkflowStepApprovalRequest",
+        "type": "object"
+      },
       "WorkflowStepDefinitionPayload": {
         "description": "Payload for one executable step in a workflow definition.",
         "properties": {
@@ -12904,6 +12922,21 @@
           "on_failure"
         ],
         "title": "WorkflowStepDefinitionResponse",
+        "type": "object"
+      },
+      "WorkflowStepRejectionRequest": {
+        "description": "Reject a workflow run parked at a human-approval gate.\n\n``reason`` is required: \"rejected\" with no reason is an audit record that\nexplains nothing to the next person who reads it.",
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "WorkflowStepRejectionRequest",
         "type": "object"
       }
     }
@@ -19952,6 +19985,130 @@
           }
         },
         "summary": "Cancel Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/workflows/{workflow_id}/steps/{step_id}/approve": {
+      "post": {
+        "description": "Approve a run parked at a human-approval gate, resuming it.\n\nRequires `admin`, matching `approve_workflow_definition` \u2014 the closest\nexisting analogue and the strictest gate the platform RBAC has. (\"supervisor\"\nis a *domain pack* role name, not a platform role: ROLE_HIERARCHY is\nadmin/analyst/service/viewer.) The service additionally refuses\nself-approval: a gate an actor can satisfy for their own run is not a gate.",
+        "operationId": "approve_workflow_step_workflows__workflow_id__steps__step_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_id",
+            "required": true,
+            "schema": {
+              "title": "Step Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStepApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Workflow Step",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/workflows/{workflow_id}/steps/{step_id}/reject": {
+      "post": {
+        "description": "Reject a run parked at a human-approval gate, failing it.",
+        "operationId": "reject_workflow_step_workflows__workflow_id__steps__step_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_id",
+            "required": true,
+            "schema": {
+              "title": "Step Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStepRejectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Workflow Step",
         "tags": [
           "workflows"
         ]

@@ -5,6 +5,12 @@ import type { WorkflowRunListResponse, WorkflowRunResponse } from './contracts'
 
 export const workflowsQueryKey = ['workflows'] as const
 
+export type WorkflowStepDecision = {
+  workflowId: string
+  stepId: string
+  reason?: string
+}
+
 export type WorkflowFilters = {
   knowledgeBaseId?: string
   status?: WorkflowRunResponse['status']
@@ -44,6 +50,54 @@ export function useCancelWorkflow() {
 
   return useMutation({
     mutationFn: (workflowId: string) => cancelWorkflow(workflowId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
+    },
+  })
+}
+
+export function approveWorkflowStep(
+  workflowId: string,
+  stepId: string,
+  reason?: string,
+): Promise<WorkflowRunResponse> {
+  return apiFetch<WorkflowRunResponse>(
+    `/workflows/${workflowId}/steps/${stepId}/approve`,
+    { method: 'POST', body: JSON.stringify({ reason: reason ?? null }) },
+  )
+}
+
+export function rejectWorkflowStep(
+  workflowId: string,
+  stepId: string,
+  reason: string,
+): Promise<WorkflowRunResponse> {
+  return apiFetch<WorkflowRunResponse>(
+    `/workflows/${workflowId}/steps/${stepId}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  )
+}
+
+export function useApproveWorkflowStep() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ workflowId, stepId, reason }: WorkflowStepDecision) =>
+      approveWorkflowStep(workflowId, stepId, reason),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
+    },
+  })
+}
+
+export function useRejectWorkflowStep() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    // A reason is required by the API: "rejected" with no reason is an audit
+    // record that explains nothing.
+    mutationFn: ({ workflowId, stepId, reason }: WorkflowStepDecision & { reason: string }) =>
+      rejectWorkflowStep(workflowId, stepId, reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
     },

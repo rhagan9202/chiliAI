@@ -8,7 +8,7 @@ import pytest
 
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.models import ScoreBatch, ScoreRun
-from analytics.score_runs.service import ScoreRunService, create_score_run_service
+from analytics.score_runs.service import ScoreRunService, ScoreRunStartResult, create_score_run_service
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import ScoreRunStatusChangedEvent
 
@@ -278,8 +278,14 @@ def test_replay_failed_batches_publishes_replayed_status_event() -> None:
 
     replay = service.replay_failed_batches(original.id, requested_by="operator-2")
 
-    event = event_bus.published_events[-1]
-    assert isinstance(event, ScoreRunStatusChangedEvent)
+    # Selected explicitly rather than taken as the last event: replay now also
+    # publishes the batch event that drives execution, so positional access
+    # silently asserts against whichever publish happens to come last.
+    event = next(
+        published
+        for published in event_bus.published_events
+        if isinstance(published, ScoreRunStatusChangedEvent)
+    )
     assert event.run_id == replay.run.id
     assert event.status == "queued"
     assert event.replay_of_run_id == original.id
@@ -314,3 +320,96 @@ def test_score_request_id_is_deterministic_per_run_and_entity() -> None:
         batch_number=3,
         entity_id="provider-7",
     ) == request_id
+
+
+def _run_with_failed_batches(
+    service: ScoreRunService, *, batch_count: int = 2
+) -> ScoreRunStartResult:
+    """A run whose batches have all failed, ready to replay."""
+    started = service.start_score_all(
+        knowledge_base_id="kb-1",
+        entity_ids=[f"provider-{index}" for index in range(batch_count)],
+        requested_by="operator-1",
+        model_version="risk-linear-v1",
+        catalog_version="cms-fraud-features-v1",
+        batch_size=1,
+    )
+    for batch in started.batches:
+        service.repository.upsert_batch(batch.model_copy(update={"status": "failed"}))
+    service.repository.update_run(started.run.id, status="failed")
+    return started
+
+
+def _batch_events(event_bus: InMemoryEventBus, *, run_id: str) -> list[object]:
+    """Batch events for one run.
+
+    Scoped by run id deliberately: `start_score_all` publishes a batch event of
+    its own, so an unscoped count is satisfied by the setup run and every
+    assertion about the replay passes without the replay publishing anything.
+    """
+    return [
+        published
+        for published in event_bus.published_events
+        if published.event_type == "score.batch.queued"
+        and getattr(published, "run_id", None) == run_id
+    ]
+
+
+def test_replaying_failed_batches_enqueues_the_first_replayed_batch() -> None:
+    """Without this the replayed run is durable and completely inert.
+
+    `_publish_status` emits `score_run.status_changed`, which is a notification
+    — the worker does not subscribe to it. Live-confirmed 2026-08-07: a replayed
+    run stayed `queued` with `scored=0` indefinitely.
+    """
+    service, event_bus = _service_with_events()
+    original = _run_with_failed_batches(service)
+
+    result = service.replay_failed_batches(original.run.id, requested_by="operator-2")
+
+    queued = _batch_events(event_bus, run_id=result.run.id)
+    assert len(queued) == 1
+    assert queued[0].run_id == result.run.id  # type: ignore[attr-defined]
+    assert queued[0].batch_number == result.batches[0].batch_number  # type: ignore[attr-defined]
+
+
+def test_replay_enqueues_only_the_first_batch_not_all_of_them() -> None:
+    """The executor chains its own successor.
+
+    Publishing every batch would run them concurrently, defeating the
+    sequencing the chain exists to provide.
+    """
+    service, event_bus = _service_with_events()
+    original = _run_with_failed_batches(service, batch_count=3)
+
+    result = service.replay_failed_batches(original.run.id, requested_by="operator-2")
+
+    assert len(result.batches) == 3
+    assert len(_batch_events(event_bus, run_id=result.run.id)) == 1
+
+
+def test_an_idempotent_replay_does_not_enqueue_a_second_time() -> None:
+    service, event_bus = _service_with_events()
+    original = _run_with_failed_batches(service)
+
+    first = service.replay_failed_batches(
+        original.run.id, requested_by="operator-2", idempotency_key="replay-1"
+    )
+    second = service.replay_failed_batches(
+        original.run.id, requested_by="operator-2", idempotency_key="replay-1"
+    )
+
+    assert second.run.id == first.run.id
+    assert second.created is False
+    assert len(_batch_events(event_bus, run_id=first.run.id)) == 1
+
+
+def test_replay_without_an_event_bus_still_creates_the_run() -> None:
+    """In-process callers and unit tests may have no bus configured."""
+    service = _service()
+    original = _run_with_failed_batches(service)
+
+    result = service.replay_failed_batches(original.run.id, requested_by="operator-2")
+
+    assert result.created is True
+    assert result.run.status == "queued"

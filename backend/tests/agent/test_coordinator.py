@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from pathlib import Path
 import time
 from types import SimpleNamespace
 from typing import Literal
@@ -6108,3 +6109,28 @@ def test_build_embedding_cache_disabled_returns_none() -> None:
 
     assert cache is None
     assert namespace == "sentence_transformers:all-MiniLM-L6-v2:384"
+
+
+def test_the_worker_reconciles_every_run_type_that_can_stall() -> None:
+    """Each chained executor advances by enqueueing its own successor.
+
+    One lost event therefore stalls a run with no error and no terminal state,
+    so every such run type needs a sweep. This fails when a new chained
+    executor is added without one — which is the failure mode that produced the
+    connector gap in the first place.
+    """
+    source = (
+        Path(__file__).resolve().parents[2] / "agent" / "coordinator.py"
+    ).read_text(encoding="utf-8")
+    # Anchor on the `if`, not the name: the flag appears twice (assignment and
+    # test), so splitting on the bare name slices the condition, not the body.
+    tick = source.split("if should_reconcile_workflows:")[1].split("# Domain hot-swap")[0]
+
+    for reconciler in (
+        "workflow_tracker.reconcile_stale_runs",
+        "ScoreRunReconciler",
+        "ConnectorSyncReconciler",
+    ):
+        assert reconciler in tick, (
+            f"{reconciler} is never driven by the worker reconciliation tick"
+        )

@@ -288,6 +288,8 @@ export type RecordPushRequest = Schemas['RecordPushRequest']
 export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 
 export type WorkflowRunResponse = Schemas['WorkflowRunResponse']
+export type WorkflowStepApprovalRequest = Schemas['WorkflowStepApprovalRequest']
+export type WorkflowStepRejectionRequest = Schemas['WorkflowStepRejectionRequest']
 export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResponse'], 'items'>
 
 export type ScoreBatchResponse = RequireFields<Schemas['ScoreBatchResponse'], 'entity_ids'>

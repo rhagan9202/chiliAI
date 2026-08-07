@@ -1,6 +1,12 @@
+import { useState } from 'react'
+
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
-import { useCancelWorkflow } from '../../api/workflows'
+import {
+  useApproveWorkflowStep,
+  useCancelWorkflow,
+  useRejectWorkflowStep,
+} from '../../api/workflows'
 import type { RecordIngestReceipt, WorkflowRunResponse } from '../../api/contracts'
 import type { IngestionReceiptEntry } from '../../lib/ingestion/types'
 import './ingestion.css'
@@ -129,8 +135,19 @@ function buildTimelineItems(
   ))
 }
 
+function isAwaitingApproval(status: WorkflowRunResponse['status']): boolean {
+  return status === 'awaiting_approval'
+}
+
 export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
   const cancelWorkflow = useCancelWorkflow()
+  const approveStep = useApproveWorkflowStep()
+  const rejectStep = useRejectWorkflowStep()
+  // Which run has its rejection form open, and what reason has been typed.
+  // Rejection is two-step on purpose: the API requires a reason, so a
+  // single-click reject would only ever produce a validation error.
+  const [rejecting, setRejecting] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
 
   if (receipts.length === 0 && workflows.length === 0) {
     return (
@@ -164,6 +181,33 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                   <div className="ingestion-run-timeline__header">
                     <span className="ingestion-run-timeline__title">{workflow.workflow_type}</span>
                     <Chip tone={workflowTone(workflow.status)} label={statusCopy.label} />
+                    {isAwaitingApproval(workflow.status) ? (
+                      <>
+                        <button
+                          type="button"
+                          className="page-button page-button--primary"
+                          aria-label={`Approve ${workflow.current_step} step`}
+                          disabled={approveStep.isPending}
+                          onClick={() => approveStep.mutate({
+                            workflowId: workflow.id,
+                            stepId: workflow.current_step,
+                          })}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button page-button--secondary"
+                          aria-label={`Reject ${workflow.current_step} step`}
+                          onClick={() => {
+                            setRejecting(workflow.id)
+                            setReason('')
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </>
+                    ) : null}
                     {isCancellable(workflow.status) ? (
                       <button
                         type="button"
@@ -177,6 +221,32 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                     ) : null}
                   </div>
                   <p className="ingestion-run-timeline__message">{statusCopy.description}</p>
+                  {rejecting === workflow.id ? (
+                    <div className="ingestion-run-timeline__reject">
+                      <label htmlFor={`reject-reason-${workflow.id}`}>Rejection reason</label>
+                      <input
+                        id={`reject-reason-${workflow.id}`}
+                        type="text"
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="page-button page-button--primary"
+                        disabled={reason.trim().length === 0 || rejectStep.isPending}
+                        onClick={() => {
+                          rejectStep.mutate({
+                            workflowId: workflow.id,
+                            stepId: workflow.current_step,
+                            reason: reason.trim(),
+                          })
+                          setRejecting(null)
+                        }}
+                      >
+                        Confirm rejection
+                      </button>
+                    </div>
+                  ) : null}
                   <dl className="ingestion-run-timeline__meta" aria-label={`${workflow.id} workflow details`}>
                     <div>
                       <dt>Current step</dt>
