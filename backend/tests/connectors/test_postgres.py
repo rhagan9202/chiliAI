@@ -67,6 +67,10 @@ def _purge(connection_provider: ConnectionProvider) -> None:
         conn.execute(
             "DELETE FROM connectors WHERE knowledge_base_id LIKE %s", (_KB_ID + "%",)
         )
+        conn.execute(
+            "DELETE FROM connector_sync_runs WHERE knowledge_base_id LIKE %s",
+            (_KB_ID + "%",),
+        )
         conn.commit()
 
 
@@ -309,3 +313,64 @@ def test_list_runs_filters_by_connector(provider: ConnectionProvider) -> None:
 
     assert page.total_items == 1
     assert other.total_items == 0
+
+
+def test_the_same_connector_id_may_exist_in_two_knowledge_bases(
+    provider: ConnectionProvider,
+) -> None:
+    """The repository protocol is KB-scoped, so storage must be too.
+
+    A global primary key on `connector_id` makes the two backends disagree:
+    the in-memory adapter keys on (kb, connector_id) and accepts this, while
+    Postgres silently stores nothing and the definition reads back as missing.
+    Found on the live stack, where registering the same connector into a second
+    knowledge base returned 409.
+    """
+    repository = PostgresConnectorRepository(provider)
+    other_kb = f"{_KB_ID}-second"
+    repository.save_definition(_definition())
+    second = _definition().model_copy(update={"knowledge_base_id": other_kb})
+
+    repository.save_definition(second)
+
+    first_stored = repository.get_definition(
+        knowledge_base_id=_KB_ID, connector_id=_CONNECTOR_ID
+    )
+    second_stored = repository.get_definition(
+        knowledge_base_id=other_kb, connector_id=_CONNECTOR_ID
+    )
+    assert first_stored is not None
+    assert second_stored is not None
+    assert first_stored.knowledge_base_id == _KB_ID
+    assert second_stored.knowledge_base_id == other_kb
+
+
+def test_deleting_one_knowledge_bases_connector_leaves_the_others(
+    provider: ConnectionProvider,
+) -> None:
+    """The cascade must be scoped to the KB, not to the shared connector id."""
+    repository = PostgresConnectorRepository(provider)
+    other_kb = f"{_KB_ID}-second"
+    repository.save_definition(_definition())
+    repository.save_definition(
+        _definition().model_copy(update={"knowledge_base_id": other_kb})
+    )
+    kept = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id=_CONNECTOR_ID,
+            knowledge_base_id=other_kb,
+            requested_by="operator-1",
+        )
+    )
+
+    with provider.connection() as conn:
+        conn.execute("DELETE FROM connectors WHERE knowledge_base_id = %s", (_KB_ID,))
+        conn.commit()
+
+    assert (
+        repository.get_definition(
+            knowledge_base_id=_KB_ID, connector_id=_CONNECTOR_ID
+        )
+        is None
+    )
+    assert repository.get_run(kept.run_id) is not None

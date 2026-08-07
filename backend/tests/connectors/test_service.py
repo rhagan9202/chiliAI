@@ -218,3 +218,82 @@ def test_starting_a_sync_for_an_implemented_source_still_works() -> None:
     )
 
     assert run.status == "queued"
+
+
+def test_starting_a_sync_publishes_the_first_page_event() -> None:
+    """Without this the run is durable and completely inert.
+
+    The executor chains page N+1 from page N, but nothing starts the chain. A
+    sync run created with no kickoff event sits in `queued` forever, and every
+    executor unit test passes regardless because they invoke the handler
+    directly. Found only by running the real stack.
+    """
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import ConnectorPageQueuedEvent
+
+    event_bus = InMemoryEventBus()
+    service = ConnectorService(InMemoryConnectorRepository(), event_bus=event_bus)
+    service.register_connector("kb-cms", _payload())
+
+    run = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+    )
+
+    published = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, ConnectorPageQueuedEvent)
+    ]
+    assert len(published) == 1
+    assert published[0].run_id == run.run_id
+    assert published[0].connector_id == "cms-claims-drop"
+    assert published[0].knowledge_base_id == "kb-cms"
+    # None means "start at the beginning" — the first page of the pull.
+    assert published[0].cursor is None
+
+
+def test_reusing_an_idempotent_run_does_not_publish_a_second_kickoff() -> None:
+    """A repeated request returns the existing run; it must not restart it."""
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import ConnectorPageQueuedEvent
+
+    event_bus = InMemoryEventBus()
+    service = ConnectorService(InMemoryConnectorRepository(), event_bus=event_bus)
+    service.register_connector("kb-cms", _payload())
+
+    first = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+        idempotency_key="daily-1",
+    )
+    second = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+        idempotency_key="daily-1",
+    )
+
+    published = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, ConnectorPageQueuedEvent)
+    ]
+    assert second.run_id == first.run_id
+    assert len(published) == 1
+
+
+def test_a_service_without_an_event_bus_still_creates_the_run() -> None:
+    """In-process callers and unit tests may have no bus; the run is durable."""
+    service = ConnectorService(InMemoryConnectorRepository())
+    service.register_connector("kb-cms", _payload())
+
+    run = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+    )
+
+    assert run.status == "queued"

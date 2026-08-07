@@ -24,6 +24,7 @@ import logging
 import os
 
 from config.schema import RecordFeedConfig, RecordsConfig
+from connectors.exceptions import ConnectorSourceError
 from connectors.models import (
     ConnectorDefinition,
     ConnectorQuarantineRecordCreate,
@@ -134,9 +135,6 @@ def handle_connector_page_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
     # rows and every published ingest event trace back to the same sync run.
     correlation_id = claimed.ingest_correlation_id or generate_id()
 
-    # Raises on a source failure: a transient outage is the worker's
-    # retry-versus-dead-letter decision. Swallowing it would complete the run
-    # having pulled nothing.
     feed = _resolve_feed(deps.records_config, connector.mapping.feed_name)
     if feed is None:
         return _fail_run(
@@ -145,9 +143,19 @@ def handle_connector_page_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
             f"feed '{connector.mapping.feed_name}' is not configured for this domain",
         )
 
-    page = adapter.read_page(
-        config=connector.config, cursor=event.cursor, limit=_PAGE_LIMIT
-    )
+    try:
+        page = adapter.read_page(
+            config=connector.config, cursor=event.cursor, limit=_PAGE_LIMIT
+        )
+    except ConnectorSourceError as exc:
+        # `ConnectorSourceError` means the source is *misconfigured* — a path
+        # outside the allowed root, a directory that does not exist, a cursor
+        # naming a vanished file. None of those can succeed on retry, so
+        # raising would burn the retry budget, dead-letter the event, and leave
+        # the run `running` forever with no recorded cause. Anything else (an
+        # OSError from an unmounted share, say) is genuinely transient and does
+        # propagate, so the worker can retry and dead-letter it.
+        return _fail_run(repository, claimed, str(exc))
 
     # A row with no derivable id raises out of `register_records` and fails the
     # whole submission — correct for an upload, where a client sees one clear

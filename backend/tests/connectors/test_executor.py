@@ -60,6 +60,8 @@ class _StubSource:
 
 
 class _ExplodingSource:
+    """Fails with ConnectorSourceError — i.e. the source is misconfigured."""
+
     def read_page(
         self,
         *,
@@ -70,13 +72,26 @@ class _ExplodingSource:
         raise ConnectorSourceError("source is unavailable")
 
 
+class _FlakySource:
+    """Fails with something other than ConnectorSourceError — i.e. transiently."""
+
+    def read_page(
+        self,
+        *,
+        config: Mapping[str, object],
+        cursor: str | None,
+        limit: int,
+    ) -> SourcePage:
+        raise OSError("mount is temporarily unavailable")
+
+
 @dataclass
 class _Harness:
     deps: ExecutionDeps
     repository: InMemoryConnectorRepository
     event_bus: InMemoryEventBus
     run_id: str
-    source: _StubSource | _ExplodingSource
+    source: _StubSource | _ExplodingSource | _FlakySource
 
 
 def _feed() -> RecordFeedConfig:
@@ -93,7 +108,7 @@ def _feed() -> RecordFeedConfig:
 def _harness(
     *,
     pages: dict[str | None, SourcePage] | None = None,
-    source: _ExplodingSource | None = None,
+    source: _ExplodingSource | _FlakySource | None = None,
     path: Path | None = None,
 ) -> _Harness:
     repository = InMemoryConnectorRepository()
@@ -505,19 +520,41 @@ def test_a_source_type_with_no_adapter_fails_the_run() -> None:
     assert run.status == "failed"
 
 
-def test_a_source_read_failure_propagates_for_the_worker_to_retry() -> None:
-    """A transient source outage is the worker's retry/DLQ decision, not ours.
+def test_a_misconfigured_source_fails_the_run_rather_than_retrying() -> None:
+    """`ConnectorSourceError` means misconfiguration, which retry cannot fix.
 
-    Swallowing it here would mark the run complete having pulled nothing.
+    A path outside the allowed root, a missing directory, a cursor naming a
+    vanished file: raising would burn the retry budget, dead-letter the event,
+    and leave the run `running` forever with nothing to explain why. Found by
+    pointing a real connector at /etc on the live stack and watching the run
+    never reach a terminal state.
     """
     harness = _harness(source=_ExplodingSource())
 
-    with pytest.raises(ConnectorSourceError):
+    processed = handle_connector_page_queued(_event(harness), harness.deps)
+
+    run = harness.repository.get_run(harness.run_id)
+    assert processed == 0
+    assert run is not None
+    assert run.status == "failed"
+    assert run.error_message is not None
+    assert "unavailable" in run.error_message
+
+
+def test_a_transient_source_error_propagates_for_the_worker_to_retry() -> None:
+    """Anything that is not a ConnectorSourceError may succeed on retry.
+
+    An unmounted share raising OSError is the worker's retry/dead-letter call;
+    swallowing it would fail a run that a moment later would have worked.
+    """
+    harness = _harness(source=_FlakySource())
+
+    with pytest.raises(OSError):
         handle_connector_page_queued(_event(harness), harness.deps)
 
     run = harness.repository.get_run(harness.run_id)
     assert run is not None
-    assert run.status != "completed"
+    assert run.status != "failed"
 
 
 def test_the_executor_is_registered_for_its_event_type() -> None:

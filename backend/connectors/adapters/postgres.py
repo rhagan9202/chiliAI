@@ -77,7 +77,7 @@ class PostgresConnectorRepository:
                 f"""
                 INSERT INTO connectors ({_DEFINITION_COLUMNS})
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (connector_id) DO NOTHING
+                ON CONFLICT (knowledge_base_id, connector_id) DO NOTHING
                 """,
                 (
                     definition.connector_id,

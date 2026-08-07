@@ -20,8 +20,25 @@ def test_connectors_migration_declares_the_definition_table() -> None:
     assert 'revision: str = "0025_connectors"' in migration
     assert 'down_revision: str | None = "0024_score_runs"' in migration
     assert "CREATE TABLE IF NOT EXISTS connectors" in migration
-    assert "connector_id text PRIMARY KEY" in migration
     assert "ix_connectors_kb" in migration
+
+
+def test_connectors_are_keyed_by_knowledge_base_and_connector_id() -> None:
+    """KB-scoped storage, matching the KB-scoped repository protocol.
+
+    `get_definition(*, knowledge_base_id, connector_id)` and the in-memory
+    adapter both key on the pair. A global primary key on `connector_id` alone
+    lets the two backends disagree — the same connector id in a second
+    knowledge base works in memory and silently stores nothing in Postgres.
+    """
+    migration = _migration("0025_connectors.py")
+
+    assert (
+        "CONSTRAINT pk_connectors PRIMARY KEY (knowledge_base_id, connector_id)"
+        in migration
+    )
+    # The sync-run foreign key has to follow the composite key.
+    assert "FOREIGN KEY (knowledge_base_id, connector_id)" in migration
 
 
 def test_connectors_migration_declares_the_sync_run_table() -> None:
@@ -41,7 +58,9 @@ def test_sync_run_idempotency_is_enforced_in_the_database() -> None:
     migration = _migration("0025_connectors.py")
 
     assert "ux_connector_sync_runs_idempotency" in migration
-    assert "(connector_id, idempotency_key)" in migration
+    # KB-scoped, matching the service lookup: two knowledge bases sharing a
+    # connector id must not share one idempotency namespace.
+    assert "(knowledge_base_id, connector_id, idempotency_key)" in migration
     assert "WHERE idempotency_key IS NOT NULL" in migration
 
 

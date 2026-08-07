@@ -407,8 +407,6 @@ ALTER TABLE ONLY public.connector_quarantine_records
     ADD CONSTRAINT connector_quarantine_records_pkey PRIMARY KEY (quarantine_id);
 ALTER TABLE ONLY public.connector_sync_runs
     ADD CONSTRAINT connector_sync_runs_pkey PRIMARY KEY (run_id);
-ALTER TABLE ONLY public.connectors
-    ADD CONSTRAINT connectors_pkey PRIMARY KEY (connector_id);
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (conversation_id);
 ALTER TABLE ONLY public.entity_derived_signals
@@ -425,6 +423,8 @@ ALTER TABLE ONLY public.governance_eval_runs
     ADD CONSTRAINT governance_eval_runs_pkey PRIMARY KEY (run_id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.connectors
+    ADD CONSTRAINT pk_connectors PRIMARY KEY (knowledge_base_id, connector_id);
 ALTER TABLE ONLY public.fraud_playbook_snapshots
     ADD CONSTRAINT pk_fraud_playbook_snapshots PRIMARY KEY (knowledge_base_id, domain_name, playbook_id, version);
 ALTER TABLE ONLY public.identity_links
@@ -496,13 +496,13 @@ CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree 
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
 CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX observations_observed_at_idx ON public.observations USING btree (observed_at DESC);
-CREATE UNIQUE INDEX ux_connector_sync_runs_idempotency ON public.connector_sync_runs USING btree (connector_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+CREATE UNIQUE INDEX ux_connector_sync_runs_idempotency ON public.connector_sync_runs USING btree (knowledge_base_id, connector_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 CREATE UNIQUE INDEX ux_policy_items_item_id ON public.policy_items USING btree (knowledge_base_id, item_id);
 CREATE UNIQUE INDEX ux_score_runs_kb_idempotency ON public.score_runs USING btree (knowledge_base_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 ALTER TABLE ONLY public.connector_quarantine_records
     ADD CONSTRAINT connector_quarantine_records_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.connector_sync_runs(run_id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.connector_sync_runs
-    ADD CONSTRAINT connector_sync_runs_connector_id_fkey FOREIGN KEY (connector_id) REFERENCES public.connectors(connector_id) ON DELETE CASCADE;
+    ADD CONSTRAINT fk_connector_sync_runs_connector FOREIGN KEY (knowledge_base_id, connector_id) REFERENCES public.connectors(knowledge_base_id, connector_id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.score_batches
     ADD CONSTRAINT score_batches_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.score_runs(id) ON DELETE CASCADE;
 -- timescaledb hypertables (hypertable_name|num_dimensions)

@@ -30,7 +30,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS connectors (
-            connector_id text PRIMARY KEY,
+            connector_id text NOT NULL,
             knowledge_base_id text NOT NULL,
             name text NOT NULL,
             source_type text NOT NULL,
@@ -43,6 +43,13 @@ def upgrade() -> None:
             mapping jsonb NOT NULL DEFAULT '{}'::jsonb,
             created_at timestamptz NOT NULL,
             updated_at timestamptz NOT NULL,
+            -- Composite, not `connector_id` alone. The repository protocol is
+            -- KB-scoped (`get_definition(*, knowledge_base_id, connector_id)`)
+            -- and the in-memory adapter keys on the pair, so a global primary
+            -- key would let the two backends disagree: the same connector id
+            -- in two knowledge bases works in memory and silently fails to
+            -- store in Postgres.
+            CONSTRAINT pk_connectors PRIMARY KEY (knowledge_base_id, connector_id),
             CONSTRAINT ck_connectors_source_type CHECK (
                 source_type IN ('filesystem', 'object_store', 'http')
             ),
@@ -65,8 +72,7 @@ def upgrade() -> None:
         """
         CREATE TABLE IF NOT EXISTS connector_sync_runs (
             run_id text PRIMARY KEY,
-            connector_id text NOT NULL
-                REFERENCES connectors(connector_id) ON DELETE CASCADE,
+            connector_id text NOT NULL,
             knowledge_base_id text NOT NULL,
             requested_by text NOT NULL,
             status text NOT NULL,
@@ -80,16 +86,26 @@ def upgrade() -> None:
             updated_at timestamptz NOT NULL,
             CONSTRAINT ck_connector_sync_runs_status CHECK (
                 status IN ('queued', 'running', 'completed', 'failed', 'canceled')
-            )
+            ),
+            CONSTRAINT fk_connector_sync_runs_connector
+                FOREIGN KEY (knowledge_base_id, connector_id)
+                REFERENCES connectors (knowledge_base_id, connector_id)
+                ON DELETE CASCADE
         )
         """
     )
     # Partial unique index rather than a service-side read-then-write: two
     # concurrent sync requests carrying the same key must not both insert.
+    #
+    # Scoped by knowledge base as well as connector, matching the service's own
+    # lookup (`list_runs(connector_id=..., knowledge_base_id=...)`). Without the
+    # knowledge_base_id the two disagree: connectors are KB-scoped, so the same
+    # connector id in two knowledge bases would share one idempotency namespace
+    # and the second KB's first sync would be rejected as a duplicate.
     op.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS ux_connector_sync_runs_idempotency
-        ON connector_sync_runs (connector_id, idempotency_key)
+        ON connector_sync_runs (knowledge_base_id, connector_id, idempotency_key)
         WHERE idempotency_key IS NOT NULL
         """
     )

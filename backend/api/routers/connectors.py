@@ -168,6 +168,14 @@ def start_sync_run(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
+    except ValueError as exc:
+        # The partial unique index rejecting a duplicate idempotency key is a
+        # conflict, not a server fault. Uncaught it surfaced as a 500, which
+        # tells an operator nothing about what to do next.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     return _sync_run_response(run)
 
 

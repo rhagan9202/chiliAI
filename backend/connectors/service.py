@@ -19,6 +19,8 @@ from connectors.models import (
     ConnectorSyncRunUpdate,
 )
 from connectors.repository import ConnectorRepositoryProtocol
+from events.protocols import EventBus
+from events.types import ConnectorPageQueuedEvent
 
 
 # Widen these when the adapters ship — never widen the `Literal` in models.py
@@ -49,8 +51,14 @@ def _require_implemented_schedule_mode(mode: str) -> None:
 class ConnectorService:
     """Coordinate connector definitions, sync runs, and quarantine records."""
 
-    def __init__(self, repository: ConnectorRepositoryProtocol) -> None:
+    def __init__(
+        self,
+        repository: ConnectorRepositoryProtocol,
+        *,
+        event_bus: EventBus | None = None,
+    ) -> None:
         self._repository = repository
+        self._event_bus = event_bus
 
     def register_connector(
         self,
@@ -118,8 +126,11 @@ class ConnectorService:
             )
             for run in existing_runs.items:
                 if run.idempotency_key == idempotency_key:
+                    # Returning an existing run must not restart it: the
+                    # kickoff below is published only for a run this call
+                    # actually created.
                     return run
-        return self._repository.create_run(
+        run = self._repository.create_run(
             ConnectorSyncRunCreate(
                 connector_id=connector_id,
                 knowledge_base_id=knowledge_base_id,
@@ -127,6 +138,24 @@ class ConnectorService:
                 idempotency_key=idempotency_key,
             )
         )
+        if self._event_bus is None:
+            # No bus configured (unit tests, in-process use): the run is
+            # durable but nothing will drive it. Callers that need execution
+            # wire a bus.
+            return run
+        # Start the chain. The executor enqueues page N+1 from page N, so
+        # without this first event a run is durable and completely inert —
+        # queued forever, with no error to explain why.
+        self._event_bus.publish(
+            ConnectorPageQueuedEvent(
+                correlation_id=run.run_id,
+                knowledge_base_id=knowledge_base_id,
+                connector_id=connector_id,
+                run_id=run.run_id,
+                cursor=None,
+            )
+        )
+        return run
 
     def complete_sync(
         self,

@@ -214,3 +214,28 @@ def test_a_genuine_definition_conflict_still_returns_409() -> None:
         response = client.post(BASE_URL, json=conflicting)
 
     assert response.status_code == 409
+
+
+def test_a_duplicate_sync_idempotency_key_returns_409_not_500() -> None:
+    """The database index rejecting a duplicate key is a conflict, not a fault.
+
+    The service's own lookup returns the existing run for a repeated key, so
+    this fires only when two requests race past it — and uncaught, the
+    ValueError from the unique index surfaced as a 500.
+    """
+    app, service = _app_harness()
+    _set_user(app, _user("analyst"))
+    service.register_connector(KB_ID, _connector_definition())
+
+    with TestClient(app) as client:
+        first = client.post(
+            f"{BASE_URL}/cms-claims-drop/sync-runs", json={"idempotency_key": "k-1"}
+        )
+        second = client.post(
+            f"{BASE_URL}/cms-claims-drop/sync-runs", json={"idempotency_key": "k-1"}
+        )
+
+    assert first.status_code == 200
+    # In-memory reuse path: the same run comes back rather than a conflict.
+    assert second.status_code == 200
+    assert second.json()["run_id"] == first.json()["run_id"]

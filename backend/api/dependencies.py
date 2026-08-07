@@ -2766,10 +2766,16 @@ def get_connector_repository(request: Request) -> ConnectorRepositoryProtocol:
 
 def get_connector_service(
     repository: ConnectorRepositoryProtocol = Depends(get_connector_repository),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> ConnectorService:
-    """Return the connector lifecycle service."""
+    """Return the connector lifecycle service.
 
-    return ConnectorService(repository)
+    The bus is required for execution, not decoration: `start_sync` publishes
+    the first `connector.page.queued` event, and without it a sync run is
+    durable but inert.
+    """
+
+    return ConnectorService(repository, event_bus=event_bus)
 
 
 @lru_cache(maxsize=1)
