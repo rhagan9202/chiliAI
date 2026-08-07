@@ -292,3 +292,47 @@ describe('RunTimeline', () => {
     })
   })
 })
+
+describe('RunTimeline awaiting approval', () => {
+  it('labels a parked run rather than leaving it blank', () => {
+    const parked: WorkflowRunResponse[] = [
+      {
+        id: 'workflow-parked',
+        workflow_type: 'ingestion',
+        status: 'awaiting_approval',
+        knowledge_base_id: 'kb-1',
+        started_at: '2026-05-17T12:00:00Z',
+        updated_at: '2026-05-17T12:01:00Z',
+        current_step: 'gate',
+        last_error: null,
+      },
+    ]
+
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    expect(screen.getByText('Awaiting approval')).toBeInTheDocument()
+    expect(screen.getByText('gate')).toBeInTheDocument()
+  })
+
+  it('lets a reviewer cancel a run parked at a gate', () => {
+    // The backend permits it — a parked run is non-terminal — so hiding the
+    // control would leave a reviewer who decides *not* to approve with no way
+    // to close the run out.
+    const parked: WorkflowRunResponse[] = [
+      {
+        id: 'workflow-parked',
+        workflow_type: 'ingestion',
+        status: 'awaiting_approval',
+        knowledge_base_id: 'kb-1',
+        started_at: '2026-05-17T12:00:00Z',
+        updated_at: '2026-05-17T12:01:00Z',
+        current_step: 'gate',
+        last_error: null,
+      },
+    ]
+
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+  })
+})

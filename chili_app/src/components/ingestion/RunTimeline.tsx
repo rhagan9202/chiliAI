@@ -19,6 +19,10 @@ const workflowStatusCopy: Record<
     label: 'Running',
     description: 'This run is being processed now.',
   },
+  awaiting_approval: {
+    label: 'Awaiting approval',
+    description: 'Paused at an approval step. It resumes once a reviewer approves.',
+  },
   completed: {
     label: 'Completed',
     description: 'Investigation data is ready to review.',
@@ -48,7 +52,11 @@ const receiptStatusCopy: Record<
 }
 
 function isCancellable(status: WorkflowRunResponse['status']): boolean {
-  return status === 'running' || status === 'queued'
+  // `awaiting_approval` is included because the backend permits it — the run is
+  // non-terminal, so cancel_workflow honours it. Omitting it would leave a run
+  // parked at a gate with no exit but approval, and a reviewer who decides
+  // *not* to approve would have no way to close it out.
+  return status === 'running' || status === 'queued' || status === 'awaiting_approval'
 }
 
 function receiptCountsSummary(receipt: RecordIngestReceipt): string {
