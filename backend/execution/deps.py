@@ -10,15 +10,27 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from analytics.risk.service import RiskService
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from auditlog.service import AuditLogService
+from capabilities.service import CapabilityRegistryService
 from config.schema import DomainConfig, RecordsConfig
 from connectors.repository import ConnectorRepositoryProtocol
 from connectors.sources.protocols import ConnectorSourceAdapter
 from events.protocols import EventBus
 from graph.adapters.protocols import GraphRepository
 from records.protocols import RecordsServiceProtocol
+
+if TYPE_CHECKING:
+    # Import-time only. Both packages' `__init__` reach the coordinator, which
+    # imports this module, so a runtime import here is a cycle:
+    #   deps -> workflow_definitions -> service -> agent -> coordinator -> deps
+    # Annotations are lazy (`from __future__ import annotations`) and
+    # dataclasses never evaluates them, so the types are still checked.
+    from agent.adapters.protocols import WorkflowRunStoreProtocol
+    from workflow_definitions.repository import WorkflowDefinitionRepository
 
 __all__ = ["ExecutionDeps"]
 
@@ -44,6 +56,16 @@ class ExecutionDeps:
     # executor needs the feed itself, not just the service, so it can partition
     # rows it knows the service would reject outright.
     records_config: RecordsConfig | None = None
+    workflow_definition_repository: WorkflowDefinitionRepository | None = None
+    workflow_run_store: WorkflowRunStoreProtocol | None = None
+    capability_registry: CapabilityRegistryService | None = None
+    audit_service: AuditLogService | None = None
+    # The authorization context the workflow executor passes to every
+    # capability call. Supplied by the dispatcher rather than read from the
+    # environment inside the executor, so a test can run against a different
+    # environment without monkeypatching os.environ.
+    workflow_domain_name: str | None = None
+    workflow_environment_tag: str | None = None
     # Keyed by ConnectorSourceType. The connector executor refuses a source
     # type with no adapter rather than falling back to one, so an unimplemented
     # source fails its run loudly instead of pulling from the wrong place.

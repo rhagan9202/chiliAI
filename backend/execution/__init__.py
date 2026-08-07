@@ -21,6 +21,7 @@ from execution.registry import (
 # imported for their import side effect.
 from analytics.score_runs import executor as _score_runs_executor  # noqa: E402,F401
 from connectors import executor as _connectors_executor  # noqa: E402,F401
+from workflow_definitions import executor as _workflow_executor  # noqa: E402,F401
 
 __all__ = [
     "ExecutionDeps",

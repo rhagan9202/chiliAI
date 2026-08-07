@@ -3418,12 +3418,19 @@ def get_workflow_definition_service(
     capability_registry: CapabilityRegistryService = Depends(
         get_capability_registry_service
     ),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> WorkflowDefinitionService:
-    """Return the workflow definition service for KB-scoped definitions."""
+    """Return the workflow definition service for KB-scoped definitions.
+
+    The bus is required for execution, not decoration: `run_definition`
+    publishes the first `workflow.step.queued` event, and without it a run is
+    durable but inert.
+    """
     return WorkflowDefinitionService(
         repository,
         run_store,
         audit_service,
+        event_bus=event_bus,
         capability_registry=capability_registry,
     )
 

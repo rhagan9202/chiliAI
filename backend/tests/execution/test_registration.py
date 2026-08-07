@@ -15,7 +15,12 @@ from pathlib import Path
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
-_EXPECTED = {"score.batch.queued", "score.run.queued", "connector.page.queued"}
+_EXPECTED = {
+    "score.batch.queued",
+    "score.run.queued",
+    "connector.page.queued",
+    "workflow.step.queued",
+}
 
 
 def _registered_after(import_statement: str) -> set[str]:

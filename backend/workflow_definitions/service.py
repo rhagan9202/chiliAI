@@ -8,6 +8,8 @@ from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.models import MetadataValue, WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from auditlog.models import PLATFORM_TENANT_ID, AuditEventCreate, JsonSummary
 from auditlog.service import AuditLogService
+from events.protocols import EventBus
+from events.types import WorkflowStepQueuedEvent
 from capabilities.service import (
     CapabilityRegistryService,
     create_default_capability_registry_service,
@@ -76,10 +78,12 @@ class WorkflowDefinitionService:
         audit_service: AuditLogService,
         *,
         capability_registry: CapabilityRegistryService | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self._repository = repository
         self._run_store = run_store
         self._audit_service = audit_service
+        self._event_bus = event_bus
         self._capability_registry = (
             capability_registry or create_default_capability_registry_service()
         )
@@ -310,6 +314,12 @@ class WorkflowDefinitionService:
             ],
             metadata=metadata,
             idempotency_key=request.idempotency_key,
+            # Persisted, not just logged: the executor dispatches capabilities
+            # long after this call returns, and it authorizes as this actor.
+            # Without them it would have to invent roles — bypassing capability
+            # permissions for every workflow-dispatched call.
+            actor_user_id=actor_user_id,
+            actor_roles=list(actor_roles),
         )
         try:
             saved_run = self._run_store.save_run(run)
@@ -328,7 +338,32 @@ class WorkflowDefinitionService:
                 "target_id": request.target_id,
             },
         )
+        self._publish_first_step(definition, saved_run)
         return saved_run
+
+    def _publish_first_step(
+        self, definition: WorkflowDefinition, run: WorkflowRun
+    ) -> None:
+        """Start the chain.
+
+        The executor enqueues step N+1 from step N, so without this first event
+        a run is durable and completely inert — queued forever, with no error
+        to explain why. No bus configured (unit tests, in-process use) means the
+        run is still created; callers that need execution wire a bus.
+        """
+
+        if self._event_bus is None or not definition.steps:
+            return
+        self._event_bus.publish(
+            WorkflowStepQueuedEvent(
+                correlation_id=run.workflow_id,
+                knowledge_base_id=run.knowledge_base_id,
+                definition_id=definition.definition_id,
+                version=definition.version,
+                workflow_id=run.workflow_id,
+                step_id=definition.steps[0].step_id,
+            )
+        )
 
     @staticmethod
     def _run_metadata(
