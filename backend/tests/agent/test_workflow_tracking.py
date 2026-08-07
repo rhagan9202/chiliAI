@@ -675,3 +675,56 @@ def test_reconcile_stale_runs_pages_through_all_stale_workflows() -> None:
         run.status is WorkflowRunStatus.FAILED
         for run in run_store.list_runs(limit=10).items
     )
+
+
+def test_reconcile_does_not_fail_a_run_awaiting_approval() -> None:
+    """An approval left overnight is not a stalled run.
+
+    A run parked on a human gate is alive and waiting for a person, by design.
+    Reaping it would fail work that was proceeding correctly, and the analyst
+    who eventually clicks approve would find the run already dead.
+    """
+    old_time = utc_now() - timedelta(hours=48)
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-parked",
+                knowledge_base_id="kb-1",
+                trigger_event_type="workflow_definition.requested",
+                status=WorkflowRunStatus.AWAITING_APPROVAL,
+                steps=[
+                    WorkflowStepState(
+                        step_name="notify",
+                        status=WorkflowStepStatus.PENDING,
+                    )
+                ],
+                updated_at=old_time,
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600)
+
+    assert reconciled == 0
+    assert (
+        run_store.get_run("workflow-parked").status
+        == WorkflowRunStatus.AWAITING_APPROVAL
+    )
+
+
+def test_reconcilable_statuses_exclude_awaiting_approval() -> None:
+    """A structural guard, so a later edit cannot quietly reintroduce it.
+
+    The behavioural test above passes today because the scan happens to iterate
+    two statuses. This asserts the *intent*, so adding AWAITING_APPROVAL to the
+    set fails here with an explanation rather than silently reaping parked runs
+    in production.
+    """
+    from agent.workflow_tracking import RECONCILABLE_RUN_STATUSES
+
+    assert WorkflowRunStatus.AWAITING_APPROVAL not in RECONCILABLE_RUN_STATUSES
+    assert RECONCILABLE_RUN_STATUSES == (
+        WorkflowRunStatus.QUEUED,
+        WorkflowRunStatus.RUNNING,
+    )
