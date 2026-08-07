@@ -306,6 +306,32 @@ class PostgresConnectorRepository:
             offset=normalized_offset,
         )
 
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ConnectorSyncStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ConnectorSyncRun]:
+        if limit <= 0 or not statuses:
+            return []
+        placeholders = ", ".join(["%s"] * len(statuses))
+        with self._provider.connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT {_RUN_COLUMNS} FROM connector_sync_runs
+                 WHERE status IN ({placeholders}) AND updated_at < %s
+                 ORDER BY updated_at ASC
+                 LIMIT %s
+                """,
+                (*statuses, updated_before, limit),
+            ).fetchall()
+        # Oldest first: under a limit, the runs stuck longest are the ones worth
+        # reconciling on this pass. Served by ix_connector_sync_runs_status_updated
+        # (migration 0026) — the pre-existing index leads with connector_id,
+        # which this scan does not filter on.
+        return [_run_from_row(row) for row in rows]
+
     # --- quarantine ---------------------------------------------------------
 
     def add_quarantine_record(

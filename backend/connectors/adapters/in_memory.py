@@ -16,6 +16,7 @@ from connectors.models import (
     ConnectorSyncRunCreate,
     ConnectorSyncRunPage,
     ConnectorSyncRunUpdate,
+    ConnectorSyncStatus,
 )
 from shared.utils import generate_id, utc_now
 
@@ -154,6 +155,41 @@ class InMemoryConnectorRepository:
                 limit=normalized_limit,
                 offset=normalized_offset,
             )
+
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ConnectorSyncStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ConnectorSyncRun]:
+        with self._lock:
+            matches = [
+                run
+                for run in self._runs.values()
+                if run.status in statuses and run.updated_at < updated_before
+            ]
+        # Oldest first: under a limit, the runs that have been stuck longest are
+        # the ones worth reconciling on this pass.
+        matches.sort(key=lambda run: run.updated_at)
+        if limit <= 0:
+            return []
+        return [run.model_copy(deep=True) for run in matches[:limit]]
+
+    def set_updated_at_for_test(self, run_id: str, updated_at: datetime) -> None:
+        """Age a run's ``updated_at`` directly.
+
+        Exists solely so stale reconciliation is testable without sleeping:
+        ``update_run`` always stamps ``updated_at = utc_now()``, so there is no
+        way to produce an old run through the public API. Not part of the
+        repository protocol, and not for production use.
+        """
+
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            self._runs[run_id] = run.model_copy(update={"updated_at": updated_at})
 
     def add_quarantine_record(
         self,

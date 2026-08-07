@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -374,3 +374,63 @@ def test_deleting_one_knowledge_bases_connector_leaves_the_others(
         is None
     )
     assert repository.get_run(kept.run_id) is not None
+
+
+def test_list_stale_runs_finds_only_aged_non_terminal_runs(
+    provider: ConnectionProvider,
+) -> None:
+    """The reconciler's scan, against the index that serves it."""
+    repository = PostgresConnectorRepository(provider)
+    repository.save_definition(_definition())
+    fresh = repository.create_run(_run_create())
+    stale = repository.create_run(_run_create())
+    repository.update_run(stale.run_id, ConnectorSyncRunUpdate(status="running"))
+    with provider.connection() as conn:
+        conn.execute(
+            "UPDATE connector_sync_runs SET updated_at = %s WHERE run_id = %s",
+            (BASE_TIME - timedelta(days=2), stale.run_id),
+        )
+        conn.commit()
+
+    found = repository.list_stale_runs(
+        statuses=("queued", "running"), updated_before=BASE_TIME
+    )
+
+    found_ids = [run.run_id for run in found]
+    assert stale.run_id in found_ids
+    assert fresh.run_id not in found_ids
+
+
+def test_list_stale_runs_excludes_terminal_runs(provider: ConnectionProvider) -> None:
+    repository = PostgresConnectorRepository(provider)
+    repository.save_definition(_definition())
+    run = repository.create_run(_run_create())
+    repository.update_run(run.run_id, ConnectorSyncRunUpdate(status="completed"))
+    with provider.connection() as conn:
+        conn.execute(
+            "UPDATE connector_sync_runs SET updated_at = %s WHERE run_id = %s",
+            (BASE_TIME - timedelta(days=2), run.run_id),
+        )
+        conn.commit()
+
+    found = repository.list_stale_runs(
+        statuses=("queued", "running"), updated_before=BASE_TIME
+    )
+
+    assert run.run_id not in [item.run_id for item in found]
+
+
+def test_the_stale_scan_index_exists(provider: ConnectionProvider) -> None:
+    """Without it the sweep sequentially scans every sync run, on a timer.
+
+    The pre-existing index leads with connector_id, which this scan does not
+    filter on, so it cannot serve the query.
+    """
+    with provider.connection() as conn:
+        row = conn.execute(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = %s",
+            ("ix_connector_sync_runs_status_updated",),
+        ).fetchone()
+
+    assert row is not None, "migration 0026 did not create the stale-scan index"
+    assert "status" in str(row[0]) and "updated_at" in str(row[0])

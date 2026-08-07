@@ -469,6 +469,7 @@ CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, sta
 CREATE INDEX ix_connector_quarantine_connector ON public.connector_quarantine_records USING btree (connector_id, created_at DESC);
 CREATE INDEX ix_connector_quarantine_run ON public.connector_quarantine_records USING btree (run_id, created_at DESC);
 CREATE INDEX ix_connector_sync_runs_connector_status ON public.connector_sync_runs USING btree (connector_id, status, started_at DESC);
+CREATE INDEX ix_connector_sync_runs_status_updated ON public.connector_sync_runs USING btree (status, updated_at);
 CREATE INDEX ix_connectors_kb ON public.connectors USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);

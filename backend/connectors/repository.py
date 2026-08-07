@@ -16,6 +16,7 @@ from connectors.models import (
     ConnectorSyncRunCreate,
     ConnectorSyncRunPage,
     ConnectorSyncRunUpdate,
+    ConnectorSyncStatus,
 )
 
 
@@ -85,6 +86,25 @@ class ConnectorRepositoryProtocol(Protocol):
         limit: int = 50,
         offset: int = 0,
     ) -> ConnectorSyncRunPage: ...
+
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ConnectorSyncStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ConnectorSyncRun]:
+        """Runs in ``statuses`` not updated since ``updated_before``, any KB.
+
+        Deliberately not `list_runs` with an optional knowledge_base_id: this is
+        a maintenance scan across every KB, and conflating the two would make it
+        easy to accidentally run an unscoped query on the analyst-facing path.
+
+        Named and shaped identically to
+        ``ScoreRunRepositoryProtocol.list_stale_runs`` on purpose — two stale
+        scans with different signatures is how the third one gets written wrong.
+        """
+        ...
 
     def add_quarantine_record(
         self,

@@ -160,3 +160,69 @@ def test_claim_sync_run_leaves_a_terminal_run_alone() -> None:
     now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
 
     assert repository.claim_sync_run(created.run_id, now=now) is None
+
+
+def _stale_repository() -> tuple[InMemoryConnectorRepository, str, str]:
+    """A repository with one fresh run and one aged run."""
+    repository = InMemoryConnectorRepository()
+    repository.save_definition(_definition_payload())
+    fresh = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+    stale = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+    repository.update_run(stale.run_id, ConnectorSyncRunUpdate(status="running"))
+    repository.set_updated_at_for_test(
+        stale.run_id, datetime(2026, 8, 1, tzinfo=timezone.utc)
+    )
+    return repository, fresh.run_id, stale.run_id
+
+
+def test_list_stale_runs_returns_only_old_non_terminal_runs() -> None:
+    repository, fresh_id, stale_id = _stale_repository()
+
+    found = repository.list_stale_runs(
+        statuses=("queued", "running"),
+        updated_before=datetime(2026, 8, 5, tzinfo=timezone.utc),
+    )
+
+    assert [run.run_id for run in found] == [stale_id]
+    assert fresh_id not in [run.run_id for run in found]
+
+
+def test_list_stale_runs_never_returns_a_terminal_run() -> None:
+    """Reaching a terminal state is what makes a run immune to the sweep."""
+    repository, _, stale_id = _stale_repository()
+    repository.update_run(stale_id, ConnectorSyncRunUpdate(status="completed"))
+    repository.set_updated_at_for_test(
+        stale_id, datetime(2026, 8, 1, tzinfo=timezone.utc)
+    )
+
+    assert (
+        repository.list_stale_runs(
+            statuses=("queued", "running"),
+            updated_before=datetime(2026, 8, 5, tzinfo=timezone.utc),
+        )
+        == []
+    )
+
+
+def test_list_stale_runs_respects_its_limit() -> None:
+    repository, _, _ = _stale_repository()
+
+    found = repository.list_stale_runs(
+        statuses=("queued", "running"),
+        updated_before=datetime(2026, 8, 5, tzinfo=timezone.utc),
+        limit=0,
+    )
+
+    assert found == []
