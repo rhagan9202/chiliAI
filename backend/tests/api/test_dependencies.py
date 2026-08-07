@@ -22,6 +22,8 @@ from analytics.explainability.reviews import (
     InMemoryExplanationReviewRepository,
 )
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+from connectors.adapters.in_memory import InMemoryConnectorRepository
+from connectors.adapters.postgres import PostgresConnectorRepository
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
 from config.loader import load_config
@@ -1303,3 +1305,59 @@ def test_get_score_run_repository_uses_postgres_when_provider_is_non_null(
     repository = dependencies.get_score_run_repository(_request_for(FastAPI()))
 
     assert isinstance(repository, PostgresScoreRunRepository)
+
+
+# ---------------------------------------------------------------------------
+# get_connector_repository: postgres path when a connection provider exists
+# ---------------------------------------------------------------------------
+
+
+def test_get_connector_repository_falls_back_to_in_memory_without_a_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+
+    repository = dependencies.get_connector_repository(_request_for(FastAPI()))
+
+    assert isinstance(repository, InMemoryConnectorRepository)
+
+
+def test_get_connector_repository_uses_postgres_when_provider_is_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    """Without this branch every connector and sync run dies on API restart."""
+
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    repository = dependencies.get_connector_repository(_request_for(FastAPI()))
+
+    assert isinstance(repository, PostgresConnectorRepository)
+
+
+def test_memoized_postgres_connector_repository_survives_the_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    """The guard must accept both backends, not just the in-memory one.
+
+    It used to be `isinstance(value, InMemoryConnectorRepository)`. Left that
+    way, a memoized Postgres repository fails its own guard and is silently
+    rebuilt on every request — so the second call would hand back a different
+    object and the durable backend would look intermittently empty.
+    """
+
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+    app = FastAPI()
+
+    first = dependencies.get_connector_repository(_request_for(app))
+    second = dependencies.get_connector_repository(_request_for(app))
+
+    assert isinstance(first, PostgresConnectorRepository)
+    assert second is first

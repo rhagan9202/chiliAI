@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from connectors.models import (
     ConnectorDefinitionCreate,
     ConnectorMappingRef,
@@ -87,3 +89,74 @@ def test_repository_tracks_runs_and_quarantine_by_connector() -> None:
     assert quarantine.quarantine_id.startswith(f"{run.run_id}:")
     assert repository.list_runs(connector_id="cms-claims-drop").total_items == 1
     assert repository.list_quarantine(run_id=run.run_id).items[0].source_record_id == "claim-99"
+
+
+def test_get_run_returns_none_for_an_unknown_run() -> None:
+    repository = InMemoryConnectorRepository()
+
+    assert repository.get_run("no-such-run") is None
+
+
+def test_get_run_returns_a_stored_run() -> None:
+    repository = InMemoryConnectorRepository()
+    created = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+
+    stored = repository.get_run(created.run_id)
+
+    assert stored is not None
+    assert stored.run_id == created.run_id
+    assert stored.status == "queued"
+
+
+def test_claim_sync_run_is_atomic() -> None:
+    """Only one worker may take a queued run.
+
+    Redis Streams is at-least-once and `reclaim_stale_pending` can hand the
+    same event to a second worker, so the claim — not the handler — is what
+    stops two workers pulling the same source concurrently.
+    """
+    repository = InMemoryConnectorRepository()
+    created = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+    now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+
+    first = repository.claim_sync_run(created.run_id, now=now)
+    second = repository.claim_sync_run(created.run_id, now=now)
+
+    assert first is not None
+    assert first.status == "running"
+    assert second is None
+
+
+def test_claim_sync_run_returns_none_for_an_unknown_run() -> None:
+    repository = InMemoryConnectorRepository()
+    now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+
+    assert repository.claim_sync_run("no-such-run", now=now) is None
+
+
+def test_claim_sync_run_leaves_a_terminal_run_alone() -> None:
+    """A completed run must not be dragged back to `running` by a redelivery."""
+    repository = InMemoryConnectorRepository()
+    created = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+    repository.update_run(created.run_id, ConnectorSyncRunUpdate(status="completed"))
+    now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+
+    assert repository.claim_sync_run(created.run_id, now=now) is None

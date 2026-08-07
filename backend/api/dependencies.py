@@ -110,6 +110,7 @@ from capabilities.service import (
     create_default_capability_registry_service,
 )
 from connectors.adapters.in_memory import InMemoryConnectorRepository
+from connectors.adapters.postgres import PostgresConnectorRepository
 from connectors.repository import ConnectorRepositoryProtocol
 from connectors.service import ConnectorService
 from readiness.service import ReadinessService
@@ -2744,13 +2745,22 @@ def get_playbook_service(
 
 
 def get_connector_repository(request: Request) -> ConnectorRepositoryProtocol:
-    """Return the connector repository for SAFE-CMS-017 state."""
+    """Return the connector repository selected by database backend."""
+
+    def build() -> ConnectorRepositoryProtocol:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryConnectorRepository()
+        return PostgresConnectorRepository(provider)
 
     return _memoize_config_derived(
         request.app,
         "connector_repository",
-        lambda: InMemoryConnectorRepository(),
-        guard=lambda value: isinstance(value, InMemoryConnectorRepository),
+        build,
+        # Protocol, not a concrete class: the guard must accept either backend,
+        # or a memoized Postgres repository would be discarded and rebuilt as
+        # in-memory on every request.
+        guard=lambda value: isinstance(value, ConnectorRepositoryProtocol),
     )
 
 
