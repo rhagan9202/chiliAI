@@ -112,14 +112,13 @@ def _event_types_constructed_in_production_code() -> set[str]:
     return produced
 
 
-@pytest.mark.xfail(reason="G7 — closed by Task 2", strict=True)
 def test_every_manifest_names_an_importable_module() -> None:
     """`module` is a browse-API filter, not documentation.
 
-    `evidence.checklist.generate` declares `module="evidence.packs"`, which does
-    not exist — the real module is `analytics.explainability`. A filter naming a
-    phantom module returns a capability nobody can locate, and the value is
-    surfaced to clients.
+    `evidence.checklist.generate` declared `module="evidence.packs"`, which does
+    not exist — evidence packs are built by `analytics.explainability`. A filter
+    naming a phantom module returns a capability nobody can locate, and the
+    value is surfaced to clients.
     """
     unimportable: list[str] = []
     for manifest in create_default_capability_registry_service().list_capabilities().items:
