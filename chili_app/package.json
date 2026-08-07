@@ -34,9 +34,10 @@
     "zustand": "^5.0.13"
   },
   "overrides": {
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.1",
     "brace-expansion": "^5.0.9",
-    "minimatch": "^10.2.5"
+    "minimatch": "^10.2.5",
+    "mermaid": "^11.16.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
