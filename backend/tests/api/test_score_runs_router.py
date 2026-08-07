@@ -99,6 +99,9 @@ def test_list_score_runs_returns_recent_runs_for_kb() -> None:
         service,
         User(user_id="operator-1", roles=["analyst"]),
     )
+    # A KB may only have one live run (spec decision D3), so the first must
+    # reach a terminal state before a second can start.
+    repository.update_run(first.run.id, status="completed")
     second = score_runs_router.start_score_run(
         "kb-1",
         ScoreRunStartRequest(
@@ -128,7 +131,7 @@ def test_list_score_runs_returns_recent_runs_for_kb() -> None:
     assert first.run.id != second.run.id
 
 
-def test_start_score_run_defaults_to_all_graph_entities() -> None:
+def test_start_score_run_defers_enumeration_to_the_executor() -> None:
     service, _ = _service()
 
     payload = score_runs_router.start_score_run(
@@ -145,11 +148,11 @@ def test_start_score_run_defaults_to_all_graph_entities() -> None:
     )
 
     assert payload.created is True
-    assert payload.run.total_entities == 3
-    assert [batch.entity_ids for batch in payload.batches] == [
-        ["provider-1", "claim-1"],
-        ["beneficiary-1"],
-    ]
+    # total_entities is authoritative only at completion (spec decision D2):
+    # the executor enumerates, creates batches, and reconciles the total.
+    assert payload.run.total_entities == 0
+    assert payload.batches == []
+
 
 
 def test_start_score_run_returns_existing_for_idempotency_key() -> None:
@@ -251,6 +254,9 @@ def test_get_cancel_and_replay_score_run() -> None:
         service,  # type: ignore[arg-type]
         User(user_id="operator-ignored", roles=["analyst"]),
     )
+    # The replay produced a live run; only one may be active per KB
+    # (spec decision D3), so terminate it before starting a fresh one.
+    repository.update_run(replay_payload.run.id, status="completed")
     cancelable = score_runs_router.start_score_run(
         "kb-1",
         ScoreRunStartRequest(
@@ -313,3 +319,76 @@ def test_get_score_run_hides_runs_from_other_kb() -> None:
         )
 
     assert exc_info.value.status_code == 404
+
+
+def test_start_score_run_does_not_enumerate_entities_in_the_request() -> None:
+    """Risk R2: the route used to list every entity in the KB synchronously.
+
+    On a large KB that failed inside the HTTP request, before any executor was
+    involved. Enumeration is the executor's job now.
+    """
+
+    class _CountingGraphRepository(InMemoryGraphRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.get_entities_calls = 0
+
+        def get_entities(self, knowledge_base_id: str) -> list[Entity]:
+            self.get_entities_calls += 1
+            return super().get_entities(knowledge_base_id)
+
+    service, _ = _service()
+    graph_repository = _CountingGraphRepository()
+    graph_repository.upsert_entities("kb-1", [Entity(id="e1", type="provider")])
+
+    score_runs_router.start_score_run(
+        "kb-1",
+        ScoreRunStartRequest(model_version="m1", catalog_version="c1"),
+        _repository_with_kb(),
+        graph_repository,
+        service,
+        User(user_id="operator-1", roles=["analyst"]),
+    )
+
+    assert graph_repository.get_entities_calls == 0
+
+
+def test_second_concurrent_run_for_the_same_kb_is_rejected() -> None:
+    """Spec decision D3.
+
+    Two live runs would race on risk_projections with last-write-wins and make
+    scored_entities meaningless across runs.
+    """
+    service, _ = _service()
+    kb_repository = _repository_with_kb()
+    graph_repository = _graph_repository_with_entities("e1")
+    request = ScoreRunStartRequest(model_version="m1", catalog_version="c1")
+
+    score_runs_router.start_score_run(
+        "kb-1", request, kb_repository, graph_repository, service, User(user_id="operator-1", roles=["analyst"])
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        score_runs_router.start_score_run(
+            "kb-1", request, kb_repository, graph_repository, service, User(user_id="operator-1", roles=["analyst"])
+        )
+
+    assert excinfo.value.status_code == 409
+
+
+def test_a_terminal_run_does_not_block_a_new_one() -> None:
+    service, repository = _service()
+    kb_repository = _repository_with_kb()
+    graph_repository = _graph_repository_with_entities("e1")
+    request = ScoreRunStartRequest(model_version="m1", catalog_version="c1")
+
+    first = score_runs_router.start_score_run(
+        "kb-1", request, kb_repository, graph_repository, service, User(user_id="operator-1", roles=["analyst"])
+    )
+    repository.update_run(first.run.id, status="completed")
+
+    second = score_runs_router.start_score_run(
+        "kb-1", request, kb_repository, graph_repository, service, User(user_id="operator-1", roles=["analyst"])
+    )
+
+    assert second.run.id != first.run.id

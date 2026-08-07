@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from prometheus_client import REGISTRY
 
 import api.dependencies as dependencies
@@ -22,6 +22,8 @@ from analytics.explainability.reviews import (
     InMemoryExplanationReviewRepository,
 )
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
 from config.loader import load_config
 from config.schema import (
     DatabaseConfig,
@@ -1263,3 +1265,41 @@ def test_get_embeddings_service_honors_cache_disabled(
     hits_after = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
     assert misses_after - misses_before == 2.0
     assert hits_after - hits_before == 0.0
+
+
+# ---------------------------------------------------------------------------
+# get_score_run_repository: postgres path when a connection provider exists
+# ---------------------------------------------------------------------------
+
+
+def _request_for(app: FastAPI) -> Request:
+    """A minimal Request carrying only the app, which is all the memoizer reads."""
+
+    return Request({"type": "http", "app": app, "headers": []})
+
+
+def test_get_score_run_repository_falls_back_to_in_memory_without_a_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+
+    repository = dependencies.get_score_run_repository(_request_for(FastAPI()))
+
+    assert isinstance(repository, InMemoryScoreRunRepository)
+
+
+def test_get_score_run_repository_uses_postgres_when_provider_is_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    """Without this branch a score run is process-lifetime and dies on restart."""
+
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    repository = dependencies.get_score_run_repository(_request_for(FastAPI()))
+
+    assert isinstance(repository, PostgresScoreRunRepository)

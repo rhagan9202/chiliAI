@@ -7,7 +7,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from analytics.score_runs.models import ScoreBatch, ScoreRun
-from analytics.score_runs.service import ScoreRunService
+from analytics.score_runs.service import ScoreRunConflictError, ScoreRunService
 from api.contracts import (
     ScoreBatchResponse,
     ScoreBatchStatusValue,
@@ -93,19 +93,24 @@ def start_score_run(
 ) -> ScoreRunDetailResponse:
     """Start or return an idempotent KB-scoped score-all run."""
     _require_knowledge_base(knowledge_base_id, repository, user)
-    entity_ids = payload.entity_ids
-    if entity_ids is None:
-        entity_ids = [entity.id for entity in graph_repository.get_entities(knowledge_base_id)]
+    # entity_ids=None passes straight through: the executor enumerates. This
+    # route used to list every entity in the KB synchronously, which is risk R2
+    # and failed inside the HTTP request on a large KB.
+    del graph_repository
     try:
         result = service.start_score_all(
             knowledge_base_id=knowledge_base_id,
-            entity_ids=entity_ids,
+            entity_ids=payload.entity_ids,
             requested_by=payload.requested_by or user.user_id,
             model_version=payload.model_version,
             catalog_version=payload.catalog_version,
             idempotency_key=payload.idempotency_key,
             batch_size=payload.batch_size,
         )
+    except ScoreRunConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _detail_response(result.run, result.batches, created=result.created)

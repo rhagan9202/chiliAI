@@ -88,8 +88,16 @@ def test_start_score_all_publishes_status_event_once_for_idempotent_retries() ->
     )
 
     assert second.created is False
-    assert len(event_bus.published_events) == 1
-    event = event_bus.published_events[0]
+    # Starting a run now also publishes the event that drives execution, so
+    # count status events specifically: the point is that the idempotent retry
+    # publishes nothing at all.
+    status_events = [
+        published
+        for published in event_bus.published_events
+        if published.event_type == "score_run.status_changed"
+    ]
+    assert len(status_events) == 1
+    event = status_events[0]
     assert isinstance(event, ScoreRunStatusChangedEvent)
     assert event.run_id == first.run.id
     assert event.status == "queued"

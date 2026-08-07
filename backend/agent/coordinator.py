@@ -58,6 +58,12 @@ from config.schema import (
 )
 from database.protocols import ConnectionProvider
 from database.runtime import create_connection_provider
+from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
+from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from analytics.score_runs.reconciler import ScoreRunReconciler
+from execution.deps import ExecutionDeps
+from execution.registry import dispatch as execution_dispatch
 from analytics.explainability.adapters.deterministic import (
     DeterministicNarrativeGenerator,
 )
@@ -328,6 +334,7 @@ __all__ = [
     "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
+    "build_score_run_repository",
     "build_dlq_record_store",
     "build_document_status_store",
     "build_embedder",
@@ -406,6 +413,12 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "records.ingested",
     "alerts.created",
     "kb.delete",
+    # Executor events. Dispatched through `execution.dispatch`, not
+    # `handle_event`; this list must stay a superset of
+    # `execution.registered_event_types()` or a registered executor never
+    # receives its events.
+    "score.batch.queued",
+    "score.run.queued",
 )
 # Domain hot-swap (E6): the worker consumes `config.updated` on its own
 # non-blocking poll — never through the pipeline drain — so a dependency
@@ -463,6 +476,7 @@ class WorkerDependencies:
     dlq_record_store: DlqRecordStore
     graph_embeddings_enabled: bool = False
     risk_projection_service: RiskProjectionService | None = None
+    score_run_repository: ScoreRunRepositoryProtocol | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -856,6 +870,21 @@ def build_risk_projection_repository(
     if provider is None:
         return InMemoryRiskProjectionRepository()
     return PostgresRiskProjectionRepository(provider)
+
+
+def build_score_run_repository(
+    provider: ConnectionProvider | None,
+) -> ScoreRunRepositoryProtocol:
+    """Select a score-run repository: Postgres when a provider exists.
+
+    Mirrors the API's `get_score_run_repository` so the worker and the gateway
+    read the same rows; an in-memory worker repository would see none of the
+    runs the API created.
+    """
+
+    if provider is None:
+        return InMemoryScoreRunRepository()
+    return PostgresScoreRunRepository(provider)
 
 
 def build_alert_history_writer(
@@ -1286,6 +1315,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
         risk_projection_service=risk_projection_service,
+        score_run_repository=build_score_run_repository(connection_provider),
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -4370,6 +4400,7 @@ async def drain_ingestion_events(
     kb_deletion_stores: KbDeletionStores | None = None,
     document_status_store: SourceDocumentStatusStore | None = None,
     dlq_record_store: DlqRecordStore | None = None,
+    execution_deps: ExecutionDeps | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -4405,7 +4436,7 @@ async def drain_ingestion_events(
     for delivery in deliveries:
 
         def _run_handler(captured: EventDelivery = delivery) -> int:
-            return handle_event(
+            handled = handle_event(
                 captured,
                 ingestion_service,
                 document_chunker=document_chunker,
@@ -4449,6 +4480,13 @@ async def drain_ingestion_events(
                 kb_deletion_stores=kb_deletion_stores,
                 document_status_store=document_status_store,
             )
+            if execution_deps is not None:
+                # Executor events fall through handle_event untouched; the seam
+                # routes them. Inside the retried handler on purpose, so an
+                # executor failure gets the same retry + DLQ treatment as a
+                # pipeline failure rather than a bespoke path.
+                handled += execution_dispatch(captured.event, execution_deps)
+            return handled
 
         dead_lettered = False
 
@@ -4588,6 +4626,15 @@ async def _drain_once(
         health_state=health_state,
         workflow_tracker=deps.workflow_tracker,
         graph_embeddings_enabled=deps.graph_embeddings_enabled,
+        # One object rather than five more loose kwargs: extending the existing
+        # 40-argument threading is what the execution/ seam exists to avoid.
+        execution_deps=ExecutionDeps(
+            event_bus=deps.event_bus,
+            risk_service=deps.risk_service,
+            score_run_repository=deps.score_run_repository,
+            graph_repository=deps.graph_repository,
+            domain_config=deps.domain_config,
+        ),
     )
 
 
@@ -4659,6 +4706,19 @@ async def run_worker(
                         logger.warning(
                             "Reconciled %s stale workflow run(s)", reconciled
                         )
+                    # Same tick, same cutoff: the score-run chain advances by
+                    # enqueueing its own successor, so one lost event stalls a
+                    # run with no error and no terminal state.
+                    if deps.score_run_repository is not None:
+                        stale_score_runs = ScoreRunReconciler(
+                            deps.score_run_repository
+                        ).reconcile_stale_runs(
+                            max_age_seconds=stale_workflow_max_age_seconds
+                        )
+                        if stale_score_runs:
+                            logger.warning(
+                                "Reconciled %s stale score run(s)", stale_score_runs
+                            )
                 # Domain hot-swap: poll config.updated and, if the active
                 # config changed, atomically swap the dependency set here —
                 # between drain iterations, never mid-event.

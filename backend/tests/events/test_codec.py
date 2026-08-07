@@ -30,6 +30,7 @@ from events.types import (
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     IdentityLinkDecisionRecordedEvent,
+    ScoreBatchQueuedEvent,
     IdentityLinkDecisionReference,
     LlmCompletedEvent,
     LlmCompletionReference,
@@ -518,3 +519,33 @@ def test_decode_event_handles_bytes_keyed_payload() -> None:
     }
     decoded = decode_event(bytes_payload)
     assert decoded == event
+
+
+def test_event_codec_round_trips_score_batch_queued_event() -> None:
+    event = ScoreBatchQueuedEvent(
+        correlation_id="corr-score-batch",
+        knowledge_base_id="kb-1",
+        run_id="score-run-1",
+        batch_id="score-run-1-batch-0",
+        batch_number=0,
+    )
+
+    decoded = decode_event(encode_event(event))
+
+    assert decoded.event_type == "score.batch.queued"
+    assert isinstance(decoded, ScoreBatchQueuedEvent)
+    assert decoded.run_id == "score-run-1"
+    assert decoded.batch_number == 0
+
+
+def test_score_batch_queued_event_carries_identifiers_only() -> None:
+    """State must be reloaded from the repository, never read off the event.
+
+    A redelivered event is arbitrarily old; carrying entity ids or counters on
+    it would let a retry resurrect a stale snapshot of the batch.
+    """
+    fields = set(ScoreBatchQueuedEvent.model_fields)
+
+    assert "entity_ids" not in fields
+    assert "scored_entities" not in fields
+    assert "status" not in fields

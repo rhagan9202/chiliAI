@@ -9,10 +9,28 @@ from datetime import datetime
 from analytics.score_runs.models import ScoreBatch, ScoreRun
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from events.protocols import EventBus
-from events.types import ScoreRunStatusChangedEvent
+from events.types import (
+    ScoreBatchQueuedEvent,
+    ScoreRunQueuedEvent,
+    ScoreRunStatusChangedEvent,
+)
 from shared.utils import generate_id, utc_now
 
-__all__ = ["ScoreRunStartResult", "ScoreRunService", "create_score_run_service"]
+__all__ = [
+    "ScoreRunConflictError",
+    "ScoreRunService",
+    "ScoreRunStartResult",
+    "create_score_run_service",
+]
+
+
+class ScoreRunConflictError(RuntimeError):
+    """A score run is already active for this knowledge base.
+
+    Two live runs would race on `risk_projections` with last-write-wins, making
+    `scored_entities` meaningless across runs. Replay is unaffected: it targets
+    an existing terminal run rather than starting a new one.
+    """
 
 
 @dataclass(frozen=True)
@@ -42,14 +60,14 @@ class ScoreRunService:
         self,
         *,
         knowledge_base_id: str,
-        entity_ids: Sequence[str],
+        entity_ids: Sequence[str] | None,
         requested_by: str | None,
         model_version: str,
         catalog_version: str,
         idempotency_key: str | None = None,
         batch_size: int = 100,
     ) -> ScoreRunStartResult:
-        entities = _validated_entity_ids(entity_ids)
+        entities = None if entity_ids is None else _validated_entity_ids(entity_ids)
         if batch_size <= 0:
             raise ValueError("batch_size must be greater than zero.")
         if idempotency_key is not None:
@@ -64,6 +82,11 @@ class ScoreRunService:
                     created=False,
                 )
 
+        # Only after the idempotency lookup: an idempotent retry (a client
+        # resending after a network timeout) must get its existing run back,
+        # not a 409 for the run it already started.
+        self._reject_if_a_run_is_active(knowledge_base_id)
+
         now = self._now()
         run = self.repository.save_run(
             ScoreRun(
@@ -74,19 +97,65 @@ class ScoreRunService:
                 idempotency_key=idempotency_key,
                 model_version=model_version,
                 catalog_version=catalog_version,
-                total_entities=len(entities),
+                total_entities=0 if entities is None else len(entities),
                 created_at=now,
                 updated_at=now,
             )
         )
-        batches = self._create_batches(
-            run=run,
-            entity_ids=entities,
-            batch_size=batch_size,
-            now=now,
+        # entity_ids=None defers enumeration to the executor: listing every
+        # entity in a large KB inside the HTTP request is risk R2, and it fails
+        # the request before any executor is involved.
+        batches = (
+            []
+            if entities is None
+            else self._create_batches(
+                run=run,
+                entity_ids=entities,
+                batch_size=batch_size,
+                now=now,
+            )
         )
         self._publish_status(run)
+        if self._event_bus is None:
+            # No bus configured (unit tests, in-process use): the run is durable
+            # but nothing will drive it. Callers that need execution wire a bus.
+            pass
+        elif entities is None:
+            # Nothing has been enumerated yet: hand the run to the executor,
+            # which lists the KB's entities and creates the batches.
+            self._event_bus.publish(
+                ScoreRunQueuedEvent(
+                    correlation_id=run.id,
+                    knowledge_base_id=knowledge_base_id,
+                    run_id=run.id,
+                    batch_size=batch_size,
+                )
+            )
+        elif batches:
+            # Batches already exist; start the chain at the first one.
+            self._event_bus.publish(
+                ScoreBatchQueuedEvent(
+                    correlation_id=run.id,
+                    knowledge_base_id=knowledge_base_id,
+                    run_id=run.id,
+                    batch_id=batches[0].id,
+                    batch_number=batches[0].batch_number,
+                )
+            )
         return ScoreRunStartResult(run=run, batches=batches, created=True)
+
+    def _reject_if_a_run_is_active(self, knowledge_base_id: str) -> None:
+        for status in ("queued", "running"):
+            page = self.repository.list_runs(
+                knowledge_base_id=knowledge_base_id,
+                status=status,  # type: ignore[arg-type]
+                limit=1,
+            )
+            if page.items:
+                raise ScoreRunConflictError(
+                    f"A score run is already active for knowledge base "
+                    f"'{knowledge_base_id}'."
+                )
 
     def cancel_run(self, run_id: str) -> ScoreRun:
         run = self._require_run(run_id)

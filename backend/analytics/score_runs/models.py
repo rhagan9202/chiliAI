@@ -51,6 +51,11 @@ class ScoreBatch(BaseModel):
     batch_number: int = Field(ge=0)
     status: ScoreBatchStatus = "queued"
     entity_ids: list[str] = Field(default_factory=list)
+    # Per-batch outcome. Run counters are summed from these rather than
+    # incremented, so a batch delivered twice (redelivery, replay_failed_batches,
+    # or a DLQ replay) cannot double-count.
+    scored_entities: int = Field(default=0, ge=0)
+    failed_entities: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
     error_summary: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -62,6 +67,10 @@ class ScoreBatch(BaseModel):
     def _validate_batch(self) -> ScoreBatch:
         if len(set(self.entity_ids)) != len(self.entity_ids):
             raise ValueError("ScoreBatch entity_ids must be unique.")
+        if self.scored_entities + self.failed_entities > len(self.entity_ids):
+            raise ValueError(
+                "ScoreBatch scored_entities + failed_entities cannot exceed its entity count."
+            )
         if self.finished_at is not None and self.started_at is not None and self.finished_at < self.started_at:
             raise ValueError("ScoreBatch finished_at cannot be before started_at.")
         return self

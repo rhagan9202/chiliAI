@@ -121,6 +121,35 @@ class InMemoryScoreRunRepository:
         self._batches[key] = stored
         return _copy_batch(stored)
 
+    def get_batch(self, *, run_id: str, batch_number: int) -> ScoreBatch | None:
+        batch = self._batches.get((run_id, batch_number))
+        return _copy_batch(batch) if batch is not None else None
+
+    def claim_batch(
+        self,
+        *,
+        run_id: str,
+        batch_number: int,
+        now: datetime,
+        stale_running_before: datetime | None = None,
+    ) -> ScoreBatch | None:
+        key = (run_id, batch_number)
+        batch = self._batches.get(key)
+        if batch is None:
+            return None
+        if batch.status != "queued" and not _is_reclaimable(batch, stale_running_before):
+            return None
+        claimed = batch.model_copy(
+            update={
+                "status": "running",
+                "attempts": batch.attempts + 1,
+                "started_at": batch.started_at or now,
+                "updated_at": now,
+            }
+        )
+        self._batches[key] = claimed
+        return _copy_batch(claimed)
+
     def list_batches(
         self,
         *,
@@ -134,6 +163,21 @@ class InMemoryScoreRunRepository:
         ]
         matches.sort(key=lambda batch: batch.batch_number)
         return [_copy_batch(batch) for batch in matches]
+
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ScoreRunStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ScoreRun]:
+        matches = [
+            run
+            for run in self._runs.values()
+            if run.status in statuses and run.updated_at < updated_before
+        ]
+        matches.sort(key=lambda run: run.updated_at)
+        return [_copy_run(run) for run in matches[:limit]]
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         run_ids = [
@@ -153,6 +197,14 @@ class InMemoryScoreRunRepository:
         for key in batch_keys:
             del self._batches[key]
         return len(run_ids)
+
+
+def _is_reclaimable(batch: ScoreBatch, stale_running_before: datetime | None) -> bool:
+    """True when a `running` batch has been abandoned long enough to re-take."""
+
+    if stale_running_before is None or batch.status != "running":
+        return False
+    return batch.updated_at < stale_running_before
 
 
 def _copy_run(run: ScoreRun) -> ScoreRun:

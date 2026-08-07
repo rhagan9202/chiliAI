@@ -49,9 +49,10 @@ operations, `0015` alert generation metadata, `0016` `audit_log`, `0017`
 `explanation_reviews`, `0018` `identity_links`, `0019` `fraud_playbook_snapshots`
 (+ `cases.playbook_ref`), `0020` playbook-snapshot KB scoping, `0021`
 `workflow_definition_snapshots`, `0022` `governance_eval_runs`, `0023`
-`governance_eval_runs.dataset_source_refs`.
+`governance_eval_runs.dataset_source_refs`. `0024` adds `score_runs` and
+`score_batches`, making score-all runs durable across a restart.
 
-**Head is `0023_eval_dataset_refs` — 22 tables.** Derive both rather than
+**Head is `0024_score_runs` — 24 tables.** Derive both rather than
 trusting this line: `ls database/migrations/versions/` for the head, and
 `grep -c 'CREATE TABLE' database/migrations/snapshots/head.sql` for the table
 count. This sentence previously read "Head is `0013` — 16 tables total" for ten
