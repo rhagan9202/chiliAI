@@ -336,3 +336,76 @@ describe('RunTimeline awaiting approval', () => {
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
   })
 })
+
+describe('RunTimeline approval decisions', () => {
+  const parked: WorkflowRunResponse[] = [
+    {
+      id: 'workflow-parked',
+      workflow_type: 'ingestion',
+      status: 'awaiting_approval',
+      knowledge_base_id: 'kb-1',
+      started_at: '2026-05-17T12:00:00Z',
+      updated_at: '2026-05-17T12:01:00Z',
+      current_step: 'gate',
+      last_error: null,
+    },
+  ]
+
+  it('offers approve and reject on a run parked at a gate', () => {
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
+  })
+
+  it('does not offer approval on a run that is merely running', () => {
+    render(<RunTimeline workflows={workflows} receipts={[]} />)
+
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+  })
+
+  it('approves the step the run is parked on', async () => {
+    apiFetchMock.mockResolvedValueOnce({ id: 'workflow-parked', status: 'queued' })
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /approve/i }))
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/workflows/workflow-parked/steps/gate/approve',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
+  it('requires a reason before rejecting', async () => {
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /reject/i }))
+
+    // "Rejected" with no reason is an audit record that explains nothing, so
+    // the API requires one and the UI must not let it be submitted empty.
+    expect(screen.getByRole('button', { name: /confirm rejection/i })).toBeDisabled()
+  })
+
+  it('sends the reason when rejecting', async () => {
+    apiFetchMock.mockResolvedValueOnce({ id: 'workflow-parked', status: 'failed' })
+    render(<RunTimeline workflows={parked} receipts={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /reject/i }))
+    fireEvent.change(screen.getByLabelText(/rejection reason/i), {
+      target: { value: 'insufficient evidence' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /confirm rejection/i }))
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/workflows/workflow-parked/steps/gate/reject',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ reason: 'insufficient evidence' }),
+        }),
+      )
+    })
+  })
+})
