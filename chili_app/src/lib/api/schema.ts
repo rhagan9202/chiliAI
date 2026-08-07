@@ -7949,7 +7949,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "completed" | "failed" | "cancelled";
+            status: "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
             /**
              * Updated At
              * Format: date-time
@@ -7966,7 +7966,7 @@ export interface components {
          * @description Lifecycle states for a workflow run.
          * @enum {string}
          */
-        WorkflowRunStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+        WorkflowRunStatus: "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
         /**
          * WorkflowStepDefinitionPayload
          * @description Payload for one executable step in a workflow definition.

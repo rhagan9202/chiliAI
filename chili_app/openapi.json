@@ -12698,6 +12698,7 @@
             "enum": [
               "queued",
               "running",
+              "awaiting_approval",
               "completed",
               "failed",
               "cancelled"
@@ -12738,6 +12739,7 @@
         "enum": [
           "queued",
           "running",
+          "awaiting_approval",
           "completed",
           "failed",
           "cancelled"

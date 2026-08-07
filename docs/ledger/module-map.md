@@ -331,11 +331,17 @@ these expose an API whose work nothing executes.
 
 **Purpose:** Catalog of capabilities available to workflows and agents, with input/output schemas, role/domain/environment permissions, side-effect class, and execution envelopes.
 
-**Key exports:** `CapabilityRegistryService`, `CapabilityManifest`, `CapabilityExecutionEnvelope`, `create_default_capability_registry_service`
+**Key exports:** `CapabilityRegistryService`, `CapabilityManifest`, `CapabilityExecutionEnvelope`, `create_default_capability_registry_service`, `register_executor`, `register_builtin_capability_executors`
 
 **Adapters:** none — the registry is an in-process constructor, not persisted.
 
-**Status:** browse + `authorize()` are real; there is **no dispatcher**. Nothing executes a capability through this registry in production.
+**Status:** `execute()` dispatches. The order is the security property — authorize, then dispatch, then audit — so a denied call never reaches the tool, and `CapabilityPermission.requires_audit` is no longer a flag nothing reads (denied and failed calls are audited too, since those are what a ledger is for).
+
+`authorize()` **fails closed**. It previously read an omitted `domain_name` or `environment_tag` as "unrestricted", and an empty `required_roles` as "everyone" — the latter in two places, `_roles_can_access` (authorize) and `_role_can_access` (browse). All four are closed; the context arguments are required keyword arguments so omitting them is a type error rather than a silent bypass, and an empty permission list returns a distinct `no_roles_permitted` so a broken manifest is distinguishable from insufficient permission.
+
+**Executors are bound separately from manifests.** A `Mapping -> Mapping` executor cannot reach a service, so the worker closes over its own instances and registers them at startup. Only `connector.sync.status` is bound today; the other four manifests are registered but **not implemented** and report `capability_not_executable`, which is truthful rather than a pretend success. `CapabilityExecutor` has no context argument, so the calling actor rides in the payload — widen that signature if more capabilities need context than payload.
+
+**Environment tags come from `shared/environments.py`**, the same vocabulary `CHILI_ENV` is validated against. They had drifted: manifests declared a `test` environment that never exists and omitted `local`, the default for the whole dev stack. Harmless while the gate passed on `None`; once it failed closed, every capability call under the dev stack would have denied.
 
 ---
 
@@ -401,7 +407,17 @@ Idempotency is the run's own cursor: a page event whose cursor does not match `r
 
 **Adapters:** `InMemoryWorkflowDefinitionRepository`, `PostgresWorkflowDefinitionRepository` (`workflow_definition_snapshots`, migration `0021`)
 
-**Status:** `run_definition` persists a `QUEUED` `WorkflowRun` and audits the request. **No executor** — no event is published and no worker consumes it, so steps never run. `condition`, `retry_policy`, `on_failure` are stored but never evaluated.
+**Status:** runs execute. `run_definition` publishes `workflow.step.queued` for the first step; `workflow_definitions/executor.py` resolves each step against the **published snapshot** named by the event's `definition_id`/`version` (so a definition edited mid-run cannot change a run already in flight), evaluates its condition, honours the approval gate, dispatches its capability, applies `on_failure`, then chains the next step or finishes the run. `condition`, `retry_policy` and `on_failure` are all evaluated.
+
+**Authorization uses the run's recorded actor.** `run_definition` received `actor_user_id`/`actor_roles` and discarded them; the run now persists both, and a run without a recorded actor **fails** rather than dispatching. Inventing roles would bypass capability permissions for every workflow-dispatched call; passing none would deny everything and look like a broken capability.
+
+**Conditions use a restricted grammar** (`conditions.py`): one comparison, `<step_id>.<key> <op> <literal>`, with no boolean operators, calls, indexing or attribute traversal. A condition is user-authored in a multi-tenant system, so there is no `eval`/`exec`/`compile` path anywhere in the module and a test asserts that at the source level. Conditions are validated when a definition is created — including references to unknown or *later* steps, which would otherwise always evaluate false and silently never run.
+
+Idempotency is the step's own status: a step already COMPLETED, FAILED or SKIPPED returns before dispatch, so a redelivery cannot run a side-effecting capability twice. A retryable failure deliberately leaves the step PENDING, because a terminal status would make the requeued event skip itself.
+
+The approval gate is server-side and fails closed. A parked run is `AWAITING_APPROVAL`, which is **not** terminal and is excluded from stale reconciliation (`RECONCILABLE_RUN_STATUSES`) — an approval left overnight is not a stalled run.
+
+**Remaining gaps:** there is no approval *endpoint*, so a parked run is currently unparked only by writing `approved.<step_id>` onto the run's metadata. The dashboard does not count or filter `awaiting_approval`, so a parked run is visible but not surfaced. And `BUILT_IN_WORKFLOW_CAPABILITIES` is now derived from the registry rather than hand-listed — it had named `playbook.step` and `human.approval`, which have no manifest.
 
 ---
 

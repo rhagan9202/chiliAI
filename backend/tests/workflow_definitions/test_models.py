@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 import workflow_definitions
 from workflow_definitions.models import (
+    HUMAN_APPROVAL_CAPABILITIES,
     BUILT_IN_WORKFLOW_CAPABILITIES,
     MetadataValue,
     WorkflowDefinition,
@@ -171,15 +172,32 @@ def test_run_request_inputs_accept_only_scalar_metadata_values() -> None:
         )
 
 
-def test_builtin_capability_catalog_is_intentionally_small() -> None:
-    assert BUILT_IN_WORKFLOW_CAPABILITIES == frozenset(
-        {
-            "playbook.step",
-            "rag.query",
-            "analytics.peer_context",
-            "evidence.checklist.generate",
-            "case.note.draft",
-            "human.approval",
-        }
-    )
+def test_builtin_capability_catalog_matches_the_registry() -> None:
+    """The fallback list and the real registry must not disagree.
+
+    They had: this set named `playbook.step` and `human.approval`, which have
+    no manifest, and omitted `connector.sync.status`, which does. Since the
+    router always passes the real registry, validation was stricter in
+    production than in the fallback — a definition could pass a unit test using
+    `human.approval` and then be rejected by the API as an unknown capability.
+    Found by trying exactly that against the live stack.
+    """
+    from capabilities.service import create_default_capability_registry_service
+
+    registered = {
+        manifest.capability_id
+        for manifest in create_default_capability_registry_service()
+        .list_capabilities()
+        .items
+    }
+
+    assert BUILT_IN_WORKFLOW_CAPABILITIES == registered
+
+
+def test_human_approval_capabilities_are_all_real_capabilities() -> None:
+    """A gate naming a capability that cannot exist gates nothing."""
+    assert HUMAN_APPROVAL_CAPABILITIES <= BUILT_IN_WORKFLOW_CAPABILITIES
+
+
+def test_failure_mode_values_are_stable() -> None:
     assert WorkflowFailureMode.FAIL_WORKFLOW == "fail_workflow"

@@ -18,7 +18,9 @@ __all__ = [
     "project_workflow_runs",
 ]
 
-WorkflowStatusValue = Literal["queued", "running", "completed", "failed", "cancelled"]
+WorkflowStatusValue = Literal[
+    "queued", "running", "awaiting_approval", "completed", "failed", "cancelled"
+]
 WorkflowTypeValue = Literal["ingestion", "graph_build", "analytics", "monitoring"]
 
 
@@ -59,16 +61,30 @@ def count_running_workflows(runs: list[WorkflowRun]) -> int:
     return sum(1 for run in runs if run.status in active_statuses)
 
 
+_STATUS_PROJECTION: dict[WorkflowRunStatus, WorkflowStatusValue] = {
+    WorkflowRunStatus.QUEUED: "queued",
+    WorkflowRunStatus.RUNNING: "running",
+    WorkflowRunStatus.AWAITING_APPROVAL: "awaiting_approval",
+    WorkflowRunStatus.COMPLETED: "completed",
+    WorkflowRunStatus.FAILED: "failed",
+    WorkflowRunStatus.CANCELLED: "cancelled",
+}
+
+
 def _workflow_status(status: WorkflowRunStatus) -> WorkflowStatusValue:
-    if status is WorkflowRunStatus.QUEUED:
-        return "queued"
-    if status is WorkflowRunStatus.RUNNING:
-        return "running"
-    if status is WorkflowRunStatus.COMPLETED:
-        return "completed"
-    if status is WorkflowRunStatus.CANCELLED:
-        return "cancelled"
-    return "failed"
+    """Project a run status, exhaustively.
+
+    This was a chain of `if`s ending in `return "failed"`, so any status it did
+    not recognise was reported as a failure. When AWAITING_APPROVAL arrived,
+    a run waiting for a human's approval was shown to that human as failed —
+    they would see a dead workflow and never approve it. An explicit map raises
+    on an unmapped status instead of inventing a plausible-looking lie.
+    """
+
+    projected = _STATUS_PROJECTION.get(status)
+    if projected is None:
+        raise ValueError(f"WorkflowRunStatus '{status}' has no API projection.")
+    return projected
 
 
 def _current_step(run: WorkflowRun) -> str:
