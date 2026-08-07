@@ -161,6 +161,21 @@ class InMemoryScoreRunRepository:
         matches.sort(key=lambda batch: batch.batch_number)
         return [_copy_batch(batch) for batch in matches]
 
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ScoreRunStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ScoreRun]:
+        matches = [
+            run
+            for run in self._runs.values()
+            if run.status in statuses and run.updated_at < updated_before
+        ]
+        matches.sort(key=lambda run: run.updated_at)
+        return [_copy_run(run) for run in matches[:limit]]
+
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         run_ids = [
             run_id

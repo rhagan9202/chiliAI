@@ -279,6 +279,28 @@ class PostgresScoreRunRepository:
             ).fetchall()
         return [_batch_from_row(row) for row in rows]
 
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ScoreRunStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ScoreRun]:
+        if not statuses:
+            return []
+        placeholders = ", ".join(["%s"] * len(statuses))
+        with self._provider.connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT {_RUN_COLUMNS} FROM score_runs
+                 WHERE status IN ({placeholders}) AND updated_at < %s
+                 ORDER BY updated_at ASC
+                 LIMIT %s
+                """,
+                (*statuses, updated_before, limit),
+            ).fetchall()
+        return [_run_from_row(row) for row in rows]
+
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         with self._provider.connection() as conn:
             try:

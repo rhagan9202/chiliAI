@@ -64,6 +64,13 @@ def upgrade() -> None:
         ON score_runs (knowledge_base_id, status, created_at DESC)
         """
     )
+    # Supports the cross-KB stale-run scan the reconciler performs.
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS ix_score_runs_status_updated
+        ON score_runs (status, updated_at)
+        """
+    )
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS score_batches (
@@ -102,6 +109,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_score_batches_run_status")
     op.execute("DROP TABLE IF EXISTS score_batches")
+    op.execute("DROP INDEX IF EXISTS ix_score_runs_status_updated")
     op.execute("DROP INDEX IF EXISTS ix_score_runs_kb_status")
     op.execute("DROP INDEX IF EXISTS ux_score_runs_kb_idempotency")
     op.execute("DROP TABLE IF EXISTS score_runs")

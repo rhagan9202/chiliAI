@@ -437,6 +437,7 @@ CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btre
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
 CREATE INDEX ix_score_batches_run_status ON public.score_batches USING btree (run_id, status, batch_number);
 CREATE INDEX ix_score_runs_kb_status ON public.score_runs USING btree (knowledge_base_id, status, created_at DESC);
+CREATE INDEX ix_score_runs_status_updated ON public.score_runs USING btree (status, updated_at);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
 CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);

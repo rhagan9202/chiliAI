@@ -61,6 +61,7 @@ from database.runtime import create_connection_provider
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from analytics.score_runs.reconciler import ScoreRunReconciler
 from execution.deps import ExecutionDeps
 from execution.registry import dispatch as execution_dispatch
 from analytics.explainability.adapters.deterministic import (
@@ -4705,6 +4706,19 @@ async def run_worker(
                         logger.warning(
                             "Reconciled %s stale workflow run(s)", reconciled
                         )
+                    # Same tick, same cutoff: the score-run chain advances by
+                    # enqueueing its own successor, so one lost event stalls a
+                    # run with no error and no terminal state.
+                    if deps.score_run_repository is not None:
+                        stale_score_runs = ScoreRunReconciler(
+                            deps.score_run_repository
+                        ).reconcile_stale_runs(
+                            max_age_seconds=stale_workflow_max_age_seconds
+                        )
+                        if stale_score_runs:
+                            logger.warning(
+                                "Reconciled %s stale score run(s)", stale_score_runs
+                            )
                 # Domain hot-swap: poll config.updated and, if the active
                 # config changed, atomically swap the dependency set here —
                 # between drain iterations, never mid-event.

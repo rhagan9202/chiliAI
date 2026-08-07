@@ -87,6 +87,21 @@ class ScoreRunRepositoryProtocol(Protocol):
         status: ScoreBatchStatus | None = None,
     ) -> list[ScoreBatch]: ...
 
+    def list_stale_runs(
+        self,
+        *,
+        statuses: tuple[ScoreRunStatus, ...],
+        updated_before: datetime,
+        limit: int = 1000,
+    ) -> list[ScoreRun]:
+        """Runs in ``statuses`` not updated since ``updated_before``, any KB.
+
+        Deliberately not `list_runs` with an optional knowledge_base_id: this is
+        a maintenance scan across every KB, and conflating the two would make it
+        easy to accidentally run an unscoped query on the analyst-facing path.
+        """
+        ...
+
     def delete_by_kb(self, knowledge_base_id: str) -> int: ...
 
 
