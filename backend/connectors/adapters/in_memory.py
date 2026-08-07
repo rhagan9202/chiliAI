@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from threading import RLock
 
 from connectors.models import (
@@ -77,6 +78,27 @@ class InMemoryConnectorRepository:
         with self._lock:
             self._runs[run.run_id] = run.model_copy(deep=True)
             return run.model_copy(deep=True)
+
+    def get_run(self, run_id: str) -> ConnectorSyncRun | None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            return run.model_copy(deep=True) if run is not None else None
+
+    def claim_sync_run(
+        self,
+        run_id: str,
+        *,
+        now: datetime,
+    ) -> ConnectorSyncRun | None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None or run.status != "queued":
+                return None
+            claimed = run.model_copy(
+                update={"status": "running", "updated_at": now}, deep=True
+            )
+            self._runs[run_id] = claimed
+            return claimed.model_copy(deep=True)
 
     def update_run(
         self,

@@ -6,14 +6,14 @@ from config.schema import RecordFeedConfig, RecordsConfig
 from events.protocols import EventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.protocols import RawRecordStore
-from records.exceptions import RecordFeedNotFoundError, RecordValidationError
+from records.exceptions import RecordFeedNotFoundError
 from records.models import (
     RawRecord,
     content_hash_for,
     submission_hash_for,
 )
 from records.service_models import RecordIngestReceipt, RecordSubmission
-from records.validation import validate_rows_partition
+from records.validation import derive_record_id, validate_rows_partition
 from shared.metrics import ingestion_dedup_suppressed_total
 from shared.utils import generate_id, utc_now
 
@@ -46,22 +46,12 @@ class RecordsService:
         ingested_at = utc_now()
         raw_records: list[RawRecord] = []
         for row in coerced_rows:
-            if feed.id_template is not None:
-                try:
-                    record_id = feed.id_template.format(
-                        **{k: str(v) for k, v in row.items()}
-                    )
-                except KeyError as exc:
-                    raise RecordValidationError(
-                        f"Feed '{feed.name}' id_template references missing field {exc}."
-                    ) from exc
-            else:
-                raw_id = row.get(feed.id_field)
-                if raw_id is None:
-                    raise RecordValidationError(
-                        f"Feed '{feed.name}' record is missing id field '{feed.id_field}'."
-                    )
-                record_id = str(raw_id)
+            # Raises RecordValidationError for a row with no derivable id,
+            # failing the whole submission. That is deliberate for the upload
+            # path — a client gets one clear error instead of a partial
+            # ingest — so callers that must partition instead (the connector
+            # executor) pre-filter with the same function.
+            record_id = derive_record_id(feed, row)
             raw_records.append(
                 RawRecord(
                     knowledge_base_id=knowledge_base_id,

@@ -15,7 +15,7 @@ from pathlib import Path
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
-_EXPECTED = {"score.batch.queued", "score.run.queued"}
+_EXPECTED = {"score.batch.queued", "score.run.queued", "connector.page.queued"}
 
 
 def _registered_after(import_statement: str) -> set[str]:
@@ -58,4 +58,32 @@ def test_worker_subscribes_to_every_registered_executor_event() -> None:
     )
     assert registered == subscribed, (
         f"registered but never delivered: {sorted(registered - subscribed)}"
+    )
+
+
+def test_every_executor_dependency_the_worker_can_supply_is_supplied() -> None:
+    """Registration is not enough — a handler handed `None` also does nothing.
+
+    Each executor returns 0 when a dependency it needs is missing, which is the
+    right degradation but an indistinguishable one: the worker looks healthy,
+    events are acked, and no work happens. This asserts the worker actually
+    populates every field, so "wired but dead" cannot come back in a new form.
+    """
+    from execution.deps import ExecutionDeps
+
+    source = (_BACKEND_DIR / "agent" / "coordinator.py").read_text(encoding="utf-8")
+    assert source.count("ExecutionDeps(") == 1, (
+        "more than one ExecutionDeps construction; this guard checks only one"
+    )
+    block = source.split("ExecutionDeps(", 1)[1]
+    supplied = {
+        line.split("=")[0].strip()
+        for line in block.split("\n        ),")[0].splitlines()
+        if "=" in line and not line.strip().startswith("#")
+    }
+
+    missing = set(ExecutionDeps.__dataclass_fields__) - supplied
+    assert not missing, (
+        f"ExecutionDeps fields the worker never populates, so any executor "
+        f"needing them silently no-ops: {sorted(missing)}"
     )

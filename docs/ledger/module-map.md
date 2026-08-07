@@ -343,11 +343,19 @@ these expose an API whose work nothing executes.
 
 **Purpose:** Connector registration, sync-run records, and quarantine tracking for scheduled/manual pulls.
 
-**Key exports:** `ConnectorService`, `ConnectorDefinition`, `ConnectorSyncRun`, `ConnectorRepositoryProtocol`
+**Key exports:** `ConnectorService`, `ConnectorDefinition`, `ConnectorSyncRun`, `ConnectorRepositoryProtocol`, `ConnectorSourceAdapter`, `FilesystemSourceAdapter`, `handle_connector_page_queued`
 
-**Adapters:** `InMemoryConnectorRepository` only — **no Postgres adapter and no migration**, so definitions and runs are process-lifetime.
+**Adapters:** `InMemoryConnectorRepository`, `PostgresConnectorRepository` (`connectors`, `connector_sync_runs`, `connector_quarantine_records`, migration `0025`). Source adapters: `FilesystemSourceAdapter` only.
 
-**Status:** metadata only. No source adapter, no scheduler, no ingestion events, no replay. `start_sync` writes a `queued` row nothing advances.
+**Status:** sync runs execute. `start_sync` publishes `connector.page.queued`; `connectors/executor.py` reads one page from the source, registers its rows through **the same `RecordsService` the manual upload route uses** (so a pulled batch is indistinguishable downstream from an uploaded one — verified live: identical CSV via both paths produced identical `raw_records` and 57 identical graph nodes), advances `source_cursor`, then chains the next page or completes the run. Invalid rows are quarantined rather than dropped.
+
+Idempotency is the run's own cursor: a page event whose cursor does not match `run.source_cursor` is skipped, and for the crash-between-persist-and-cursor case the records service reports the batch as a duplicate so counters and quarantine rows both hold still. `update_run` ignores a `None` cursor, so a run can never be moved backwards.
+
+**Not implemented, and rejected rather than accepted-and-ignored:** the `object_store` and `http` source types, and the `interval`/`cron` schedule modes — nothing schedules connector runs at all. `IMPLEMENTED_SOURCE_TYPES`/`IMPLEMENTED_SCHEDULE_MODES` in `connectors/service.py` are the honest statement of what is honoured; registering anything else is a 422. Widen those sets when an adapter ships, not the `Literal`.
+
+**Operational notes:** every filesystem path is confined to `CHILI_CONNECTOR_FS_ROOT` (default `/imports`, bind-mounted from `sample_data/connector_imports/` in the dev compose); the adapter has no unbounded mode. A `ConnectorSourceError` — path outside the root, missing directory, stale cursor — fails the run with the reason recorded, because no retry can fix it; anything else propagates for the worker's normal retry/DLQ handling. Page size is `CHILI_CONNECTOR_PAGE_LIMIT` (default 500).
+
+**Remaining gap:** there is no reconciler for connector sync runs. A run whose page event is lost entirely — as opposed to failing — stays `running` indefinitely. `analytics/score_runs/reconciler.py` is the pattern to copy when this is closed.
 
 ---
 

@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import os
+from pathlib import Path
 import signal
 import sys
 import time
@@ -290,9 +291,15 @@ from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
+from connectors.adapters.in_memory import InMemoryConnectorRepository
+from connectors.adapters.postgres import PostgresConnectorRepository
+from connectors.repository import ConnectorRepositoryProtocol
+from connectors.sources.filesystem import FilesystemSourceAdapter
+from connectors.sources.protocols import ConnectorSourceAdapter
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
+from records.service import create_records_service
 from scorecards.adapters.in_memory import InMemoryScorecardRunRepository
 from scorecards.adapters.postgres import PostgresScorecardRunRepository
 from scorecards.adapters.protocols import ScorecardRunRepository
@@ -419,6 +426,7 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     # receives its events.
     "score.batch.queued",
     "score.run.queued",
+    "connector.page.queued",
 )
 # Domain hot-swap (E6): the worker consumes `config.updated` on its own
 # non-blocking poll — never through the pipeline drain — so a dependency
@@ -477,6 +485,7 @@ class WorkerDependencies:
     graph_embeddings_enabled: bool = False
     risk_projection_service: RiskProjectionService | None = None
     score_run_repository: ScoreRunRepositoryProtocol | None = None
+    connector_repository: ConnectorRepositoryProtocol | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -870,6 +879,37 @@ def build_risk_projection_repository(
     if provider is None:
         return InMemoryRiskProjectionRepository()
     return PostgresRiskProjectionRepository(provider)
+
+
+def build_connector_repository(
+    provider: ConnectionProvider | None,
+) -> ConnectorRepositoryProtocol:
+    """Select a connector repository: Postgres when a provider exists.
+
+    Mirrors the API's `get_connector_repository` so the worker and the gateway
+    read the same rows; an in-memory worker repository would see none of the
+    sync runs the API created, and every page event would find no run.
+    """
+
+    if provider is None:
+        return InMemoryConnectorRepository()
+    return PostgresConnectorRepository(provider)
+
+
+def build_connector_source_adapters() -> dict[str, ConnectorSourceAdapter]:
+    """Build the source adapters the connector executor may use.
+
+    Only `filesystem` exists so far. A source type absent from this mapping
+    fails its run with a clear reason rather than silently pulling nothing, so
+    the gap is visible rather than mysterious.
+
+    The filesystem root is deliberately explicit: `CHILI_CONNECTOR_FS_ROOT`
+    bounds every path a connector may read, and the adapter has no unbounded
+    constructor.
+    """
+
+    root = Path(os.environ.get("CHILI_CONNECTOR_FS_ROOT", "/imports"))
+    return {"filesystem": FilesystemSourceAdapter(allowed_root=root)}
 
 
 def build_score_run_repository(
@@ -1316,6 +1356,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         alert_history_writer=alert_history_writer,
         risk_projection_service=risk_projection_service,
         score_run_repository=build_score_run_repository(connection_provider),
+        connector_repository=build_connector_repository(connection_provider),
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -4634,6 +4675,18 @@ async def _drain_once(
             score_run_repository=deps.score_run_repository,
             graph_repository=deps.graph_repository,
             domain_config=deps.domain_config,
+            connector_repository=deps.connector_repository,
+            # Built here rather than carried on WorkerDependencies: the records
+            # *service* is a writer, and the worker previously only ever read
+            # raw records. It is the same service the upload route uses, which
+            # is what gives a pulled batch parity with an uploaded one.
+            records_service=create_records_service(
+                deps.raw_record_store,
+                event_bus=deps.event_bus,
+                records_config=deps.records_config,
+            ),
+            records_config=deps.records_config,
+            source_adapters=build_connector_source_adapters(),
         ),
     )
 

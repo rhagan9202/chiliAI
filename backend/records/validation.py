@@ -185,8 +185,35 @@ def validate_rows(
     return coerced_rows
 
 
+def derive_record_id(feed: RecordFeedConfig, row: Mapping[str, object]) -> str:
+    """Return the record id for ``row`` under ``feed``'s id rules.
+
+    Raises :class:`~records.exceptions.RecordValidationError` when the row
+    cannot supply one. Extracted from ``RecordsService.register_records`` so
+    that a caller which must *partition* rows rather than fail the batch — the
+    connector executor, where one malformed row would otherwise stall the pull
+    forever — tests id-derivability with exactly the logic that will run, not a
+    reimplementation of it.
+    """
+
+    if feed.id_template is not None:
+        try:
+            return feed.id_template.format(**{k: str(v) for k, v in row.items()})
+        except KeyError as exc:
+            raise RecordValidationError(
+                f"Feed '{feed.name}' id_template references missing field {exc}."
+            ) from exc
+    raw_id = row.get(feed.id_field)
+    if raw_id is None:
+        raise RecordValidationError(
+            f"Feed '{feed.name}' record is missing id field '{feed.id_field}'."
+        )
+    return str(raw_id)
+
+
 __all__ = [
     "coerce_row",
+    "derive_record_id",
     "validate_rows",
     "validate_rows_partition",
 ]

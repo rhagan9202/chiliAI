@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import pytest
 
+from connectors.exceptions import ConnectorValidationError
 from connectors.models import (
     ConnectorDefinitionCreate,
     ConnectorMappingRef,
     ConnectorSchedule,
+    ConnectorScheduleMode,
+    ConnectorSourceType,
     ConnectorSyncCounters,
 )
 from connectors.adapters.in_memory import InMemoryConnectorRepository
@@ -105,3 +108,192 @@ def test_complete_fail_and_quarantine_lifecycle() -> None:
     assert quarantine.source_record_id == "claim-5"
     assert failed.status == "failed"
     assert failed.error_message == "downstream unavailable"
+
+
+def _unimplemented_payload(
+    *,
+    source_type: ConnectorSourceType = "filesystem",
+    schedule: ConnectorSchedule | None = None,
+) -> ConnectorDefinitionCreate:
+    payload = _payload()
+    return payload.model_copy(
+        update={
+            "source_type": source_type,
+            "schedule": schedule or payload.schedule,
+        }
+    )
+
+
+@pytest.mark.parametrize("source_type", ["object_store", "http"])
+def test_registering_an_unimplemented_source_type_is_rejected(
+    source_type: ConnectorSourceType,
+) -> None:
+    """A Literal that accepts values nothing honours is the defect being removed.
+
+    Both types are in `ConnectorSourceType` because they are planned, and
+    accepting one would queue a sync run that no adapter can ever serve.
+    """
+    service = ConnectorService(InMemoryConnectorRepository())
+
+    with pytest.raises(ConnectorValidationError, match="not implemented"):
+        service.register_connector(
+            "kb-cms", _unimplemented_payload(source_type=source_type)
+        )
+
+
+@pytest.mark.parametrize("mode", ["interval", "cron"])
+def test_registering_a_scheduled_mode_is_rejected(mode: ConnectorScheduleMode) -> None:
+    """Nothing schedules connectors yet, so a schedule would never fire."""
+    service = ConnectorService(InMemoryConnectorRepository())
+
+    with pytest.raises(ConnectorValidationError, match="not implemented"):
+        service.register_connector(
+            "kb-cms",
+            _unimplemented_payload(
+                schedule=ConnectorSchedule(mode=mode, expression="0 3 * * *")
+            ),
+        )
+
+
+def test_the_rejection_names_what_is_implemented() -> None:
+    """An operator needs to know what to use, not only what failed."""
+    service = ConnectorService(InMemoryConnectorRepository())
+
+    with pytest.raises(ConnectorValidationError) as excinfo:
+        service.register_connector("kb-cms", _unimplemented_payload(source_type="http"))
+
+    assert "filesystem" in str(excinfo.value)
+
+
+def test_a_validation_error_is_not_a_value_error() -> None:
+    """`register_connector` already raises ValueError for conflicts -> HTTP 409.
+
+    If this were a ValueError subclass an unimplemented source type would be
+    reported as a conflict rather than as invalid input.
+    """
+    assert not issubclass(ConnectorValidationError, ValueError)
+
+
+def test_the_implemented_source_set_matches_the_adapters_the_worker_builds() -> None:
+    """The guard and the worker's adapter map must not drift apart.
+
+    A source type accepted here but absent from the worker's adapters registers
+    fine and then fails every run; one present there but rejected here is
+    unreachable.
+    """
+    from agent.coordinator import build_connector_source_adapters
+    from connectors.service import IMPLEMENTED_SOURCE_TYPES
+
+    assert set(build_connector_source_adapters()) == set(IMPLEMENTED_SOURCE_TYPES)
+
+
+def test_starting_a_sync_for_an_unimplemented_source_is_rejected() -> None:
+    """Defence in depth for connectors stored before the guard existed.
+
+    Without this the run is created, queued, and only fails once a worker picks
+    it up — the operator sees a failed run instead of a straight answer.
+    """
+    repository = InMemoryConnectorRepository()
+    # Written straight to the repository: the service would refuse it now.
+    repository.save_definition(_unimplemented_payload(source_type="http"))
+    service = ConnectorService(repository)
+
+    with pytest.raises(ConnectorValidationError, match="not implemented"):
+        service.start_sync(
+            knowledge_base_id="kb-cms",
+            connector_id="cms-claims-drop",
+            requested_by="operator-1",
+        )
+
+
+def test_starting_a_sync_for_an_implemented_source_still_works() -> None:
+    repository = InMemoryConnectorRepository()
+    service = ConnectorService(repository)
+    service.register_connector("kb-cms", _payload())
+
+    run = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+    )
+
+    assert run.status == "queued"
+
+
+def test_starting_a_sync_publishes_the_first_page_event() -> None:
+    """Without this the run is durable and completely inert.
+
+    The executor chains page N+1 from page N, but nothing starts the chain. A
+    sync run created with no kickoff event sits in `queued` forever, and every
+    executor unit test passes regardless because they invoke the handler
+    directly. Found only by running the real stack.
+    """
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import ConnectorPageQueuedEvent
+
+    event_bus = InMemoryEventBus()
+    service = ConnectorService(InMemoryConnectorRepository(), event_bus=event_bus)
+    service.register_connector("kb-cms", _payload())
+
+    run = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+    )
+
+    published = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, ConnectorPageQueuedEvent)
+    ]
+    assert len(published) == 1
+    assert published[0].run_id == run.run_id
+    assert published[0].connector_id == "cms-claims-drop"
+    assert published[0].knowledge_base_id == "kb-cms"
+    # None means "start at the beginning" — the first page of the pull.
+    assert published[0].cursor is None
+
+
+def test_reusing_an_idempotent_run_does_not_publish_a_second_kickoff() -> None:
+    """A repeated request returns the existing run; it must not restart it."""
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import ConnectorPageQueuedEvent
+
+    event_bus = InMemoryEventBus()
+    service = ConnectorService(InMemoryConnectorRepository(), event_bus=event_bus)
+    service.register_connector("kb-cms", _payload())
+
+    first = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+        idempotency_key="daily-1",
+    )
+    second = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+        idempotency_key="daily-1",
+    )
+
+    published = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, ConnectorPageQueuedEvent)
+    ]
+    assert second.run_id == first.run_id
+    assert len(published) == 1
+
+
+def test_a_service_without_an_event_bus_still_creates_the_run() -> None:
+    """In-process callers and unit tests may have no bus; the run is durable."""
+    service = ConnectorService(InMemoryConnectorRepository())
+    service.register_connector("kb-cms", _payload())
+
+    run = service.start_sync(
+        knowledge_base_id="kb-cms",
+        connector_id="cms-claims-drop",
+        requested_by="operator-1",
+    )
+
+    assert run.status == "queued"

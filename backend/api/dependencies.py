@@ -110,6 +110,7 @@ from capabilities.service import (
     create_default_capability_registry_service,
 )
 from connectors.adapters.in_memory import InMemoryConnectorRepository
+from connectors.adapters.postgres import PostgresConnectorRepository
 from connectors.repository import ConnectorRepositoryProtocol
 from connectors.service import ConnectorService
 from readiness.service import ReadinessService
@@ -2744,22 +2745,37 @@ def get_playbook_service(
 
 
 def get_connector_repository(request: Request) -> ConnectorRepositoryProtocol:
-    """Return the connector repository for SAFE-CMS-017 state."""
+    """Return the connector repository selected by database backend."""
+
+    def build() -> ConnectorRepositoryProtocol:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryConnectorRepository()
+        return PostgresConnectorRepository(provider)
 
     return _memoize_config_derived(
         request.app,
         "connector_repository",
-        lambda: InMemoryConnectorRepository(),
-        guard=lambda value: isinstance(value, InMemoryConnectorRepository),
+        build,
+        # Protocol, not a concrete class: the guard must accept either backend,
+        # or a memoized Postgres repository would be discarded and rebuilt as
+        # in-memory on every request.
+        guard=lambda value: isinstance(value, ConnectorRepositoryProtocol),
     )
 
 
 def get_connector_service(
     repository: ConnectorRepositoryProtocol = Depends(get_connector_repository),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> ConnectorService:
-    """Return the connector lifecycle service."""
+    """Return the connector lifecycle service.
 
-    return ConnectorService(repository)
+    The bus is required for execution, not decoration: `start_sync` publishes
+    the first `connector.page.queued` event, and without it a sync run is
+    durable but inert.
+    """
+
+    return ConnectorService(repository, event_bus=event_bus)
 
 
 @lru_cache(maxsize=1)

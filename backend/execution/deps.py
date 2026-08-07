@@ -8,13 +8,17 @@ one explicit field rather than being handed the whole worker container.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from analytics.risk.service import RiskService
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
-from config.schema import DomainConfig
+from config.schema import DomainConfig, RecordsConfig
+from connectors.repository import ConnectorRepositoryProtocol
+from connectors.sources.protocols import ConnectorSourceAdapter
 from events.protocols import EventBus
 from graph.adapters.protocols import GraphRepository
+from records.protocols import RecordsServiceProtocol
 
 __all__ = ["ExecutionDeps"]
 
@@ -34,3 +38,13 @@ class ExecutionDeps:
     score_run_repository: ScoreRunRepositoryProtocol | None
     graph_repository: GraphRepository | None
     domain_config: DomainConfig | None
+    connector_repository: ConnectorRepositoryProtocol | None = None
+    records_service: RecordsServiceProtocol | None = None
+    # The feed definitions the records service validates against. The connector
+    # executor needs the feed itself, not just the service, so it can partition
+    # rows it knows the service would reject outright.
+    records_config: RecordsConfig | None = None
+    # Keyed by ConnectorSourceType. The connector executor refuses a source
+    # type with no adapter rather than falling back to one, so an unimplemented
+    # source fails its run loudly instead of pulling from the wrong place.
+    source_adapters: Mapping[str, ConnectorSourceAdapter] | None = None

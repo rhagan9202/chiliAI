@@ -105,8 +105,17 @@ services:
     volumes:
       - ./backend:/app
       - chili-object-data:/app/data
+      # Drop directory for filesystem connectors. Bind-mounted so a developer
+      # can drop a CSV in from the host; lives under the gitignored
+      # sample_data/ because it holds bulk input, not fixtures (see
+      # docs/testing/DATA.md).
+      - ./sample_data/connector_imports:/imports
     environment:
       - CHILI_ENV=local
+      # Every path a filesystem connector may read is confined to this root.
+      # The adapter has no unbounded mode, so this directory must exist inside
+      # the container or every sync run fails with "does not exist".
+      - CHILI_CONNECTOR_FS_ROOT=${CHILI_CONNECTOR_FS_ROOT:-/imports}
       # Must match the API service's CHILI_CONFIG_PATH — api and worker always
       # move to a new domain pack together.
       - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}

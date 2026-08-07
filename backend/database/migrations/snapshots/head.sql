@@ -57,6 +57,50 @@ CREATE TABLE public.cases (
     feedback_history jsonb DEFAULT '[]'::jsonb NOT NULL,
     playbook_ref jsonb
 );
+CREATE TABLE public.connector_quarantine_records (
+    quarantine_id text NOT NULL,
+    run_id text NOT NULL,
+    connector_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    source_record_id text NOT NULL,
+    reason text NOT NULL,
+    raw_ref text,
+    created_at timestamp with time zone NOT NULL
+);
+CREATE TABLE public.connector_sync_runs (
+    run_id text NOT NULL,
+    connector_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    requested_by text NOT NULL,
+    status text NOT NULL,
+    counters jsonb DEFAULT '{}'::jsonb NOT NULL,
+    idempotency_key text,
+    ingest_correlation_id text,
+    source_cursor text,
+    error_message text,
+    started_at timestamp with time zone NOT NULL,
+    completed_at timestamp with time zone,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT ck_connector_sync_runs_status CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text, 'failed'::text, 'canceled'::text])))
+);
+CREATE TABLE public.connectors (
+    connector_id text NOT NULL,
+    knowledge_base_id text NOT NULL,
+    name text NOT NULL,
+    source_type text NOT NULL,
+    domain_name text,
+    status text NOT NULL,
+    schedule_mode text NOT NULL,
+    schedule_expression text,
+    credentials_ref text,
+    config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    mapping jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    CONSTRAINT ck_connectors_schedule_mode CHECK ((schedule_mode = ANY (ARRAY['manual'::text, 'interval'::text, 'cron'::text]))),
+    CONSTRAINT ck_connectors_source_type CHECK ((source_type = ANY (ARRAY['filesystem'::text, 'object_store'::text, 'http'::text]))),
+    CONSTRAINT ck_connectors_status CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text])))
+);
 CREATE TABLE public.conversations (
     conversation_id text NOT NULL,
     title text NOT NULL,
@@ -359,6 +403,10 @@ ALTER TABLE ONLY public.audit_log
     ADD CONSTRAINT audit_log_pkey PRIMARY KEY (event_id);
 ALTER TABLE ONLY public.cases
     ADD CONSTRAINT cases_pkey PRIMARY KEY (knowledge_base_id, case_id);
+ALTER TABLE ONLY public.connector_quarantine_records
+    ADD CONSTRAINT connector_quarantine_records_pkey PRIMARY KEY (quarantine_id);
+ALTER TABLE ONLY public.connector_sync_runs
+    ADD CONSTRAINT connector_sync_runs_pkey PRIMARY KEY (run_id);
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (conversation_id);
 ALTER TABLE ONLY public.entity_derived_signals
@@ -375,6 +423,8 @@ ALTER TABLE ONLY public.governance_eval_runs
     ADD CONSTRAINT governance_eval_runs_pkey PRIMARY KEY (run_id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
+ALTER TABLE ONLY public.connectors
+    ADD CONSTRAINT pk_connectors PRIMARY KEY (knowledge_base_id, connector_id);
 ALTER TABLE ONLY public.fraud_playbook_snapshots
     ADD CONSTRAINT pk_fraud_playbook_snapshots PRIMARY KEY (knowledge_base_id, domain_name, playbook_id, version);
 ALTER TABLE ONLY public.identity_links
@@ -416,6 +466,10 @@ CREATE INDEX ix_audit_log_actor_occurred_at ON public.audit_log USING btree (act
 CREATE INDEX ix_audit_log_kb_occurred_at ON public.audit_log USING btree (knowledge_base_id, occurred_at DESC);
 CREATE INDEX ix_audit_log_tenant_occurred_at ON public.audit_log USING btree (tenant_id, occurred_at DESC);
 CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, status, updated_at DESC);
+CREATE INDEX ix_connector_quarantine_connector ON public.connector_quarantine_records USING btree (connector_id, created_at DESC);
+CREATE INDEX ix_connector_quarantine_run ON public.connector_quarantine_records USING btree (run_id, created_at DESC);
+CREATE INDEX ix_connector_sync_runs_connector_status ON public.connector_sync_runs USING btree (connector_id, status, started_at DESC);
+CREATE INDEX ix_connectors_kb ON public.connectors USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);
 CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_history USING btree (knowledge_base_id, metric_name, observed_at);
@@ -442,8 +496,13 @@ CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree 
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);
 CREATE INDEX ix_workflow_definition_snapshots_kb_status ON public.workflow_definition_snapshots USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX observations_observed_at_idx ON public.observations USING btree (observed_at DESC);
+CREATE UNIQUE INDEX ux_connector_sync_runs_idempotency ON public.connector_sync_runs USING btree (knowledge_base_id, connector_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 CREATE UNIQUE INDEX ux_policy_items_item_id ON public.policy_items USING btree (knowledge_base_id, item_id);
 CREATE UNIQUE INDEX ux_score_runs_kb_idempotency ON public.score_runs USING btree (knowledge_base_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+ALTER TABLE ONLY public.connector_quarantine_records
+    ADD CONSTRAINT connector_quarantine_records_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.connector_sync_runs(run_id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.connector_sync_runs
+    ADD CONSTRAINT fk_connector_sync_runs_connector FOREIGN KEY (knowledge_base_id, connector_id) REFERENCES public.connectors(knowledge_base_id, connector_id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.score_batches
     ADD CONSTRAINT score_batches_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.score_runs(id) ON DELETE CASCADE;
 -- timescaledb hypertables (hypertable_name|num_dimensions)

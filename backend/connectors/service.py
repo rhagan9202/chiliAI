@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Final
+
+from connectors.exceptions import ConnectorValidationError
 from connectors.models import (
     ConnectorDefinition,
     ConnectorDefinitionCreate,
@@ -16,13 +19,46 @@ from connectors.models import (
     ConnectorSyncRunUpdate,
 )
 from connectors.repository import ConnectorRepositoryProtocol
+from events.protocols import EventBus
+from events.types import ConnectorPageQueuedEvent
+
+
+# Widen these when the adapters ship — never widen the `Literal` in models.py
+# first. The Literal describes the shape the platform intends to support; these
+# sets describe what is actually honoured today, and accepting a value nothing
+# honours is the defect this whole effort exists to remove.
+IMPLEMENTED_SOURCE_TYPES: Final[frozenset[str]] = frozenset({"filesystem"})
+IMPLEMENTED_SCHEDULE_MODES: Final[frozenset[str]] = frozenset({"manual"})
+
+
+def _require_implemented_source_type(source_type: str) -> None:
+    if source_type not in IMPLEMENTED_SOURCE_TYPES:
+        raise ConnectorValidationError(
+            f"Connector source type '{source_type}' is not implemented. "
+            f"Implemented: {', '.join(sorted(IMPLEMENTED_SOURCE_TYPES))}."
+        )
+
+
+def _require_implemented_schedule_mode(mode: str) -> None:
+    if mode not in IMPLEMENTED_SCHEDULE_MODES:
+        raise ConnectorValidationError(
+            f"Connector schedule mode '{mode}' is not implemented — nothing "
+            "schedules connector runs yet, so the schedule would never fire. "
+            f"Implemented: {', '.join(sorted(IMPLEMENTED_SCHEDULE_MODES))}."
+        )
 
 
 class ConnectorService:
     """Coordinate connector definitions, sync runs, and quarantine records."""
 
-    def __init__(self, repository: ConnectorRepositoryProtocol) -> None:
+    def __init__(
+        self,
+        repository: ConnectorRepositoryProtocol,
+        *,
+        event_bus: EventBus | None = None,
+    ) -> None:
         self._repository = repository
+        self._event_bus = event_bus
 
     def register_connector(
         self,
@@ -31,6 +67,8 @@ class ConnectorService:
     ) -> ConnectorDefinition:
         if payload.knowledge_base_id != knowledge_base_id:
             raise ValueError("Connector knowledge_base_id mismatch.")
+        _require_implemented_source_type(payload.source_type)
+        _require_implemented_schedule_mode(payload.schedule.mode)
         existing = self._repository.get_definition(
             knowledge_base_id=knowledge_base_id,
             connector_id=payload.connector_id,
@@ -77,6 +115,10 @@ class ConnectorService:
         )
         if connector is None:
             raise KeyError(connector_id)
+        # Defence in depth for definitions stored before the guard existed:
+        # without this the run is created and queued, and the operator learns
+        # it was impossible only once a worker fails it.
+        _require_implemented_source_type(connector.source_type)
         if idempotency_key is not None:
             existing_runs = self._repository.list_runs(
                 connector_id=connector_id,
@@ -84,8 +126,11 @@ class ConnectorService:
             )
             for run in existing_runs.items:
                 if run.idempotency_key == idempotency_key:
+                    # Returning an existing run must not restart it: the
+                    # kickoff below is published only for a run this call
+                    # actually created.
                     return run
-        return self._repository.create_run(
+        run = self._repository.create_run(
             ConnectorSyncRunCreate(
                 connector_id=connector_id,
                 knowledge_base_id=knowledge_base_id,
@@ -93,6 +138,24 @@ class ConnectorService:
                 idempotency_key=idempotency_key,
             )
         )
+        if self._event_bus is None:
+            # No bus configured (unit tests, in-process use): the run is
+            # durable but nothing will drive it. Callers that need execution
+            # wire a bus.
+            return run
+        # Start the chain. The executor enqueues page N+1 from page N, so
+        # without this first event a run is durable and completely inert —
+        # queued forever, with no error to explain why.
+        self._event_bus.publish(
+            ConnectorPageQueuedEvent(
+                correlation_id=run.run_id,
+                knowledge_base_id=knowledge_base_id,
+                connector_id=connector_id,
+                run_id=run.run_id,
+                cursor=None,
+            )
+        )
+        return run
 
     def complete_sync(
         self,
@@ -175,4 +238,8 @@ class ConnectorService:
         )
 
 
-__all__ = ["ConnectorService"]
+__all__ = [
+    "IMPLEMENTED_SCHEDULE_MODES",
+    "IMPLEMENTED_SOURCE_TYPES",
+    "ConnectorService",
+]
