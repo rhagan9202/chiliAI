@@ -2153,6 +2153,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflow_id}/steps/{step_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Workflow Step
+         * @description Approve a run parked at a human-approval gate, resuming it.
+         *
+         *     Requires `admin`, matching `approve_workflow_definition` — the closest
+         *     existing analogue and the strictest gate the platform RBAC has. ("supervisor"
+         *     is a *domain pack* role name, not a platform role: ROLE_HIERARCHY is
+         *     admin/analyst/service/viewer.) The service additionally refuses
+         *     self-approval: a gate an actor can satisfy for their own run is not a gate.
+         */
+        post: operations["approve_workflow_step_workflows__workflow_id__steps__step_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/steps/{step_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Workflow Step
+         * @description Reject a run parked at a human-approval gate, failing it.
+         */
+        post: operations["reject_workflow_step_workflows__workflow_id__steps__step_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7968,6 +8014,14 @@ export interface components {
          */
         WorkflowRunStatus: "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
         /**
+         * WorkflowStepApprovalRequest
+         * @description Approve a workflow run parked at a human-approval gate.
+         */
+        WorkflowStepApprovalRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * WorkflowStepDefinitionPayload
          * @description Payload for one executable step in a workflow definition.
          */
@@ -8031,6 +8085,17 @@ export interface components {
             } | null;
             /** Step Id */
             step_id: string;
+        };
+        /**
+         * WorkflowStepRejectionRequest
+         * @description Reject a workflow run parked at a human-approval gate.
+         *
+         *     ``reason`` is required: "rejected" with no reason is an audit record that
+         *     explains nothing to the next person who reads it.
+         */
+        WorkflowStepRejectionRequest: {
+            /** Reason */
+            reason: string;
         };
     };
     responses: never;
@@ -11889,6 +11954,78 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workflow_step_workflows__workflow_id__steps__step_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowStepApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_workflow_step_workflows__workflow_id__steps__step_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowStepRejectionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

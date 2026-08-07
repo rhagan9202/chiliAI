@@ -1637,6 +1637,22 @@ class WorkflowRunResponse(BaseModel):
     last_error: str | None = None
 
 
+class WorkflowStepApprovalRequest(BaseModel):
+    """Approve a workflow run parked at a human-approval gate."""
+
+    reason: str | None = None
+
+
+class WorkflowStepRejectionRequest(BaseModel):
+    """Reject a workflow run parked at a human-approval gate.
+
+    ``reason`` is required: "rejected" with no reason is an audit record that
+    explains nothing to the next person who reads it.
+    """
+
+    reason: str = Field(min_length=1)
+
+
 class WorkflowRunListResponse(BaseModel):
     """Collection of workflow runs."""
 

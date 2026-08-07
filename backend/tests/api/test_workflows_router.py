@@ -412,3 +412,128 @@ def test_cancel_workflow_returns_409_when_already_terminal() -> None:
         response = client.post("/workflows/done-1/cancel")
 
     assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Human approval decisions
+#
+# Asserted through the HTTP response, not the run store: `AWAITING_APPROVAL`
+# was correct in the store and wrong in the API for the whole life of the
+# feature because every test asserted the record behind the projection.
+# ---------------------------------------------------------------------------
+
+
+def _parked_run(workflow_id: str = "workflow-parked") -> WorkflowRun:
+    return WorkflowRun(
+        workflow_id=workflow_id,
+        knowledge_base_id="kb-1",
+        trigger_event_type="workflow_definition.requested",
+        status=WorkflowRunStatus.AWAITING_APPROVAL,
+        steps=[WorkflowStepState(step_name="gate"), WorkflowStepState(step_name="after")],
+        metadata={"definition_id": "triage", "definition_version": "v1"},
+        actor_user_id="analyst-1",
+        actor_roles=["analyst"],
+    )
+
+
+def _app_with_approver(runs: list[WorkflowRun]) -> FastAPI:
+    """`admin` is the platform role that approves; "supervisor" is a pack role."""
+    app = _app_with_workflows_and_auth(runs=runs)
+    store = app.dependency_overrides[get_session_store]()
+    _save_session(store, session_id="sid-admin", roles=["admin"])
+    return app
+
+
+def test_approving_a_parked_step_returns_the_released_run() -> None:
+    app = _app_with_approver([_parked_run()])
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-admin")
+        response = client.post(
+            "/workflows/workflow-parked/steps/gate/approve",
+            json={},
+        )
+
+    assert response.status_code == 200, response.text
+    # The projection, not the store: an approved run must not read as failed.
+    assert response.json()["status"] == "queued"
+
+
+def test_rejecting_a_parked_step_returns_a_failed_run() -> None:
+    app = _app_with_approver([_parked_run()])
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-admin")
+        response = client.post(
+            "/workflows/workflow-parked/steps/gate/reject",
+            json={"reason": "insufficient evidence"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "failed"
+    assert response.json()["last_error"] == "insufficient evidence"
+
+
+def test_rejecting_without_a_reason_is_a_validation_error() -> None:
+    """"Rejected" with no reason is an audit record that explains nothing."""
+    app = _app_with_approver([_parked_run()])
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-admin")
+        response = client.post(
+            "/workflows/workflow-parked/steps/gate/reject",
+            json={},
+        )
+
+    assert response.status_code == 422
+
+
+def test_approving_a_run_that_is_not_parked_is_a_conflict_not_a_404() -> None:
+    """Wrong state and missing run are different things to an operator."""
+    app = _app_with_approver(
+        [
+            WorkflowRun(
+                workflow_id="workflow-running",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+            )
+        ]
+    )
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-admin")
+        response = client.post(
+            "/workflows/workflow-running/steps/parse/approve",
+            json={},
+        )
+
+    assert response.status_code == 409, response.text
+
+
+def test_approving_an_unknown_run_is_a_404() -> None:
+    app = _app_with_approver([_parked_run()])
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-admin")
+        response = client.post(
+            "/workflows/no-such-run/steps/gate/approve",
+            json={},
+        )
+
+    assert response.status_code == 404
+
+
+def test_an_analyst_may_not_approve() -> None:
+    """The gate requires a role the requester typically does not hold."""
+    app = _app_with_approver([_parked_run()])
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        response = client.post(
+            "/workflows/workflow-parked/steps/gate/approve",
+            json={},
+        )
+
+    assert response.status_code == 403

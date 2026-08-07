@@ -12,6 +12,7 @@ from agent.exceptions import (
     IdempotencyKeyConflictError,
     WorkflowAlreadyTerminalError,
     WorkflowRunNotFoundError,
+    WorkflowApprovalError,
 )
 from agent.models import (
     WorkflowRun,
@@ -22,7 +23,11 @@ from agent.models import (
 from agent.service import AgentService, create_agent_service
 from agent.service_models import WorkflowSubmissionRequest
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import AgentWorkflowStartedEvent, AnyEvent
+from events.types import (
+    AgentWorkflowStartedEvent,
+    AnyEvent,
+    WorkflowStepQueuedEvent,
+)
 
 
 class _FailingEventBus(InMemoryEventBus):
@@ -621,3 +626,167 @@ def test_idempotency_match_ignores_tracker_written_metadata() -> None:
         _submit(metadata={"priority": "high"}, idempotency_key="abc-123")
     )
     assert second.workflow_id == first.workflow_id
+
+
+# ---------------------------------------------------------------------------
+# Human approval gates
+#
+# A parked run was stuck at both ends: nothing wrote `approved.<step_id>`, and
+# the parking event had already been acked, so no event existed to resume from.
+# Recording the decision without republishing leaves the run just as stuck.
+# ---------------------------------------------------------------------------
+
+
+def _parked_run(
+    *,
+    workflow_id: str = "workflow-parked",
+    step_id: str = "gate",
+    actor_user_id: str | None = "analyst-1",
+    definition_id: str = "triage",
+    version: str = "v1",
+) -> WorkflowRun:
+    return WorkflowRun(
+        workflow_id=workflow_id,
+        knowledge_base_id="kb-1",
+        trigger_event_type="workflow_definition.requested",
+        status=WorkflowRunStatus.AWAITING_APPROVAL,
+        steps=[
+            WorkflowStepState(step_name=step_id),
+            WorkflowStepState(step_name="after"),
+        ],
+        metadata={"definition_id": definition_id, "definition_version": version},
+        actor_user_id=actor_user_id,
+        actor_roles=["analyst"],
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _step_events(event_bus: InMemoryEventBus) -> list[WorkflowStepQueuedEvent]:
+    return [
+        published
+        for published in event_bus.published_events
+        if isinstance(published, WorkflowStepQueuedEvent)
+    ]
+
+
+def test_approving_a_step_republishes_its_queued_event() -> None:
+    """Both ends or neither.
+
+    The parking event was acked, so recording the approval without republishing
+    leaves the run exactly as stuck as before.
+    """
+    service, _, event_bus = _service(runs=[_parked_run()])
+
+    service.approve_step(
+        "workflow-parked", "gate", actor_user_id="supervisor-1", actor_roles=["supervisor"]
+    )
+
+    queued = _step_events(event_bus)
+    assert [event.step_id for event in queued] == ["gate"]
+    assert queued[0].workflow_id == "workflow-parked"
+    assert queued[0].definition_id == "triage"
+    assert queued[0].version == "v1"
+
+
+def test_approving_records_who_approved_and_releases_the_gate() -> None:
+    service, run_store, _ = _service(runs=[_parked_run()])
+
+    service.approve_step(
+        "workflow-parked", "gate", actor_user_id="supervisor-1", actor_roles=["supervisor"]
+    )
+
+    updated = run_store.get_run("workflow-parked")
+    assert updated.metadata["approved.gate"] == "supervisor-1"
+    # QUEUED, not RUNNING: the executor claims the step itself, and pre-setting
+    # RUNNING would make this indistinguishable from a run already in flight.
+    assert updated.status is WorkflowRunStatus.QUEUED
+
+
+def test_the_requester_cannot_approve_their_own_run() -> None:
+    """A gate an actor can satisfy for their own run is not a gate."""
+    service, _, event_bus = _service(runs=[_parked_run(actor_user_id="analyst-1")])
+
+    with pytest.raises(WorkflowApprovalError, match="own"):
+        service.approve_step(
+            "workflow-parked", "gate", actor_user_id="analyst-1", actor_roles=["supervisor"]
+        )
+
+    assert _step_events(event_bus) == []
+
+
+def test_approving_a_run_that_is_not_parked_is_rejected() -> None:
+    service, _, event_bus = _service(runs=[_run(workflow_id="workflow-running")])
+
+    with pytest.raises(WorkflowApprovalError, match="not awaiting approval"):
+        service.approve_step(
+            "workflow-running", "parse", actor_user_id="s", actor_roles=["supervisor"]
+        )
+
+    assert _step_events(event_bus) == []
+
+
+def test_approving_an_unknown_step_is_rejected() -> None:
+    service, _, _ = _service(runs=[_parked_run()])
+
+    with pytest.raises(WorkflowApprovalError, match="no step"):
+        service.approve_step(
+            "workflow-parked", "nosuchstep", actor_user_id="s", actor_roles=["supervisor"]
+        )
+
+
+def test_a_second_approval_does_not_republish() -> None:
+    """Clients retry. Two approvals must not run the step twice."""
+    service, _, event_bus = _service(runs=[_parked_run()])
+    service.approve_step(
+        "workflow-parked", "gate", actor_user_id="supervisor-1", actor_roles=["supervisor"]
+    )
+    service.approve_step(
+        "workflow-parked", "gate", actor_user_id="supervisor-1", actor_roles=["supervisor"]
+    )
+
+    assert len(_step_events(event_bus)) == 1
+
+
+def test_rejecting_fails_the_run_with_the_reason_recorded() -> None:
+    service, run_store, event_bus = _service(runs=[_parked_run()])
+
+    service.reject_step(
+        "workflow-parked",
+        "gate",
+        actor_user_id="supervisor-1",
+        actor_roles=["supervisor"],
+        reason="insufficient evidence",
+    )
+
+    updated = run_store.get_run("workflow-parked")
+    assert updated.status is WorkflowRunStatus.FAILED
+    assert updated.metadata["last_error"] == "insufficient evidence"
+    assert _step_events(event_bus) == []
+
+
+def test_rejecting_a_run_that_is_not_parked_is_rejected() -> None:
+    service, _, _ = _service(runs=[_run(workflow_id="workflow-running")])
+
+    with pytest.raises(WorkflowApprovalError, match="not awaiting approval"):
+        service.reject_step(
+            "workflow-running",
+            "parse",
+            actor_user_id="s",
+            actor_roles=["supervisor"],
+            reason="no",
+        )
+
+
+def test_an_unknown_run_raises_not_found_not_an_approval_error() -> None:
+    """A missing run is a 404; a wrong-state run is a 409. Do not conflate."""
+    service, _, _ = _service()
+
+    with pytest.raises(WorkflowRunNotFoundError):
+        service.approve_step(
+            "no-such-run", "gate", actor_user_id="s", actor_roles=["supervisor"]
+        )
+
+
+def test_an_approval_error_is_not_a_value_error() -> None:
+    """The router maps ValueError elsewhere; a wrong-state run is a conflict."""
+    assert not issubclass(WorkflowApprovalError, ValueError)

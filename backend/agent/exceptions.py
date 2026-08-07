@@ -70,5 +70,15 @@ __all__ = [
     "ConfigurationError",
     "IdempotencyKeyConflictError",
     "WorkflowAlreadyTerminalError",
+    "WorkflowApprovalError",
     "WorkflowRunNotFoundError",
 ]
+
+class WorkflowApprovalError(AgentError):
+    """A human-approval decision cannot be applied to this run.
+
+    Deliberately **not** a ``ValueError`` subclass, and deliberately distinct
+    from ``WorkflowRunNotFoundError``: the router maps a missing run to 404 and
+    this to 409, because "the run is in the wrong state" and "the run does not
+    exist" are different things for an operator holding a stale page.
+    """
