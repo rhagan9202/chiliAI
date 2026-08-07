@@ -163,6 +163,16 @@ dependencies out of the lockfile* — it silently removed `puppeteer` (a peer
 of `@mermaid-js/mermaid-cli`, needed by `render:architecture`) along with 71
 transitive packages.
 
+`--legacy-peer-deps` is no longer used anywhere, including CI, which installs
+with a plain `npm ci` (2026-08-07). The flag suppresses peer-dependency
+*resolution* as well as installation, so even the non-mutating `npm ci
+--legacy-peer-deps` left `puppeteer` out of `node_modules` and made
+`npm run render:architecture` fail with `ERR_MODULE_NOT_FOUND` — a break no
+CI job noticed, because no job invokes `mmdc`. The tree resolves without the
+flag. There is also no `|| npm install` fallback: `npm ci` failing on a
+package.json/lockfile mismatch is the drift signal worth having, and
+`npm install` would rewrite the lockfile inside CI and hide it.
+
 The router is `react-router` v8 (the `react-router-dom` package was removed
 upstream in v8): core APIs import from `react-router`, DOM-specific ones
 (`RouterProvider`) from `react-router/dom`. v8's floor is React >= 19.2.7
