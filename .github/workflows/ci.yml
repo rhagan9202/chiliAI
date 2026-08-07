@@ -174,7 +174,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: chili_app
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Export OpenAPI and regenerate frontend schema
         run: |
@@ -212,8 +212,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-
 
+      # No --legacy-peer-deps: it omits peer dependencies, which left puppeteer
+      # (a peer of @mermaid-js/mermaid-cli) out of node_modules and broke
+      # `npm run render:architecture`. The dependency tree resolves cleanly
+      # without it. No `|| npm install` fallback either — `npm ci` failing on a
+      # package.json/lockfile mismatch is the drift signal, and `npm install`
+      # would rewrite the lockfile in CI and hide it.
       - name: Install frontend dependencies
-        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Lint with ESLint
         run: npm run lint
