@@ -532,6 +532,26 @@ class ScoreRunQueuedEvent(EventBase):
     batch_size: int = Field(default=100, gt=0)
 
 
+class ConnectorPageQueuedEvent(EventBase):
+    """One page of a connector pull is ready to read and ingest.
+
+    Carries identifiers and the cursor only. The executor reloads the run and
+    its connector definition from the repository, so a redelivered event —
+    which may be arbitrarily old — can never resurrect a stale snapshot of
+    mutable state such as counters or status.
+
+    ``cursor`` is opaque: it is produced by the source adapter and must not be
+    parsed or constructed anywhere else. ``None`` means "start at the
+    beginning", which is what the first page of a run carries.
+    """
+
+    event_type: Literal["connector.page.queued"] = "connector.page.queued"
+    knowledge_base_id: str
+    connector_id: str
+    run_id: str
+    cursor: str | None = None
+
+
 
 
 AnyEvent = (
@@ -556,6 +576,7 @@ AnyEvent = (
     | IdentityLinkDecisionRecordedEvent
     | ScoreBatchQueuedEvent
     | ScoreRunQueuedEvent
+    | ConnectorPageQueuedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -608,6 +629,7 @@ __all__ = [
     "GraphUpdatedEvent",
     "IdentityLinkDecisionRecordedEvent",
     "ScoreBatchQueuedEvent",
+    "ConnectorPageQueuedEvent",
     "ScoreRunQueuedEvent",
     "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",

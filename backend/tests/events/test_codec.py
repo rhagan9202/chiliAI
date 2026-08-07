@@ -27,6 +27,7 @@ from events.types import (
     ExtractedDocumentReference,
     GnnAnalyzedEvent,
     GnnAnalyzedReference,
+    ConnectorPageQueuedEvent,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     IdentityLinkDecisionRecordedEvent,
@@ -549,3 +550,36 @@ def test_score_batch_queued_event_carries_identifiers_only() -> None:
     assert "entity_ids" not in fields
     assert "scored_entities" not in fields
     assert "status" not in fields
+
+
+def test_event_codec_round_trips_connector_page_queued_event() -> None:
+    event = ConnectorPageQueuedEvent(
+        correlation_id="corr-connector-page",
+        knowledge_base_id="kb-1",
+        connector_id="cms-claims-drop",
+        run_id="sync-run-1",
+        cursor=None,
+    )
+
+    decoded = decode_event(encode_event(event))
+
+    assert decoded.event_type == "connector.page.queued"
+    assert isinstance(decoded, ConnectorPageQueuedEvent)
+    assert decoded.cursor is None
+    assert decoded == event
+
+
+def test_connector_page_cursor_survives_the_round_trip() -> None:
+    """The cursor is opaque and may contain a colon; it must not be mangled."""
+    event = ConnectorPageQueuedEvent(
+        correlation_id="corr-connector-page",
+        knowledge_base_id="kb-1",
+        connector_id="cms-claims-drop",
+        run_id="sync-run-1",
+        cursor="claims:2026-08.csv:250",
+    )
+
+    decoded = decode_event(encode_event(event))
+
+    assert isinstance(decoded, ConnectorPageQueuedEvent)
+    assert decoded.cursor == "claims:2026-08.csv:250"
