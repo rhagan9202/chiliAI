@@ -291,9 +291,25 @@ from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.adapters.postgres import PostgresAuditLogRepository
+from auditlog.service import AuditLogService
+from capabilities.builtin_executors import register_builtin_capability_executors
+from capabilities.service import (
+    CapabilityRegistryService,
+    create_default_capability_registry_service,
+)
+from workflow_definitions.adapters.in_memory import (
+    InMemoryWorkflowDefinitionRepository,
+)
+from workflow_definitions.adapters.postgres import (
+    PostgresWorkflowDefinitionRepository,
+)
+from workflow_definitions.repository import WorkflowDefinitionRepository
 from connectors.adapters.in_memory import InMemoryConnectorRepository
 from connectors.adapters.postgres import PostgresConnectorRepository
 from connectors.repository import ConnectorRepositoryProtocol
+from connectors.service import ConnectorService
 from connectors.sources.filesystem import FilesystemSourceAdapter
 from connectors.sources.protocols import ConnectorSourceAdapter
 from records.adapters.in_memory import InMemoryRawRecordStore
@@ -427,6 +443,7 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "score.batch.queued",
     "score.run.queued",
     "connector.page.queued",
+    "workflow.step.queued",
 )
 # Domain hot-swap (E6): the worker consumes `config.updated` on its own
 # non-blocking poll — never through the pipeline drain — so a dependency
@@ -486,6 +503,9 @@ class WorkerDependencies:
     risk_projection_service: RiskProjectionService | None = None
     score_run_repository: ScoreRunRepositoryProtocol | None = None
     connector_repository: ConnectorRepositoryProtocol | None = None
+    workflow_definition_repository: WorkflowDefinitionRepository | None = None
+    capability_registry: CapabilityRegistryService | None = None
+    audit_service: AuditLogService | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +899,30 @@ def build_risk_projection_repository(
     if provider is None:
         return InMemoryRiskProjectionRepository()
     return PostgresRiskProjectionRepository(provider)
+
+
+def build_workflow_definition_repository(
+    provider: ConnectionProvider | None,
+) -> WorkflowDefinitionRepository:
+    """Select a workflow definition repository: Postgres when a provider exists.
+
+    Mirrors the API's `get_workflow_definition_repository` so the worker reads
+    the same published snapshots the gateway wrote. An in-memory worker
+    repository would find no definition for any run the API created, and every
+    step would fail as "definition no longer available".
+    """
+
+    if provider is None:
+        return InMemoryWorkflowDefinitionRepository()
+    return PostgresWorkflowDefinitionRepository(provider)
+
+
+def build_audit_log_service(provider: ConnectionProvider | None) -> AuditLogService:
+    """Audit sink for capability calls the workflow executor dispatches."""
+
+    if provider is None:
+        return AuditLogService(InMemoryAuditLogRepository())
+    return AuditLogService(PostgresAuditLogRepository(provider))
 
 
 def build_connector_repository(
@@ -1315,6 +1359,16 @@ def build_worker_dependencies() -> WorkerDependencies:
         timeseries_anomaly_store=timeseries_anomaly_store,
     )
 
+    connector_repository = build_connector_repository(connection_provider)
+    capability_registry = create_default_capability_registry_service()
+    # Bind the capabilities this process can actually run. Without this every
+    # workflow step authorizes and then fails `capability_not_executable`.
+    register_builtin_capability_executors(
+        connector_service=ConnectorService(connector_repository),
+        capability_registry=capability_registry,
+        domain_name=config.domain.name,
+        environment_tag=os.environ.get("CHILI_ENV", "").strip().lower() or None,
+    )
     return WorkerDependencies(
         event_bus=event_bus,
         ingestion_service=ingestion_service,
@@ -1356,7 +1410,12 @@ def build_worker_dependencies() -> WorkerDependencies:
         alert_history_writer=alert_history_writer,
         risk_projection_service=risk_projection_service,
         score_run_repository=build_score_run_repository(connection_provider),
-        connector_repository=build_connector_repository(connection_provider),
+        connector_repository=connector_repository,
+        workflow_definition_repository=build_workflow_definition_repository(
+            connection_provider
+        ),
+        capability_registry=capability_registry,
+        audit_service=build_audit_log_service(connection_provider),
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -4687,6 +4746,17 @@ async def _drain_once(
             ),
             records_config=deps.records_config,
             source_adapters=build_connector_source_adapters(),
+            workflow_definition_repository=deps.workflow_definition_repository,
+            workflow_run_store=deps.workflow_run_store,
+            capability_registry=deps.capability_registry,
+            audit_service=deps.audit_service,
+            # Authorization context for every capability the workflow executor
+            # dispatches. Resolved here rather than inside the executor so the
+            # environment is the worker's own, not whatever a test happens to
+            # have in os.environ.
+            workflow_domain_name=deps.domain_config.domain.name,
+            workflow_environment_tag=os.environ.get("CHILI_ENV", "").strip().lower()
+            or None,
         ),
     )
 

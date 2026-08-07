@@ -20,8 +20,10 @@ def execute_connector_sync_status_capability(
     actor_roles: Sequence[str],
     knowledge_base_id: str,
     connector_id: str,
-    domain_name: str | None = None,
-    environment_tag: str | None = None,
+    # Required, not defaulted: an adapter that lets its caller omit the
+    # authorization context reintroduces the fail-open branch one layer up.
+    domain_name: str | None,
+    environment_tag: str | None,
 ) -> CapabilityExecutionEnvelope:
     """Authorize and execute the `connector.sync.status` capability."""
 

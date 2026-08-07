@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -48,6 +49,10 @@ class WorkflowStepStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    # A step whose condition evaluated false. Distinct from COMPLETED, which
+    # would claim work was done, and from FAILED, which would claim something
+    # went wrong; not running is the correct outcome of a false branch.
+    SKIPPED = "skipped"
 
 
 class WorkflowRunStatus(str, Enum):
@@ -55,6 +60,10 @@ class WorkflowRunStatus(str, Enum):
 
     QUEUED = "queued"
     RUNNING = "running"
+    # Parked on a human approval gate. Deliberately not terminal: the run is
+    # alive and waiting for a person, so stale reconciliation must leave it
+    # alone rather than failing it for not progressing.
+    AWAITING_APPROVAL = "awaiting_approval"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -93,6 +102,13 @@ class WorkflowStepState(BaseModel):
 
     step_name: str
     status: WorkflowStepStatus = WorkflowStepStatus.PENDING
+    # A first-class field rather than a `metadata` key (spec decision D1):
+    # retry accounting is state the executor reasons about, and burying it in
+    # a free-form dict makes it stringly-typed and invisible to validation.
+    # Defaulted, so runs persisted before this existed still deserialize —
+    # WorkflowRun is stored whole as JSON, so a missing key would otherwise
+    # make every in-flight run unloadable at deploy time.
+    attempts: int = Field(default=0, ge=0)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
 
@@ -108,6 +124,19 @@ class WorkflowRun(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
     idempotency_key: str | None = None
+    # Who asked for this run. The executor dispatches capabilities long after
+    # the request returns, and it must authorize as the requesting actor —
+    # inventing roles would bypass capability permissions for every
+    # workflow-dispatched call, and supplying none would deny all of them.
+    #
+    # First-class rather than metadata keys: `metadata` is
+    # `dict[str, str|int|float|bool]`, which cannot hold a role list without
+    # stringly-typed encoding, and this is security-relevant state.
+    #
+    # Optional so runs persisted before this field deserialize; the executor
+    # treats a run with no recorded actor as unauthorized rather than guessing.
+    actor_user_id: str | None = None
+    actor_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
     @model_validator(mode="after")
     def _validate_steps(self) -> WorkflowRun:

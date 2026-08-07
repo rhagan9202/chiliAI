@@ -28,6 +28,7 @@ from events.types import (
     GnnAnalyzedEvent,
     GnnAnalyzedReference,
     ConnectorPageQueuedEvent,
+    WorkflowStepQueuedEvent,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     IdentityLinkDecisionRecordedEvent,
@@ -583,3 +584,21 @@ def test_connector_page_cursor_survives_the_round_trip() -> None:
 
     assert isinstance(decoded, ConnectorPageQueuedEvent)
     assert decoded.cursor == "claims:2026-08.csv:250"
+
+
+def test_event_codec_round_trips_workflow_step_queued_event() -> None:
+    event = WorkflowStepQueuedEvent(
+        correlation_id="corr-workflow-step",
+        knowledge_base_id="kb-1",
+        workflow_id="wf-run-1",
+        definition_id="triage",
+        version="v1",
+        step_id="enrich",
+    )
+
+    decoded = decode_event(encode_event(event))
+
+    assert decoded.event_type == "workflow.step.queued"
+    assert isinstance(decoded, WorkflowStepQueuedEvent)
+    assert decoded.step_id == "enrich"
+    assert decoded == event

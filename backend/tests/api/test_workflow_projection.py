@@ -152,3 +152,37 @@ def test_count_running_workflows_counts_queued_and_running_as_active() -> None:
     ]
 
     assert count_running_workflows(runs) == 2
+
+
+def test_a_run_awaiting_approval_is_not_reported_as_failed() -> None:
+    """The worst possible presentation of a parked run.
+
+    A run waiting for a human's approval was projected as `failed`, because
+    `_workflow_status` fell through to "failed" for anything it did not
+    recognise. The analyst whose approval the run is waiting for would see a
+    dead workflow and never approve it. Found on the live stack: the worker
+    logged "parked for approval" while the API reported failed.
+    """
+    run = _run(status=WorkflowRunStatus.AWAITING_APPROVAL)
+
+    projected = project_workflow_run(run)
+
+    assert projected.status == "awaiting_approval"
+    assert projected.last_error is None
+    # Names the step that is waiting, so an operator knows what to approve.
+    assert projected.current_step == "parse"
+
+
+def test_every_run_status_projects_to_a_distinct_value() -> None:
+    """No status may quietly inherit another's meaning.
+
+    The fall-through default is the bug: a status added later would silently
+    become "failed" again, and nothing would fail until someone noticed a
+    healthy run reported as broken.
+    """
+    projected = {
+        status: project_workflow_run(_run(status=status)).status
+        for status in WorkflowRunStatus
+    }
+
+    assert len(set(projected.values())) == len(projected), projected

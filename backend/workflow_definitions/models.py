@@ -7,19 +7,32 @@ from typing import Literal, TypeAlias, cast
 
 from pydantic import BaseModel, Field, computed_field
 
+from capabilities.registry import create_default_capability_registry
 from shared.utils import utc_now
+from workflow_definitions.conditions import ConditionSyntaxError, parse_condition
 
-BUILT_IN_WORKFLOW_CAPABILITIES = frozenset(
-    {
-        "playbook.step",
-        "rag.query",
-        "analytics.peer_context",
-        "evidence.checklist.generate",
-        "case.note.draft",
-        "human.approval",
-    }
-)
-HUMAN_APPROVAL_CAPABILITIES = frozenset({"case.note.draft", "human.approval"})
+def _builtin_capability_refs() -> frozenset[str]:
+    """Capability ids a definition may reference when no registry is supplied.
+
+    Derived from the registry rather than written out, because the two had
+    drifted: this set listed `playbook.step` and `human.approval`, which have
+    no manifest, while omitting `connector.sync.status`, which does. The router
+    always passes the real registry, so validation was *stricter* in production
+    than in the fallback — a definition could pass a unit test using
+    `human.approval` and then be rejected with "unknown capability" by the API.
+    """
+
+    return frozenset(
+        manifest.capability_id
+        for manifest in create_default_capability_registry().list()
+    )
+
+
+BUILT_IN_WORKFLOW_CAPABILITIES = _builtin_capability_refs()
+# Capabilities that may only appear in a step which requires human approval.
+# `case.note.draft` writes analyst-visible narrative on a case; drafting one
+# unsupervised is the thing the gate exists to prevent.
+HUMAN_APPROVAL_CAPABILITIES = frozenset({"case.note.draft"})
 
 WorkflowDefinitionStatus: TypeAlias = Literal["draft", "approved", "retired"]
 WorkflowRunTargetType: TypeAlias = Literal["alert", "entity", "case", "knowledge_base"]
@@ -161,6 +174,32 @@ def validate_workflow_definition_payload(
             errors.append(
                 f"Step '{step.step_id}' using capability '{step.capability_ref}' "
                 "must require human approval."
+            )
+
+    known_step_ids = set(step_ids)
+    for step in steps:
+        if step.condition is None:
+            continue
+        try:
+            parsed = parse_condition(step.condition)
+        except ConditionSyntaxError as exc:
+            # Rejected on create rather than at run time: an unparseable
+            # condition would otherwise fail every execution of the workflow,
+            # long after whoever wrote it has moved on.
+            errors.append(f"Step '{step.step_id}' has an invalid condition: {exc}")
+            continue
+        if parsed.step_id not in known_step_ids:
+            errors.append(
+                f"Step '{step.step_id}' condition references unknown step "
+                f"'{parsed.step_id}'."
+            )
+        elif step_ids.index(parsed.step_id) >= step_ids.index(step.step_id):
+            # A condition can only read outputs that already exist. Referring
+            # forward always evaluates false, so the step would silently never
+            # run — the most expensive kind of authoring mistake to diagnose.
+            errors.append(
+                f"Step '{step.step_id}' condition references step "
+                f"'{parsed.step_id}', which does not run before it."
             )
 
     return WorkflowDefinitionValidationResult(valid=not errors, errors=errors)

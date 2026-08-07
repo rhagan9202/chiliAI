@@ -20,8 +20,10 @@ def execute_rag_query_capability(
     knowledge_base_ids: list[str],
     question: str,
     filters: dict[str, MetadataValue] | None = None,
-    domain_name: str | None = None,
-    environment_tag: str | None = None,
+    # Required, not defaulted: an adapter that lets its caller omit the
+    # authorization context reintroduces the fail-open branch one layer up.
+    domain_name: str | None,
+    environment_tag: str | None,
     include_graph_context: bool = True,
 ) -> CapabilityExecutionEnvelope:
     """Authorize and execute the `rag.query` capability for workflow callers."""

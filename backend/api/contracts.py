@@ -1627,7 +1627,9 @@ class WorkflowRunResponse(BaseModel):
 
     id: str
     workflow_type: Literal["ingestion", "graph_build", "analytics", "monitoring"]
-    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    status: Literal[
+        "queued", "running", "awaiting_approval", "completed", "failed", "cancelled"
+    ]
     knowledge_base_id: str
     started_at: datetime
     updated_at: datetime

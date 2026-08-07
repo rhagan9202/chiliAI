@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from shared.environments import SUPPORTED_ENVIRONMENT_TAGS
 from capabilities.models import (
     CapabilityDomainCompatibility,
     CapabilityExample,
@@ -47,7 +48,14 @@ def _object_schema(properties: dict[str, JsonValue]) -> dict[str, JsonValue]:
 def _compat(*domains: str) -> CapabilityDomainCompatibility:
     return CapabilityDomainCompatibility(
         supported_domains=list(domains),
-        environment_tags=["dev", "test", "production"],
+        # These must be drawn from the same vocabulary as CHILI_ENV
+        # (`api.dependencies._ALLOWED_ENVIRONMENTS`), because that is what a
+        # caller passes as `environment_tag`. They previously read
+        # ["dev", "test", "production"]: "test" is not a runtime environment at
+        # all, while "local" — the default for the whole dev stack — and
+        # "staging" were both missing, so every capability call outside dev or
+        # production denied with `capability_environment_denied`.
+        environment_tags=list(SUPPORTED_ENVIRONMENT_TAGS),
     )
 
 

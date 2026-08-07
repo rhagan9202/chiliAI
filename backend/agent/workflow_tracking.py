@@ -34,13 +34,21 @@ from events.types import (
 )
 from shared.utils import generate_id, utc_now
 
-__all__ = ["WorkflowEventTracker", "default_steps_for_trigger"]
+__all__ = [
+    "RECONCILABLE_RUN_STATUSES",
+    "WorkflowEventTracker",
+    "default_steps_for_trigger",
+]
 
 _WORKFLOW_REGISTRY = default_workflow_registry()
 _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
     {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
 )
 _TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
+# Statuses in which a *pipeline* run accepts step transitions. Distinct from
+# RECONCILABLE_RUN_STATUSES below despite listing the same two: this gates
+# begin/complete_event for ingestion-triggered runs, which never reach
+# AWAITING_APPROVAL — only the workflow-definition executor parks a run.
 _ACTIVE_RUN_STATUSES: frozenset[WorkflowRunStatus] = frozenset(
     {WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING}
 )
@@ -68,6 +76,19 @@ def default_steps_for_trigger(trigger_event_type: str) -> list[str]:
 class _TrackedEvent:
     run: WorkflowRun
     step_name: str
+
+
+# Statuses stale reconciliation may reap.
+#
+# AWAITING_APPROVAL is deliberately absent and must stay absent: a run parked
+# on a human gate is alive and waiting for a person, so "has not progressed in
+# an hour" is its normal condition, not a fault. Adding it here would fail work
+# that is proceeding correctly, and the analyst who eventually approves would
+# find the run already dead.
+RECONCILABLE_RUN_STATUSES: tuple[WorkflowRunStatus, ...] = (
+    WorkflowRunStatus.QUEUED,
+    WorkflowRunStatus.RUNNING,
+)
 
 
 class WorkflowEventTracker:
@@ -185,7 +206,7 @@ class WorkflowEventTracker:
         Satisfies the ``WorkflowBusyTracker`` protocol in ``api._kb_busy`` so
         this tracker can be passed directly to ``ensure_kb_idle``.
         """
-        for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+        for status in RECONCILABLE_RUN_STATUSES:
             runs = self._run_store.list_runs(
                 knowledge_base_id=knowledge_base_id,
                 status=status,
@@ -230,7 +251,7 @@ class WorkflowEventTracker:
                 run = self._run_store.get_run(workflow_id)
             except WorkflowRunNotFoundError:
                 continue
-            if run.status not in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+            if run.status not in RECONCILABLE_RUN_STATUSES:
                 continue
             if run.updated_at >= cutoff:
                 continue
@@ -243,10 +264,7 @@ class WorkflowEventTracker:
                     metadata=metadata,
                     updated_at=now,
                 ),
-                expected_statuses={
-                    WorkflowRunStatus.QUEUED,
-                    WorkflowRunStatus.RUNNING,
-                },
+                expected_statuses=set(RECONCILABLE_RUN_STATUSES),
                 updated_before=cutoff,
             )
             if updated is not None:
