@@ -552,6 +552,26 @@ class ConnectorPageQueuedEvent(EventBase):
     cursor: str | None = None
 
 
+class WorkflowStepQueuedEvent(EventBase):
+    """One workflow step is ready to execute.
+
+    Identifiers only. The executor reloads the run and the published definition
+    snapshot, so a redelivered event cannot resurrect a stale view of step
+    state, attempt counts, or the outputs earlier steps produced.
+
+    ``definition_id`` and ``version`` together name the immutable snapshot the
+    run started against, so a definition edited mid-run cannot change the steps
+    of a run already in flight.
+    """
+
+    event_type: Literal["workflow.step.queued"] = "workflow.step.queued"
+    knowledge_base_id: str
+    workflow_id: str
+    definition_id: str
+    version: str
+    step_id: str
+
+
 
 
 AnyEvent = (
@@ -577,6 +597,7 @@ AnyEvent = (
     | ScoreBatchQueuedEvent
     | ScoreRunQueuedEvent
     | ConnectorPageQueuedEvent
+    | WorkflowStepQueuedEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
@@ -630,6 +651,7 @@ __all__ = [
     "IdentityLinkDecisionRecordedEvent",
     "ScoreBatchQueuedEvent",
     "ConnectorPageQueuedEvent",
+    "WorkflowStepQueuedEvent",
     "ScoreRunQueuedEvent",
     "IdentityLinkDecisionReference",
     "KnowledgeBaseCreatedEvent",

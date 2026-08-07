@@ -93,6 +93,13 @@ class WorkflowStepState(BaseModel):
 
     step_name: str
     status: WorkflowStepStatus = WorkflowStepStatus.PENDING
+    # A first-class field rather than a `metadata` key (spec decision D1):
+    # retry accounting is state the executor reasons about, and burying it in
+    # a free-form dict makes it stringly-typed and invisible to validation.
+    # Defaulted, so runs persisted before this existed still deserialize —
+    # WorkflowRun is stored whole as JSON, so a missing key would otherwise
+    # make every in-flight run unloadable at deploy time.
+    attempts: int = Field(default=0, ge=0)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
 

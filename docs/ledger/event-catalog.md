@@ -1,6 +1,6 @@
 # Event Catalog
 
-**Generated:** 2026-05-22 (merge commit `acae4ac`) · **Union reconciled:** 2026-08-07 (35 members)
+**Generated:** 2026-05-22 (merge commit `acae4ac`) · **Union reconciled:** 2026-08-07 (36 members)
 **Source:** `backend/events/types.py` — re-derive before relying on completeness; the per-event sections below still reflect the 2026-05-22 sweep.
 
 All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `source`, and `schema_version: int = 1`.
@@ -102,7 +102,7 @@ All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `so
 
 ## `AnyEvent` Union
 
-**35 members** as of 2026-08-07. Do not copy the list below into a `match` or
+**36 members** as of 2026-08-07. Do not copy the list below into a `match` or
 an exhaustiveness check without re-deriving it — this block listed 28 while the
 code had 32, so anything built from it silently dropped four event types.
 Ground truth:
@@ -144,4 +144,5 @@ AnyEvent = (
 | `ScoreRunStatusChangedEvent` | `score_run.status_changed` | SAFE-CMS-002 score-run lifecycle. Published by `ScoreRunService` for operator/UI refresh; not itself a work trigger. |
 | `ScoreRunQueuedEvent` | `score.run.queued` | A run started without an explicit entity list needs enumerating. Consumed by `analytics/score_runs/executor.py`, which lists the KB's entities and creates the batches — enumeration in the HTTP request failed large KBs before any work was durable. |
 | `ConnectorPageQueuedEvent` | `connector.page.queued` | One page of a connector pull is ready to read and ingest. Consumed by `connectors/executor.py`, which reads the page from the source adapter, registers the rows through the records service, advances `source_cursor`, and chains the next page. Carries identifiers plus an opaque cursor only — the executor reloads run and connector state, so a redelivered event cannot resurrect stale counters. |
+| `WorkflowStepQueuedEvent` | `workflow.step.queued` | One workflow step is ready to execute. Consumed by `workflow_definitions/executor.py`, which evaluates the step's condition, dispatches its capability through the registry, records the outcome and chains the next step. Carries identifiers only, plus the `definition_id`/`version` naming the immutable snapshot the run started against — so a definition edited mid-run cannot change the steps of a run already in flight. |
 | `ScoreBatchQueuedEvent` | `score.batch.queued` | One score-all batch ready to execute. Consumed by `analytics/score_runs/executor.py`. Carries identifiers only — the executor reloads state, so a redelivered event cannot resurrect a stale snapshot. |

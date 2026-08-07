@@ -427,6 +427,7 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "score.batch.queued",
     "score.run.queued",
     "connector.page.queued",
+    "workflow.step.queued",
 )
 # Domain hot-swap (E6): the worker consumes `config.updated` on its own
 # non-blocking poll — never through the pipeline drain — so a dependency
