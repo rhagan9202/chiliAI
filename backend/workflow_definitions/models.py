@@ -8,6 +8,7 @@ from typing import Literal, TypeAlias, cast
 from pydantic import BaseModel, Field, computed_field
 
 from shared.utils import utc_now
+from workflow_definitions.conditions import ConditionSyntaxError, parse_condition
 
 BUILT_IN_WORKFLOW_CAPABILITIES = frozenset(
     {
@@ -161,6 +162,32 @@ def validate_workflow_definition_payload(
             errors.append(
                 f"Step '{step.step_id}' using capability '{step.capability_ref}' "
                 "must require human approval."
+            )
+
+    known_step_ids = set(step_ids)
+    for step in steps:
+        if step.condition is None:
+            continue
+        try:
+            parsed = parse_condition(step.condition)
+        except ConditionSyntaxError as exc:
+            # Rejected on create rather than at run time: an unparseable
+            # condition would otherwise fail every execution of the workflow,
+            # long after whoever wrote it has moved on.
+            errors.append(f"Step '{step.step_id}' has an invalid condition: {exc}")
+            continue
+        if parsed.step_id not in known_step_ids:
+            errors.append(
+                f"Step '{step.step_id}' condition references unknown step "
+                f"'{parsed.step_id}'."
+            )
+        elif step_ids.index(parsed.step_id) >= step_ids.index(step.step_id):
+            # A condition can only read outputs that already exist. Referring
+            # forward always evaluates false, so the step would silently never
+            # run — the most expensive kind of authoring mistake to diagnose.
+            errors.append(
+                f"Step '{step.step_id}' condition references step "
+                f"'{parsed.step_id}', which does not run before it."
             )
 
     return WorkflowDefinitionValidationResult(valid=not errors, errors=errors)
