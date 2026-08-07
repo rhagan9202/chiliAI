@@ -62,9 +62,18 @@ class CapabilityRegistryService:
         capability_id: str,
         *,
         actor_roles: Sequence[str],
-        domain_name: str | None = None,
-        environment_tag: str | None = None,
+        domain_name: str | None,
+        environment_tag: str | None,
     ) -> CapabilityExecutionEnvelope:
+        """Authorize one capability call, failing closed on missing context.
+
+        ``domain_name`` and ``environment_tag`` are required keyword arguments
+        with no defaults. They still accept ``None`` — a caller may genuinely
+        not know them — but ``None`` denies rather than skips the gate, and the
+        absent default means omitting them is a type error rather than a silent
+        bypass.
+        """
+
         manifest = self.get(capability_id)
         if manifest is None:
             return CapabilityExecutionEnvelope(
@@ -75,7 +84,18 @@ class CapabilityRegistryService:
                 audit_required=False,
             )
         audit_required = manifest.permission.requires_audit
-        if domain_name is not None and not _supports_domain(manifest, domain_name):
+        # Fail closed on omitted context. `domain_name is not None and ...` read
+        # an absent domain as "unrestricted", so a caller that simply forgot to
+        # pass one skipped the domain gate entirely.
+        if domain_name is None:
+            return CapabilityExecutionEnvelope(
+                capability_id=capability_id,
+                success=False,
+                error_code="domain_not_supplied",
+                error_message="Capability authorization requires a domain.",
+                audit_required=audit_required,
+            )
+        if not _supports_domain(manifest, domain_name):
             return CapabilityExecutionEnvelope(
                 capability_id=capability_id,
                 success=False,
@@ -86,10 +106,15 @@ class CapabilityRegistryService:
                 ),
                 audit_required=audit_required,
             )
-        if environment_tag is not None and not _supports_environment(
-            manifest,
-            environment_tag,
-        ):
+        if environment_tag is None:
+            return CapabilityExecutionEnvelope(
+                capability_id=capability_id,
+                success=False,
+                error_code="environment_not_supplied",
+                error_message="Capability authorization requires an environment.",
+                audit_required=audit_required,
+            )
+        if not _supports_environment(manifest, environment_tag):
             return CapabilityExecutionEnvelope(
                 capability_id=capability_id,
                 success=False,
@@ -97,6 +122,21 @@ class CapabilityRegistryService:
                 error_message=(
                     f"Capability '{capability_id}' is not available for environment "
                     f"'{environment_tag}'."
+                ),
+                audit_required=audit_required,
+            )
+        if not manifest.permission.required_roles:
+            # Distinct from `capability_role_denied`: the caller's roles are
+            # irrelevant because the manifest grants none. That is a broken or
+            # deliberately disabled capability, and an operator needs to be able
+            # to tell those two situations apart.
+            return CapabilityExecutionEnvelope(
+                capability_id=capability_id,
+                success=False,
+                error_code="no_roles_permitted",
+                error_message=(
+                    f"Capability '{capability_id}' permits no roles, so it "
+                    "cannot be invoked by anyone."
                 ),
                 audit_required=audit_required,
             )
@@ -188,7 +228,11 @@ def _supports_environment(manifest: CapabilityManifest, environment_tag: str) ->
 def _roles_can_access(manifest: CapabilityManifest, roles: Sequence[str]) -> bool:
     required_roles = manifest.permission.required_roles
     if not required_roles:
-        return True
+        # A capability granting no role is callable by nobody. Reading an empty
+        # list as "everyone" is the most permissive of the three possible
+        # interpretations, and it applies precisely to a manifest whose
+        # permissions were never filled in.
+        return False
     return any(
         _role_meets_requirement(role, required)
         for role in roles
@@ -197,9 +241,15 @@ def _roles_can_access(manifest: CapabilityManifest, roles: Sequence[str]) -> boo
 
 
 def _role_can_access(manifest: CapabilityManifest, role: str) -> bool:
+    """Browse-path counterpart of `_roles_can_access`.
+
+    The same bypass existed in both. Closing only the authorize path would have
+    left the browse API advertising a capability that can never be invoked.
+    """
+
     required_roles = manifest.permission.required_roles
     if not required_roles:
-        return True
+        return False
     return any(_role_meets_requirement(role, required) for required in required_roles)
 
 
