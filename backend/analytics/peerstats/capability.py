@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from analytics.peerstats.peer_analysis import PeerAnalysisResponse, PeerAnalysisService
 from config.schema import CapabilitiesConfig
 
-PeerAnalysisCapabilityId = Literal["analytics.peer_analysis"]
+# The id the *manifest* publishes. `capabilities/registry.py` declares
+# `analytics.peer_context`, and workflow definitions reference that id, so
+# it is the contract; this adapter previously used `analytics.peer_analysis`,
+# which no manifest declared — leaving a complete implementation unreachable
+# through the registry and a registered manifest with nothing behind it.
+PeerAnalysisCapabilityId = Literal["analytics.peer_context"]
 
 
 class PeerAnalysisCapabilityError(RuntimeError):
@@ -32,7 +37,7 @@ class PeerAnalysisCapabilityInput(BaseModel):
 class PeerAnalysisCapabilityDescriptor(BaseModel):
     """Static metadata a workflow/capability registry can expose."""
 
-    capability_id: PeerAnalysisCapabilityId = "analytics.peer_analysis"
+    capability_id: PeerAnalysisCapabilityId = "analytics.peer_context"
     label: str = "Peer analysis"
     required_capability: Literal["peer_stats"] = "peer_stats"
     input_model: str = "PeerAnalysisCapabilityInput"
@@ -57,7 +62,7 @@ class PeerAnalysisCapability:
 
         if not capabilities.peer_stats:
             raise PeerAnalysisCapabilityDisabledError(
-                "Capability 'analytics.peer_analysis' requires domain capability "
+                "Capability 'analytics.peer_context' requires domain capability "
                 "'peer_stats'."
             )
         request = (

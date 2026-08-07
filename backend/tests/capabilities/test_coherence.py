@@ -132,14 +132,13 @@ def test_every_manifest_names_an_importable_module() -> None:
     )
 
 
-@pytest.mark.xfail(reason="G10 — closed by Task 3", strict=True)
 def test_every_capability_adapter_id_is_a_registered_manifest_id() -> None:
     """Two halves of one feature must not live under different names.
 
-    `analytics/peerstats/capability.py` implements a complete adapter under
-    `analytics.peer_analysis`, which no manifest declares, while the manifest
-    declares `analytics.peer_context`, which nothing implements. Both halves are
-    correct; neither is reachable.
+    `analytics/peerstats/capability.py` implemented a complete adapter under
+    `analytics.peer_analysis`, which no manifest declared, while the manifest
+    declared `analytics.peer_context`, which nothing implemented. Both halves
+    were correct; neither was reachable.
     """
     registered = _capability_ids()
     orphans: list[str] = []
