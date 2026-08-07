@@ -169,3 +169,48 @@ def test_connector_routes_return_404_for_out_of_scope_kb() -> None:
         response = client.get(BASE_URL)
 
     assert response.status_code == 404
+
+
+def test_registering_an_unimplemented_source_type_returns_422_not_409() -> None:
+    """Invalid input, not a conflict.
+
+    `register_connector` raises ValueError for a genuine definition conflict,
+    which maps to 409. If ConnectorValidationError were caught by that clause —
+    or subclassed ValueError — an operator asking for an unbuilt source type
+    would be told their connector already exists.
+    """
+    app, _service = _app_harness()
+    _set_user(app, _user("analyst"))
+    payload = {**_connector_payload(), "source_type": "http"}
+
+    with TestClient(app) as client:
+        response = client.post(BASE_URL, json=payload)
+
+    assert response.status_code == 422
+    assert "not implemented" in response.json()["detail"]
+    assert "filesystem" in response.json()["detail"]
+
+
+def test_registering_a_scheduled_connector_returns_422() -> None:
+    app, _service = _app_harness()
+    _set_user(app, _user("analyst"))
+    payload = {**_connector_payload(), "schedule": {"mode": "cron", "expression": "0 3 * * *"}}
+
+    with TestClient(app) as client:
+        response = client.post(BASE_URL, json=payload)
+
+    assert response.status_code == 422
+    assert "not implemented" in response.json()["detail"]
+
+
+def test_a_genuine_definition_conflict_still_returns_409() -> None:
+    """The new 422 clause must not have swallowed the conflict case."""
+    app, service = _app_harness()
+    _set_user(app, _user("analyst"))
+    service.register_connector(KB_ID, _connector_definition())
+    conflicting = {**_connector_payload(), "name": "A Different Name"}
+
+    with TestClient(app) as client:
+        response = client.post(BASE_URL, json=conflicting)
+
+    assert response.status_code == 409

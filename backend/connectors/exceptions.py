@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
-__all__ = ["ConnectorError", "ConnectorSourceError"]
+__all__ = ["ConnectorError", "ConnectorSourceError", "ConnectorValidationError"]
 
 
 class ConnectorError(Exception):
     """Base class for connector failures."""
+
+
+class ConnectorValidationError(ConnectorError):
+    """A connector definition or sync request asks for something unsupported.
+
+    Deliberately **not** a ``ValueError`` subclass. ``ConnectorService`` already
+    raises ``ValueError`` for definition conflicts, which the router maps to
+    HTTP 409; inheriting from it would report an unimplemented source type as a
+    conflict instead of as invalid input.
+    """
 
 
 class ConnectorSourceError(ConnectorError):

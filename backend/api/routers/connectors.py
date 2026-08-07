@@ -25,6 +25,7 @@ from api.dependencies import (
 from api.middleware.auth import User
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig
+from connectors.exceptions import ConnectorValidationError
 from connectors.models import (
     ConnectorDefinition,
     ConnectorDefinitionCreate,
@@ -125,6 +126,13 @@ def register_connector(
                 config=payload.config,
             ),
         )
+    except ConnectorValidationError as exc:
+        # Before the ValueError clause on purpose: an unimplemented source type
+        # is invalid input, not a conflict with an existing definition.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -155,6 +163,11 @@ def start_sync_run(
         )
     except KeyError as exc:
         raise _not_found("Connector", connector_id) from exc
+    except ConnectorValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     return _sync_run_response(run)
 
 
