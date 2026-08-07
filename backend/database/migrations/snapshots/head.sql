@@ -262,6 +262,8 @@ CREATE TABLE public.score_batches (
     batch_number integer NOT NULL,
     status text NOT NULL,
     entity_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    scored_entities integer DEFAULT 0 NOT NULL,
+    failed_entities integer DEFAULT 0 NOT NULL,
     attempts integer DEFAULT 0 NOT NULL,
     error_summary text,
     created_at timestamp with time zone NOT NULL,

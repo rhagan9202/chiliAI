@@ -73,6 +73,8 @@ def upgrade() -> None:
             batch_number integer NOT NULL,
             status text NOT NULL,
             entity_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+            scored_entities integer NOT NULL DEFAULT 0,
+            failed_entities integer NOT NULL DEFAULT 0,
             attempts integer NOT NULL DEFAULT 0,
             error_summary text,
             created_at timestamptz NOT NULL,

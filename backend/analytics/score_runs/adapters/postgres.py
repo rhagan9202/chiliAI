@@ -34,7 +34,8 @@ _RUN_COLUMNS = (
 
 _BATCH_COLUMNS = (
     "id, run_id, knowledge_base_id, batch_number, status, entity_ids, "
-    "attempts, error_summary, created_at, updated_at, started_at, finished_at"
+    "scored_entities, failed_entities, attempts, error_summary, "
+    "created_at, updated_at, started_at, finished_at"
 )
 
 
@@ -195,11 +196,14 @@ class PostgresScoreRunRepository:
                     f"""
                     INSERT INTO score_batches ({_BATCH_COLUMNS})
                     VALUES (
-                        %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
+                        %s, %s, %s, %s
                     )
                     ON CONFLICT (run_id, batch_number) DO UPDATE SET
                         status = EXCLUDED.status,
                         entity_ids = EXCLUDED.entity_ids,
+                        scored_entities = EXCLUDED.scored_entities,
+                        failed_entities = EXCLUDED.failed_entities,
                         attempts = EXCLUDED.attempts,
                         error_summary = EXCLUDED.error_summary,
                         updated_at = EXCLUDED.updated_at,
@@ -321,6 +325,8 @@ def _batch_params(batch: ScoreBatch) -> tuple[object, ...]:
         batch.batch_number,
         batch.status,
         json.dumps(list(batch.entity_ids)),
+        batch.scored_entities,
+        batch.failed_entities,
         batch.attempts,
         batch.error_summary,
         batch.created_at,
@@ -359,12 +365,14 @@ def _batch_from_row(row: Row) -> ScoreBatch:
         batch_number=int(cast(int, row[3])),
         status=cast(ScoreBatchStatus, row[4]),
         entity_ids=_decode_string_list(row[5]),
-        attempts=int(cast(int, row[6])),
-        error_summary=cast(str | None, row[7]),
-        created_at=cast(datetime, row[8]),
-        updated_at=cast(datetime, row[9]),
-        started_at=cast(datetime | None, row[10]),
-        finished_at=cast(datetime | None, row[11]),
+        scored_entities=int(cast(int, row[6])),
+        failed_entities=int(cast(int, row[7])),
+        attempts=int(cast(int, row[8])),
+        error_summary=cast(str | None, row[9]),
+        created_at=cast(datetime, row[10]),
+        updated_at=cast(datetime, row[11]),
+        started_at=cast(datetime | None, row[12]),
+        finished_at=cast(datetime | None, row[13]),
     )
 
 
