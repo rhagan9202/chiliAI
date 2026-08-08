@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 __all__ = ["GraphRepositorySnapshotSource"]
 
 _DEFAULT_MAX_NODES = 5000
+# Entities per graph query while assembling a snapshot.
+_ENTITY_PAGE_SIZE = 1000
 
 
 def _numeric_feature_map(entity: Entity) -> dict[str, float]:
@@ -53,8 +55,38 @@ class GraphRepositorySnapshotSource:
         self._cluster_store = cluster_store
         self._max_nodes = max_nodes
 
+    def _read_entities(self, knowledge_base_id: str) -> list[Entity]:
+        """Read every entity, a bounded page at a time.
+
+        This changes the *shape* of the read, not its size: one query returning
+        the whole knowledge base becomes N queries returning a page each, which
+        is the difference between a driver buffering millions of rows and doing
+        bounded work repeatedly.
+
+        It does **not** bound the snapshot, and nothing here should be read as
+        claiming otherwise. Truncation ranks nodes by degree, which cannot be
+        computed without every entity *and* every relationship — so a full-graph
+        read is inherent to this truncation strategy, and `get_relationships`
+        has no paged variant at all. Bounding this properly needs a degree-aware
+        query that selects the top-N in the database; that is a different change
+        and is recorded in docs/ledger/module-map.md rather than implied here.
+        """
+
+        entities: list[Entity] = []
+        offset = 0
+        while True:
+            page = self._repository.get_entities_page(
+                knowledge_base_id, limit=_ENTITY_PAGE_SIZE, offset=offset
+            )
+            entities.extend(page)
+            # Short page, not empty: an entity count that is an exact multiple
+            # of the page size would otherwise cost an extra round trip.
+            if len(page) < _ENTITY_PAGE_SIZE:
+                return entities
+            offset += _ENTITY_PAGE_SIZE
+
     def load_snapshot(self, *, knowledge_base_id: str) -> GraphSnapshot:
-        entities = self._repository.get_entities(knowledge_base_id)
+        entities = self._read_entities(knowledge_base_id)
         if not entities:
             raise GnnSnapshotUnavailableError(
                 f"Knowledge base '{knowledge_base_id}' has no graph entities yet."

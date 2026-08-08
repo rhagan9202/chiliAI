@@ -198,3 +198,80 @@ def test_non_finite_float_strings_excluded_from_features() -> None:
     node = next(n for n in snapshot.nodes if n.entity_id == "e-1")
     # Degree (1.0) + numeric properties; "nan" string parsed but excluded, 2.5 included
     assert node.feature_values == [1.0, 2.5]
+
+
+class _CountingGraphRepository(InMemoryGraphRepository):
+    """Records which entity-read shape the snapshot source used."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.unbounded_entity_reads = 0
+
+    def get_entities(self, knowledge_base_id: str) -> list[Entity]:
+        self.unbounded_entity_reads += 1
+        return super().get_entities(knowledge_base_id)
+
+
+def test_the_snapshot_source_reads_entities_in_bounded_pages() -> None:
+    """One unbounded query becomes N bounded ones.
+
+    This bounds the *result set per query*, not the snapshot: see
+    `test_the_snapshot_still_reads_the_whole_graph` for what it does not fix.
+    """
+    repository = _CountingGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id=f"e-{index:04d}", type="provider") for index in range(60)],
+    )
+    source = GraphRepositorySnapshotSource(
+        repository, InMemoryClusterSummaryStore(), max_nodes=10
+    )
+
+    source.load_snapshot(knowledge_base_id="kb-1")
+
+    assert repository.unbounded_entity_reads == 0
+
+
+def test_paging_does_not_lift_the_node_cap() -> None:
+    """The cap bounds an O(n^2)/O(n^3) computation.
+
+    A paging change that read past it would convert a bounded analytics step
+    into an unbounded one — a worse outcome than the unbounded read it
+    replaced.
+    """
+    repository = _CountingGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id=f"e-{index:04d}", type="provider") for index in range(60)],
+    )
+    source = GraphRepositorySnapshotSource(
+        repository, InMemoryClusterSummaryStore(), max_nodes=10
+    )
+
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+
+    assert len(snapshot.nodes) == 10
+
+
+def test_the_snapshot_still_reads_the_whole_graph() -> None:
+    """States the limit rather than implying it away.
+
+    Truncation ranks by **degree**, which cannot be computed without every node
+    and every relationship — so the snapshot is a full-graph read by design.
+    `get_relationships` also has no paged variant. Bounding this properly needs
+    a degree-aware query, not a paged loop, and that is a different change.
+    """
+    repository = _CountingGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id=f"e-{index:04d}", type="provider") for index in range(30)],
+    )
+    source = GraphRepositorySnapshotSource(
+        repository, InMemoryClusterSummaryStore(), max_nodes=5
+    )
+
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+
+    # Every entity was read to rank them, even though only five survive.
+    assert len(snapshot.nodes) == 5
+    assert len(repository.get_entities("kb-1")) == 30

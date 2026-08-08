@@ -140,7 +140,9 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 Time-series anomaly detection. Adapters: `InMemoryTimeSeriesHistorySource`, `PostgresTimeSeriesHistorySource` (observation adapters live in `monitoring/adapters/postgres.py`).
 
 ### `gnn/`
-Graph neural network analysis (link prediction, clustering). Adapter: `InMemoryGraphSnapshotSource`.
+Graph neural network analysis (link prediction, clustering). Adapters: `InMemoryGraphSnapshotSource`, `GraphRepositorySnapshotSource`.
+
+**Snapshot reads are a full-graph read by design, and remain so.** The 5000-node cap truncates *after* reading everything, ranking by degree — which cannot be computed without every entity **and** every relationship. Entity reads are paged as of 2026-08-07 (a bounded result set per query rather than one query returning the whole knowledge base), but `get_relationships` has no paged variant and the degree map is O(n) regardless. Bounding this properly needs a degree-aware query that selects the top-N in the database; paging alone cannot do it, and this entry should not be read as claiming it does.
 
 ### `risk/`
 Risk scoring. Adapters: `InMemoryRiskSignalSource`, `InMemoryRiskHistoryWriter`, `PostgresRiskHistoryStore` (writer-only + `load_historical_score`).
