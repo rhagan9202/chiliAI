@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import signal
+
 from pathlib import Path
 from typing import cast
 
@@ -245,3 +248,62 @@ class TestOpenApiSchema:
         assert {"capabilities", "validation", "records", "ui", "alerts"}.issubset(
             properties
         )
+
+
+class TestShutdownSignal:
+    """The stream's exit has to be armed before uvicorn starts draining.
+
+    These cover the wiring. They cannot cover the *ordering* that matters —
+    that uvicorn waits for connections before running lifespan shutdown, so a
+    lifespan-only implementation deadlocks. The first attempt at this fix did
+    exactly that and passed every in-process test, because `TestClient` has no
+    connection to drain. It was caught by restarting the container with a
+    stream open and watching the server log `Waiting for connections to close.`
+    and never finish.
+    """
+
+    def test_the_app_exposes_a_shutdown_event_before_the_lifespan_runs(self) -> None:
+        """`TestClient(app)` outside a `with` block never runs the lifespan.
+
+        A route reading `app.state.shutdown_event` would then raise at request
+        time, so the event is created in the factory, not the lifespan.
+        """
+        from api.app import create_app
+
+        app = create_app()
+
+        assert isinstance(app.state.shutdown_event, asyncio.Event)
+        assert not app.state.shutdown_event.is_set()
+
+    def test_the_lifespan_chains_to_the_previous_signal_handler(self) -> None:
+        """uvicorn installs its own SIGTERM handler; ours must not replace it.
+
+        Dropping uvicorn's handler would trade a hung shutdown for one that
+        never starts.
+        """
+        from api.app import create_app
+
+        called: list[int] = []
+        previous = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, lambda signum, frame: called.append(signum))
+        try:
+            with TestClient(create_app()):
+                installed = signal.getsignal(signal.SIGTERM)
+                # In-process the app runs in a worker thread, where
+                # `signal.signal` raises and the hook is skipped by design.
+                if callable(installed):
+                    installed(signal.SIGTERM, None)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+
+        assert called == [signal.SIGTERM]
+
+    def test_the_lifespan_restores_the_handler_it_replaced(self) -> None:
+        """A factory used repeatedly in one process must not stack handlers."""
+        from api.app import create_app
+
+        original = signal.getsignal(signal.SIGTERM)
+        with TestClient(create_app()):
+            pass
+
+        assert signal.getsignal(signal.SIGTERM) is original

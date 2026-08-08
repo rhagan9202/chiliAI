@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -109,6 +111,49 @@ def _seed_agent_service() -> AgentServiceProtocol:
         ]
     )
     return create_agent_service(run_store, event_bus=InMemoryEventBus())
+
+
+def test_the_stream_stops_when_the_app_is_shutting_down() -> None:
+    """An open SSE client must not hold the process open.
+
+    `_stream_workspace_updates` looped forever, breaking only on client
+    disconnect, so uvicorn's graceful shutdown waited on it indefinitely: in
+    dev a single open browser tab left the API `unhealthy` and unresponsive
+    after every `--reload`, recovering the instant the tab closed. In
+    production the same shape stalls a deploy until the shutdown timeout.
+
+    No `max_events` here on purpose — the bound must come from shutdown, and
+    with the bug this call never returns.
+    """
+    from api.app import create_app
+
+    app = create_app()
+    with TestClient(app) as client:
+        shutdown = app.state.shutdown_event
+        assert isinstance(shutdown, asyncio.Event)
+        shutdown.set()
+
+        response = client.get("/events/stream")
+
+        assert response.status_code == 200
+
+
+def test_shutdown_does_not_cut_a_stream_that_is_merely_slow() -> None:
+    """The guard must key on shutdown, not on elapsed time.
+
+    A heartbeat interval passing is normal; only the shutdown signal ends the
+    stream early. Without this, an implementation that simply capped the loop
+    would pass the test above while silently truncating healthy clients.
+    """
+    from api.app import create_app
+
+    app = create_app()
+    with TestClient(app) as client:
+        assert not app.state.shutdown_event.is_set()
+
+        response = client.get("/events/stream", params={"max_events": 2})
+
+        assert response.content.decode().count("workspace-update") == 2
 
 
 def test_events_stream_returns_snapshot_when_auth_disabled() -> None:

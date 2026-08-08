@@ -228,7 +228,7 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Adapters:** `InMemoryEventBus`, `RedisStreamsEventBus`
 
-**Known gap (surfaced 2026-08-08, not fixed):** `/events/stream` blocks uvicorn's graceful shutdown indefinitely. `_stream_workspace_updates` is a `while True` loop that only exits on `request.is_disconnected()` or `max_events`, so a connected browser holds the connection open forever; uvicorn logs `Waiting for connections to close.` and never finishes. Observed in dev, where `--reload` then leaves the API container `unhealthy` and unresponsive after any code change while a tab is open — it recovered the instant the tab was closed. The same shape would stall a production deploy until uvicorn's shutdown timeout. The stream needs to watch for the shutdown signal, not only for client disconnect.
+**Long-lived responses participate in shutdown as of 2026-08-08.** `/events/stream` looped forever, breaking only on client disconnect, so uvicorn's graceful shutdown waited on it indefinitely — in dev a single open browser tab left the API container `unhealthy` and unresponsive after every `--reload`, recovering the moment the tab closed; in production the same shape stalls a deploy until the shutdown timeout. `create_app` now puts an `asyncio.Event` on `app.state.shutdown_event`, a lifespan sets it, and the stream's heartbeat *waits on* that event instead of sleeping blind, so shutdown is acted on immediately rather than up to a heartbeat later. Any future streaming route must do the same; `/events/stream` was the only unbounded one when this landed.
 
 ---
 
