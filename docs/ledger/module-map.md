@@ -140,7 +140,9 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 Time-series anomaly detection. Adapters: `InMemoryTimeSeriesHistorySource`, `PostgresTimeSeriesHistorySource` (observation adapters live in `monitoring/adapters/postgres.py`).
 
 ### `gnn/`
-Graph neural network analysis (link prediction, clustering). Adapter: `InMemoryGraphSnapshotSource`.
+Graph neural network analysis (link prediction, clustering). Adapters: `InMemoryGraphSnapshotSource`, `GraphRepositorySnapshotSource`.
+
+**Snapshot reads are a full-graph read by design, and remain so.** The 5000-node cap truncates *after* reading everything, ranking by degree — which cannot be computed without every entity **and** every relationship. Entity reads are paged as of 2026-08-07 (a bounded result set per query rather than one query returning the whole knowledge base), but `get_relationships` has no paged variant and the degree map is O(n) regardless. Bounding this properly needs a degree-aware query that selects the top-N in the database; paging alone cannot do it, and this entry should not be read as claiming it does.
 
 ### `risk/`
 Risk scoring. Adapters: `InMemoryRiskSignalSource`, `InMemoryRiskHistoryWriter`, `PostgresRiskHistoryStore` (writer-only + `load_historical_score`).
@@ -183,6 +185,8 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 **Key exports:** `MonitoringService`, `MonitoringServiceProtocol`, `AlertsService`, `AlertsServiceProtocol`
 
 **Adapters:** `InMemoryMonitoringAdapter`, `PostgresAlertHistoryStore` + observation adapters
+
+**Real-time delivery is SSE, and only SSE.** `AlertsCreatedEvent` (`alerts.created`, plural) is the produced event, published here and by `agent/coordinator.py`. A singular `AlertCreatedEvent` (`alert.created`) existed until 2026-08-07 documented as feeding a WebSocket alert stream; it was constructed nowhere, and `WebSocketHub.broadcast` had no production caller, so `/ws/alerts` and `/ws/pipeline` accepted connections and emitted nothing for their whole existence. Both routes, the hub, its auth guards, and four producerless event types (`alert.created`, `pipeline.progress`, `claims.received`, `claims.ingested`) were retired rather than given producers: the hub was process-local, so a broadcast would have reached only clients on the replica that consumed the event, whereas `/events/stream` rebuilds each snapshot from Postgres and is replica-safe by construction. `tests/capabilities/test_coherence.py` now fails if any declared event type has no producer.
 
 ---
 
@@ -465,7 +469,11 @@ The approval gate is server-side and fails closed. A parked run is `AWAITING_APP
 
 `replay_failed_batches` publishes `score.batch.queued` for the first replayed batch. It previously published only `score_run.status_changed` — a notification the worker does not consume — so a replayed run was created with queued batches and executed nothing (live-confirmed 2026-08-07, fixed the same day).
 
-**Known gap:** `GraphRepository.get_entities` is not paginated, so enumeration still materialises the full entity list once — in the worker, where it is retryable, rather than in the HTTP request. True streaming enumeration needs a paginated graph read.
+**Enumeration is paged as of 2026-08-07** via `GraphRepository.get_entities_page(kb, *, limit, offset)`, page size `CHILI_SCORE_ENUMERATION_PAGE_SIZE` (default 1000). Verified live against Neo4j: 5,000 seeded entities enumerated exactly once each, no duplicates, no gaps; and a 57-entity KB at page size 7 across 9 pages. A full score run over HTTP reported `total_entities=57` against a graph holding exactly 57.
+
+The honest limit: reads are bounded **per query**, but the id list is still accumulated in memory to form batches, so peak memory is still O(entities). Paging removes the single unbounded result set — the driver no longer buffers an entire knowledge base at once — not the accumulation.
+
+**Known gap (surfaced 2026-08-08 by live verification, not yet fixed):** entities the risk service declines to score — `RiskInsufficientSignalsError`, which `executor.py` logs at INFO as an *expected* per-entity condition — are counted as `failed_entities`, because that field is computed as `len(batch.entity_ids) - scored`. A run over a KB whose entities carry fewer than two signals therefore reports `status=completed, scored=0, failed=57` with no `error_message` on any batch: the reason exists only in worker logs. `WorkflowStepStatus` already draws exactly this distinction for steps (`SKIPPED` is documented as separate from both `COMPLETED` and `FAILED`); score runs do not. Fixing it needs a `skipped_entities` counter on run and batch, a migration, contract regeneration, and a dashboard change.
 
 ---
 

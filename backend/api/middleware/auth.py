@@ -24,8 +24,6 @@ from fastapi import (
     Depends,
     HTTPException,
     Request,
-    WebSocket,
-    WebSocketException,
     status,
 )
 from prometheus_client import Counter
@@ -47,7 +45,6 @@ __all__ = [
     "decode_token",
     "get_jwks_cache",
     "get_current_user",
-    "get_current_websocket_user",
     "set_jwks_fetcher",
 ]
 
@@ -445,32 +442,18 @@ def _resolve_user_from_session_id(
     *,
     auth_config: AuthConfig,
     session_store: SessionStoreProtocol,
-    websocket: bool = False,
 ) -> User:
     try:
         record = session_store.get(sid)
     except SessionNotFoundError as exc:
-        if websocket:
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Session is unknown or has expired.",
-            ) from exc
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session is unknown or has expired.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-    try:
-        record = _maybe_refresh_session(
-            record, auth_config=auth_config, session_store=session_store
-        )
-    except HTTPException as exc:
-        if websocket:
-            raise WebSocketException(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason=str(exc.detail),
-            ) from exc
-        raise
+    record = _maybe_refresh_session(
+        record, auth_config=auth_config, session_store=session_store
+    )
     session_store.touch(sid, ttl_seconds=auth_config.session_ttl_seconds)
     return _user_from_session(record)
 
@@ -510,50 +493,6 @@ def get_current_user(
         )
 
     claims = decode_token(token, auth_config=auth_config, jwks_cache=_jwks_cache)
-    return _extract_user(
-        claims,
-        roles_claim=auth_config.roles_claim,
-        knowledge_base_ids_claim=auth_config.knowledge_base_ids_claim,
-    )
-
-
-def get_current_websocket_user(
-    websocket: WebSocket,
-    domain_config: DomainConfig = Depends(get_domain_config),
-    session_store: SessionStoreProtocol = Depends(get_session_store),
-) -> User:
-    """Resolve the current ``User`` for WebSocket dependencies."""
-
-    auth_config = _resolve_auth_config(domain_config)
-    if not auth_config.enabled:
-        return build_anonymous_user()
-
-    sid = websocket.cookies.get(SESSION_COOKIE_NAME)
-    if sid is not None:
-        return _resolve_user_from_session_id(
-            sid,
-            auth_config=auth_config,
-            session_store=session_store,
-            websocket=True,
-        )
-
-    token = _extract_bearer_token_from_headers(websocket.headers)
-    if token is None:
-        raise WebSocketException(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason=(
-                f"Missing authentication: send {SESSION_COOKIE_NAME} cookie "
-                "or Bearer token."
-            ),
-        )
-
-    try:
-        claims = decode_token(token, auth_config=auth_config, jwks_cache=_jwks_cache)
-    except HTTPException as exc:
-        raise WebSocketException(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason=str(exc.detail),
-        ) from exc
     return _extract_user(
         claims,
         roles_claim=auth_config.roles_claim,

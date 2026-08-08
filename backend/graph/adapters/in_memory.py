@@ -154,6 +154,25 @@ class InMemoryGraphRepository(GraphRepository):
     def get_entities(self, knowledge_base_id: str) -> list[Entity]:
         return list(self._entities.get(knowledge_base_id, {}).values())
 
+    def get_entities_page(
+        self,
+        knowledge_base_id: str,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[Entity]:
+        if limit <= 0 or offset < 0:
+            return []
+        # Sorted, unlike `get_entities_by_type`, which slices insertion order.
+        # The Neo4j adapter orders by entity id, and an in-memory adapter that
+        # disagreed would let a paging bug pass every unit test and appear only
+        # against a real graph.
+        ordered = sorted(
+            self._entities.get(knowledge_base_id, {}).values(),
+            key=lambda entity: entity.id,
+        )
+        return ordered[offset : offset + limit]
+
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]:
         return list(self._relationships.get(knowledge_base_id, {}).values())
 

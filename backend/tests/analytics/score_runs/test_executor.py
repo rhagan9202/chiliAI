@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from analytics.risk.exceptions import RiskInsufficientSignalsError
 from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+import pytest
+
+from analytics.score_runs import executor as score_runs_executor
 from analytics.score_runs.executor import (
     handle_score_batch_queued,
     handle_score_run_queued,
@@ -436,3 +439,125 @@ def test_a_batch_reclaimed_too_many_times_is_failed_not_retried_forever() -> Non
     assert reloaded is not None and reloaded.status == "failed"
     assert run is not None and run.status == "completed"
     assert run.failed_entities == 1
+
+
+# --- bounded enumeration ----------------------------------------------------
+
+
+class _CountingGraphRepository(InMemoryGraphRepository):
+    """Records which read shape enumeration used."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.unbounded_calls = 0
+        self.page_calls = 0
+
+    def get_entities(self, knowledge_base_id: str) -> list[Entity]:
+        self.unbounded_calls += 1
+        return super().get_entities(knowledge_base_id)
+
+    def get_entities_page(
+        self, knowledge_base_id: str, *, limit: int, offset: int
+    ) -> list[Entity]:
+        self.page_calls += 1
+        return super().get_entities_page(
+            knowledge_base_id, limit=limit, offset=offset
+        )
+
+
+def _graph_with(count: int) -> _CountingGraphRepository:
+    repository = _CountingGraphRepository()
+    repository.upsert_entities(
+        _KB,
+        [Entity(id=f"entity-{index:04d}", type="provider") for index in range(count)],
+    )
+    return repository
+
+
+def _enumeration_deps(
+    graph_repository: _CountingGraphRepository,
+) -> tuple[ExecutionDeps, InMemoryScoreRunRepository]:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    return _deps_with_graph(repository, graph_repository), repository
+
+
+def test_enumeration_pages_rather_than_materialising_every_entity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Risk R2, second half.
+
+    Moving enumeration into the worker made the read retryable; it did not make
+    it bounded. `get_entities` has no LIMIT at all.
+    """
+    monkeypatch.setattr(score_runs_executor, "_ENUMERATION_PAGE_SIZE", 100)
+    graph_repository = _graph_with(250)
+    deps, repository = _enumeration_deps(graph_repository)
+
+    handle_score_run_queued(_run_queued_event(batch_size=100), deps)
+
+    assert graph_repository.unbounded_calls == 0
+    assert graph_repository.page_calls >= 3
+    assert repository.get_run(_RUN_ID) is not None
+
+
+def test_enumeration_covers_every_entity_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The test that matters.
+
+    An off-by-one in a paging loop produces a run that **completes** having
+    scored fewer entities than exist — no error, no failed batch, just a
+    smaller number nobody checks.
+    """
+    monkeypatch.setattr(score_runs_executor, "_ENUMERATION_PAGE_SIZE", 7)
+    graph_repository = _graph_with(25)
+    deps, repository = _enumeration_deps(graph_repository)
+
+    handle_score_run_queued(_run_queued_event(batch_size=4), deps)
+
+    enumerated = [
+        entity_id
+        for batch in repository.list_batches(run_id=_RUN_ID)
+        for entity_id in batch.entity_ids
+    ]
+    expected = sorted(entity.id for entity in graph_repository.get_entities(_KB))
+    assert sorted(enumerated) == expected
+    assert len(enumerated) == len(set(enumerated))
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.total_entities == 25
+
+
+def test_enumeration_handles_a_count_that_is_an_exact_multiple_of_the_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The boundary an `is empty` termination check gets wrong.
+
+    Stopping on a short page rather than an empty one saves a query per run;
+    stopping on the wrong one either costs an extra query or drops the tail.
+    """
+    monkeypatch.setattr(score_runs_executor, "_ENUMERATION_PAGE_SIZE", 5)
+    graph_repository = _graph_with(10)
+    deps, repository = _enumeration_deps(graph_repository)
+
+    handle_score_run_queued(_run_queued_event(batch_size=10), deps)
+
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.total_entities == 10
+
+
+def test_an_empty_knowledge_base_completes_without_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(score_runs_executor, "_ENUMERATION_PAGE_SIZE", 5)
+    graph_repository = _CountingGraphRepository()
+    deps, repository = _enumeration_deps(graph_repository)
+
+    handle_score_run_queued(_run_queued_event(batch_size=10), deps)
+
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.status == "completed"
+    assert run.total_entities == 0

@@ -19,6 +19,7 @@ from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.score_runs.models import ScoreBatch
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
 from events.types import AnyEvent, ScoreBatchQueuedEvent, ScoreRunQueuedEvent
+from graph.adapters.protocols import GraphRepository
 from execution.deps import ExecutionDeps
 from execution.registry import register_handler
 from shared.utils import utc_now
@@ -55,6 +56,38 @@ _STALE_BATCH_SECONDS = _positive_int_from_env("CHILI_SCORE_BATCH_STALE_SECONDS",
 # A batch that kills its worker every time would otherwise be reclaimed
 # forever. attempts counts claims, so this caps the takeover loop.
 _MAX_BATCH_ATTEMPTS = _positive_int_from_env("CHILI_SCORE_BATCH_MAX_ATTEMPTS", 5)
+
+# Entities read per graph query during enumeration. `get_entities` has no LIMIT
+# at all, so a large knowledge base was one unbounded read.
+_ENUMERATION_PAGE_SIZE = _positive_int_from_env(
+    "CHILI_SCORE_ENUMERATION_PAGE_SIZE", 1000
+)
+
+
+def _enumerate_entity_ids(
+    graph_repository: GraphRepository, knowledge_base_id: str
+) -> list[str]:
+    """Every entity id in a knowledge base, read a page at a time.
+
+    Stops on a short page rather than an empty one: an entity count that is an
+    exact multiple of the page size would otherwise cost an extra round trip
+    every run.
+
+    A dropped page here is worse than a crash — enumeration would complete over
+    a subset and the run would report success having scored fewer entities than
+    exist, with no error anywhere.
+    """
+
+    entity_ids: list[str] = []
+    offset = 0
+    while True:
+        page = graph_repository.get_entities_page(
+            knowledge_base_id, limit=_ENUMERATION_PAGE_SIZE, offset=offset
+        )
+        entity_ids.extend(entity.id for entity in page)
+        if len(page) < _ENUMERATION_PAGE_SIZE:
+            return entity_ids
+        offset += _ENUMERATION_PAGE_SIZE
 
 
 def score_request_id(*, run_id: str, batch_number: int, entity_id: str) -> str:
@@ -196,10 +229,9 @@ def handle_score_run_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
     lives in the executor rather than the HTTP request so a large knowledge base
     cannot fail the request before any work is durable (risk R2).
 
-    Note: `GraphRepository.get_entities` is not paginated, so this still
-    materialises the full entity list once — in the worker, where it is
-    retryable and the run row already exists. True streaming enumeration needs a
-    paginated graph read and is deliberately out of scope here.
+    The graph read is paged. The accumulated id list is still held in memory to
+    form batches, so this is bounded *per query* rather than streaming — a
+    smaller claim than it sounds, and the honest one.
     """
 
     if not isinstance(event, ScoreRunQueuedEvent):
@@ -219,9 +251,7 @@ def handle_score_run_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
         # duplicate batches and inflate total_entities.
         return 0
 
-    entity_ids = [
-        entity.id for entity in graph_repository.get_entities(run.knowledge_base_id)
-    ]
+    entity_ids = _enumerate_entity_ids(graph_repository, run.knowledge_base_id)
     if not entity_ids:
         repository.update_run(
             run.id, status="completed", total_entities=0, finished_at=utc_now()

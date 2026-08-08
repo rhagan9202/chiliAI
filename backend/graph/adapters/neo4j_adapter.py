@@ -561,6 +561,34 @@ class Neo4jGraphRepository(GraphRepository):
         """
         return self._query_entities(query, knowledge_base_id=knowledge_base_id)
 
+    def get_entities_page(
+        self,
+        knowledge_base_id: str,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[Entity]:
+        if limit <= 0 or offset < 0:
+            return []
+        # Mirrors get_entities_by_type minus the type predicate. SKIP is O(offset)
+        # in Neo4j, so deep pagination degrades; a keyset cursor
+        # (WHERE entity.entity_id > $after) is the fix if that becomes real, and
+        # is deliberately not done here because it would change the protocol
+        # shape and leave the by-type method disagreeing with this one.
+        query = f"""
+        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        RETURN entity
+        ORDER BY entity.entity_id
+        SKIP $offset
+        LIMIT $limit
+        """
+        return self._query_entities(
+            query,
+            knowledge_base_id=knowledge_base_id,
+            offset=offset,
+            limit=limit,
+        )
+
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]:
         query = f"""
         MATCH (source:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})

@@ -39,6 +39,24 @@ class GraphRepository(Protocol):
 
     def get_entities(self, knowledge_base_id: str) -> list[Entity]: ...
 
+    def get_entities_page(
+        self,
+        knowledge_base_id: str,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[Entity]:
+        """One bounded, deterministically ordered page of entities.
+
+        ``get_entities`` has no limit at all — it materialises every entity in
+        a knowledge base in a single query. Callers that walk the whole set
+        (score-run enumeration, GNN snapshots) use this instead.
+
+        Ordered by entity id in every adapter: a page sequence is only
+        resumable if the order is the same across calls and across backends.
+        """
+        ...
+
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]: ...
 
     def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...

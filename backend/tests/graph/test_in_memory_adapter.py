@@ -705,3 +705,84 @@ def test_upsert_relationships_merge_and_version() -> None:
     assert stored.version == 2
     repo.upsert_relationships("kb-1", [second.model_copy(deep=True)])
     assert repo.get_relationships("kb-1")[0].version == 2  # no-op replay
+
+def _entities(count: int, *, prefix: str = "e") -> list[Entity]:
+    return [Entity(id=f"{prefix}-{index:03d}", type="provider") for index in range(count)]
+
+
+def test_get_entities_page_returns_a_bounded_deterministic_slice() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities("kb-1", _entities(10))
+
+    first = repository.get_entities_page("kb-1", limit=4, offset=0)
+    second = repository.get_entities_page("kb-1", limit=4, offset=4)
+
+    assert [entity.id for entity in first] == ["e-000", "e-001", "e-002", "e-003"]
+    assert [entity.id for entity in second] == ["e-004", "e-005", "e-006", "e-007"]
+
+
+def test_get_entities_page_orders_by_id_regardless_of_insertion_order() -> None:
+    """Ordering is what makes a page sequence resumable.
+
+    The Neo4j adapter orders by `entity.entity_id`; an in-memory adapter that
+    sliced insertion order would let a paging bug pass every unit test and only
+    appear against a real graph.
+    """
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e-003", type="provider"),
+            Entity(id="e-001", type="provider"),
+            Entity(id="e-002", type="provider"),
+        ],
+    )
+
+    page = repository.get_entities_page("kb-1", limit=2, offset=0)
+
+    assert [entity.id for entity in page] == ["e-001", "e-002"]
+
+
+def test_paging_past_the_end_returns_empty_not_an_error() -> None:
+    """The enumeration loop's termination condition."""
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities("kb-1", _entities(1))
+
+    assert repository.get_entities_page("kb-1", limit=10, offset=10) == []
+
+
+def test_pages_reassemble_into_exactly_the_unpaged_result() -> None:
+    """The property that matters: paging must not drop or duplicate an entity.
+
+    A dropped page produces a score run that *completes* having scored a
+    subset — no error, no failed batch, just a smaller number nobody checks.
+    """
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities("kb-1", _entities(25))
+
+    paged: list[str] = []
+    offset = 0
+    while page := repository.get_entities_page("kb-1", limit=7, offset=offset):
+        paged.extend(entity.id for entity in page)
+        offset += 7
+
+    assert paged == sorted(entity.id for entity in repository.get_entities("kb-1"))
+    assert len(paged) == len(set(paged))
+
+
+def test_get_entities_page_is_scoped_to_its_knowledge_base() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities("kb-1", _entities(3))
+    repository.upsert_entities("kb-2", _entities(3, prefix="other"))
+
+    page = repository.get_entities_page("kb-1", limit=10, offset=0)
+
+    assert all(entity.id.startswith("e-") for entity in page)
+
+
+def test_get_entities_page_rejects_nonsensical_bounds() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities("kb-1", _entities(3))
+
+    assert repository.get_entities_page("kb-1", limit=0, offset=0) == []
+    assert repository.get_entities_page("kb-1", limit=5, offset=-1) == []

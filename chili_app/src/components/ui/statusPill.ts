@@ -15,6 +15,7 @@ const STATUS_TONES: Record<string, StatusPillTone> = {
   acknowledged: 'success',
   active: 'success',
   archived: 'default',
+  awaiting_approval: 'info',
   blocked: 'danger',
   building: 'warning',
   closed: 'success',

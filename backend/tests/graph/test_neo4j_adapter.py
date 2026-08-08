@@ -1362,3 +1362,53 @@ def test_neo4j_search_entities_uses_fulltext_index_call(
         "db.index.fulltext.queryNodes('entity_properties_fulltext'" in query
         for query in search_queries
     ), f"search_entities must use the fulltext index; got queries: {search_queries}"
+
+@pytest.mark.integration
+def test_neo4j_get_entities_page_walks_every_entity_exactly_once(
+    neo4j_repository: tuple[Neo4jGraphRepository, str],
+) -> None:
+    """The Cypher, against a real database.
+
+    The in-memory adapter has no query language, so a malformed page read is
+    invisible to unit tests — the same shape as the peerstats SQL that raised
+    `IndeterminateDatatype` on every call and was caught only by an integration
+    test that did not exist until it was written.
+
+    A dropped page is worse than a crash: enumeration completes over a subset
+    and the score run reports success having scored fewer entities than exist.
+    """
+    repository, knowledge_base_id = neo4j_repository
+    repository.upsert_entities(
+        knowledge_base_id,
+        [Entity(id=f"page-{index:03d}", type="provider") for index in range(25)],
+    )
+
+    walked: list[str] = []
+    offset = 0
+    while page := repository.get_entities_page(
+        knowledge_base_id, limit=7, offset=offset
+    ):
+        walked.extend(entity.id for entity in page)
+        offset += 7
+
+    expected = sorted(entity.id for entity in repository.get_entities(knowledge_base_id))
+    assert walked == expected
+    assert len(walked) == len(set(walked))
+
+
+@pytest.mark.integration
+def test_neo4j_get_entities_page_is_scoped_to_its_knowledge_base(
+    neo4j_repository: tuple[Neo4jGraphRepository, str],
+) -> None:
+    repository, knowledge_base_id = neo4j_repository
+    other_kb = f"{knowledge_base_id}-other"
+    repository.upsert_entities(
+        knowledge_base_id, [Entity(id="mine-1", type="provider")]
+    )
+    repository.upsert_entities(other_kb, [Entity(id="theirs-1", type="provider")])
+
+    try:
+        page = repository.get_entities_page(knowledge_base_id, limit=10, offset=0)
+        assert [entity.id for entity in page] == ["mine-1"]
+    finally:
+        repository.delete_knowledge_base(other_kb)
