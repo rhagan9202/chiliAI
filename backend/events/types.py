@@ -7,7 +7,6 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
-from shared.types import Alert
 from shared.utils import generate_id, utc_now
 
 
@@ -425,23 +424,6 @@ class AlertsCreatedEvent(EventBase):
     alerts: list[AlertCreatedReference]
 
 
-class AlertCreatedEvent(EventBase):
-    """Single-alert event surfaced to real-time WebSocket subscribers."""
-
-    event_type: Literal["alert.created"] = "alert.created"
-    alert: Alert
-
-
-class PipelineProgressEvent(EventBase):
-    """Pipeline stage progress event for a knowledge base ingestion run."""
-
-    event_type: Literal["pipeline.progress"] = "pipeline.progress"
-    knowledge_base_id: str
-    stage: str
-    progress: float = Field(ge=0.0, le=1.0)
-    message: str | None = None
-
-
 class AnalysisFailedEvent(EventBase):
     """Emitted when an analytics pipeline stage fails for a single entity."""
 
@@ -462,18 +444,6 @@ class DocumentFailureReference(BaseModel):
 class DocumentsFailedEvent(EventBase):
     event_type: Literal["documents.failed"] = "documents.failed"
     documents: list[DocumentFailureReference]
-
-
-class ClaimsReceivedEvent(EventBase):
-    event_type: Literal["claims.received"] = "claims.received"
-    batch_id: str
-    source: str | None = None
-
-
-class ClaimsIngestedEvent(EventBase):
-    event_type: Literal["claims.ingested"] = "claims.ingested"
-    batch_id: str
-    record_count: int = Field(ge=0)
 
 
 class RecordsIngestedEvent(EventBase):
@@ -601,13 +571,9 @@ AnyEvent = (
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
-    | AlertCreatedEvent
-    | PipelineProgressEvent
     | AnalysisFailedEvent
     | DocumentsFailedEvent
     | DocumentsExtractionWarningEvent
-    | ClaimsReceivedEvent
-    | ClaimsIngestedEvent
     | ConfigUpdatedEvent
     | RecordsIngestedEvent
     | ScoreRunStatusChangedEvent
@@ -617,14 +583,11 @@ AnyEvent = (
 __all__ = [
     "AgentWorkflowStartedEvent",
     "AgentWorkflowStartedReference",
-    "AlertCreatedEvent",
     "AlertCreatedReference",
     "AlertsCreatedEvent",
     "AnalysisFailedEvent",
     "AnyEvent",
     "ChunkedDocumentReference",
-    "ClaimsIngestedEvent",
-    "ClaimsReceivedEvent",
     "ConfigUpdatedEvent",
     "DocumentFailureReference",
     "DocumentReference",
@@ -661,7 +624,6 @@ __all__ = [
     "LlmCompletedEvent",
     "LlmCompletionReference",
     "ParsedDocumentReference",
-    "PipelineProgressEvent",
     "RagCompletedEvent",
     "RagCompletionReference",
     "RecordsIngestedEvent",

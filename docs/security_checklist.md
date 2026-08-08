@@ -146,8 +146,11 @@ require a documented justification in this file.
   signature failures all return 401.
 - **No long-lived API keys.** External credentials (OpenAI, Anthropic, S3) are
   loaded from env vars at process start and never logged.
-- **WebSocket auth.** `api/routers/ws.py` rejects connections without a valid
-  bearer token in the `Authorization` header on upgrade.
+- **SSE auth.** `/events/stream` is guarded by `require_role("viewer")`, and the
+  browser `EventSource` is opened with credentials so the session cookie rides
+  along. The former `/ws/alerts` and `/ws/pipeline` routes were retired on
+  2026-08-07 — they were never given a producer, so there is no longer a
+  WebSocket surface to authenticate.
 
 ### A08:2021 — Software and Data Integrity Failures
 

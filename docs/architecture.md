@@ -173,7 +173,7 @@ The monorepo produces the following deployable containers:
 | Container | Technology | Responsibility |
 |-----------|-----------|----------------|
 | **chili_app** | React 19, TypeScript, Vite 8 | Single-page application served as static assets (nginx or CDN). Full analyst workbench: graph explorer, alert feed, knowledge base manager, RAG chat, domain config editor. |
-| **Backend API** | Python 3.12, FastAPI | HTTP + WebSocket entry point for the frontend. Thin orchestration layer — routes requests to internal service modules, publishes events, pushes real-time updates. **No business logic in routers.** |
+| **Backend API** | Python 3.12, FastAPI | HTTP entry point for the frontend, including the SSE workspace stream. Thin orchestration layer — routes requests to internal service modules, publishes events, pushes real-time updates. **No business logic in routers.** |
 | **Worker / Pipeline Runner** | Python 3.12, shares backend codebase | Long-running process(es) consuming events from Redis Streams. Executes ingestion, entity extraction, graph building, embedding, analytics pipelines, and alert generation. Scales via Redis consumer groups. |
 | **Redis** | Redis 7+ with Streams | Event-driven pipeline orchestration. Decouples API from worker. Also stores shared operational workflow-run state when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, allowing API and worker containers to observe the same lifecycle updates. |
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
@@ -186,7 +186,7 @@ The monorepo produces the following deployable containers:
 | From → To | Protocol | Purpose |
 |-----------|----------|---------|
 | chili_app → Backend API | HTTPS (REST) | CRUD operations, queries, file uploads |
-| chili_app ← Backend API | SSE / WSS | Real-time workspace snapshots over SSE; WebSocket support remains available for push-style interactions |
+| chili_app ← Backend API | SSE | Real-time workspace snapshots over SSE. There is no WebSocket surface: `/ws/alerts` and `/ws/pipeline` were retired on 2026-08-07 having never had a producer |
 | Backend API → Redis | Redis Streams XADD | Publish pipeline events (`documents.uploaded`, `claims.ingested`, etc.) |
 | Worker ← Redis | Redis Streams XREADGROUP | Consume pipeline events, execute processing steps |
 | Worker → Redis | Redis Streams XADD | Publish downstream events (`entities.extracted`, `risk.scored`, `alerts.created`, etc.) |
@@ -241,7 +241,6 @@ backend/
 │       ├── analytics.py        # Analytics endpoints
 │       ├── workflows.py        # Workflow run history
 │       ├── events.py           # SSE workspace snapshot stream
-│       ├── ws.py               # WebSocket hub for real-time push
 │       ├── auth.py             # /auth/login, /auth/logout, /auth/me
 │       ├── _oidc_client.py     # OIDC client helpers used by auth router
 │       ├── policy.py           # Policy Intelligence items/triage (BL-011)
@@ -524,7 +523,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 
 | Module | Owns | Depends on (via shared contracts) | Forbidden dependencies |
 |--------|------|-----------------------------------|----------------------|
-| `api` | HTTP routing, request validation, DI wiring, WebSocket hub | All service modules (as injected dependencies) | Must not contain business logic |
+| `api` | HTTP routing, request validation, DI wiring, SSE workspace stream | All service modules (as injected dependencies) | Must not contain business logic |
 | `ingestion` | Document parsing, chunking, entity extraction | `shared.types`, `llm` (via protocol), `events` (via protocol) | `graph`, `analytics`, `api` |
 | `graph` | Knowledge graph CRUD, neighborhood queries, graph metrics | `shared.types`, `shared.protocols` | `api`, `ingestion`, `analytics` |
 | `vectorstore` | Embedding storage, similarity search | `shared.types` | `api`, `ingestion`, `graph` |
@@ -1123,7 +1122,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
 | API client | Typed fetch wrapper + TanStack Query hooks + generated OpenAPI schema aliases | `lib/apiClient.ts` handles transport; `src/api/contracts.ts` aliases `src/lib/api/schema.ts` generated from backend OpenAPI |
-| Real-time | Server-Sent Events + WebSocket support | Workspace snapshots over SSE; WebSocket support remains available for push-style interactions |
+| Real-time | Server-Sent Events | Workspace snapshots over SSE, rebuilt from Postgres on each 5s tick. Replica-safe by construction: any API replica can serve any client because nothing is held in process memory |
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
@@ -1168,7 +1167,6 @@ chili_app/src/
 │   ├── housing/                # InstallationHealthMap (d3-geo Albers CONUS), summary band, filters, ranking
 │   └── common/                 # Shared UI primitives (layout, loading, error)
 └── hooks/                      # Shared custom hooks
-    ├── useWebSocket.ts
     ├── useKnowledgeBases.ts
     └── useNeighborhood.ts
 ```
@@ -1273,7 +1271,7 @@ second composer for the same job — and reclaims the 320px column.
 - The current frontend uses typed fetch helpers plus TanStack Query hooks over those generated contract aliases.
 - TanStack Query wraps all API calls, providing caching, background refetching, and optimistic updates.
 - The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include live active-alert counts from the durable alert feed store (`AlertFeedStoreProtocol` over `alert_history`), live running-workflow counts from `AgentServiceProtocol`, and live KB statuses from the repository-backed KB projection. In the dev stack, API and worker share workflow lifecycle state through Redis.
-- WebSocket support remains available for push-style interactions and follows typed message envelopes where applicable.
+- Real-time delivery is SSE only. A WebSocket hub existed until 2026-08-07 but was never given a producer, and its process-local fan-out would not have survived a second API replica; the SSE stream avoids that by rebuilding each snapshot from durable state.
 
 ### 8.5 Domain-driven dynamic UI
 
@@ -1713,7 +1711,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Concern | Approach |
 |---------|----------|
-| **In transit** | TLS 1.3 for all HTTP, WebSocket, and database connections |
+| **In transit** | TLS 1.3 for all HTTP and database connections |
 | **At rest** | Encrypted volumes for databases, object store, and Redis (if persisted). Delegated to infrastructure layer (EBS encryption, PV encryption). |
 | **Secrets management** | Environment variables in dev; Kubernetes Secrets or external vault (HashiCorp Vault, AWS Secrets Manager) in production |
 | **Input validation** | Pydantic models on all API inputs; file type and size validation on uploads |
@@ -1733,7 +1731,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Client state (FE)** | Zustand | Lightweight UI state |
 | **Graph visualization** | `react-force-graph-2d` | Interactive graph explorer in the current prototype |
 | **Backend language** | Python 3.12 | All backend services |
-| **API framework** | FastAPI | HTTP + WebSocket gateway |
+| **API framework** | FastAPI | HTTP gateway |
 | **Type checking** | pyright (strict, scoped via `tool.pyright.include`) | Static type analysis |
 | **Testing** | pytest + coverage | Unit/integration tests, ≥85% coverage |
 | **Event streaming** | Redis 7+ Streams | Pipeline orchestration, decoupling |

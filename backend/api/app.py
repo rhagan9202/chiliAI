@@ -43,7 +43,6 @@ from api.routers.scorecards import router as scorecards_router
 from api.routers.score_runs import router as score_runs_router
 from api.routers.workflow_definitions import router as workflow_definitions_router
 from api.routers.workflows import router as workflows_router
-from api.routers.ws import router as ws_router
 from config.loader import load_config
 from config.store import read_active_pack
 from shared.logging import configure_logging, get_logger
@@ -146,7 +145,6 @@ def create_app() -> FastAPI:
     app.include_router(policy_router)
     app.include_router(investigation_router)
     app.include_router(auth_router)
-    app.include_router(ws_router)
 
     # Dev/e2e-only seed endpoint — never registered in production.
     if load_chili_environment() != "production":

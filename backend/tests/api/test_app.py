@@ -245,22 +245,3 @@ class TestOpenApiSchema:
         assert {"capabilities", "validation", "records", "ui", "alerts"}.issubset(
             properties
         )
-
-
-class TestWebSocketRouter:
-    """The WebSocket router is registered too, but cannot be hit via HTTP GET.
-
-    We exercise the WS path using ``TestClient.websocket_connect`` which only
-    succeeds when the router is wired into the app factory.
-    """
-
-    def test_alerts_websocket_accepts_connections(self, client: TestClient) -> None:
-        with client.websocket_connect("/ws/alerts") as websocket:
-            # The router accepts the connection and waits for subscribe messages.
-            # We close immediately; a successful handshake is enough to prove
-            # registration.
-            websocket.close()
-
-    def test_pipeline_websocket_accepts_connections(self, client: TestClient) -> None:
-        with client.websocket_connect("/ws/pipeline") as websocket:
-            websocket.close()

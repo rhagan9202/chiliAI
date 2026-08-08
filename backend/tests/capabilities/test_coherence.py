@@ -2,8 +2,8 @@
 
 Four instances of one mistake have shipped: an adapter whose capability id no
 manifest declares, a manifest naming a module that does not exist, an event
-type with no producer, and a built-in capability list naming a capability with
-no manifest. Each half was individually correct and individually tested, which
+type with no producer, a singular event class shadowed by a live plural one,
+and a built-in capability list naming a capability with no manifest. Each half was individually correct and individually tested, which
 is why unit tests never caught any of them.
 
 These guards fail when the two halves disagree. The corrected value fixes
@@ -18,7 +18,6 @@ import importlib
 from pathlib import Path
 from typing import get_args
 
-import pytest
 
 from capabilities.service import create_default_capability_registry_service
 from events.codec import EVENT_TYPE_REGISTRY
@@ -54,23 +53,6 @@ NOTIFICATION_ONLY_EVENT_TYPES: frozenset[str] = frozenset(
         "vectors.deleted",
         "embeddings.generated",
         "kb.create",
-    }
-)
-
-# Declared, decodable, and constructed **nowhere** — not "published but not
-# consumed", which is what the list above is for. These are types whose
-# producer does not exist, so any surface documented as fed by them emits
-# nothing. Closed by Plan 3 Task 4, which decides per type whether to build the
-# producer or retire the surface.
-KNOWN_PRODUCERLESS_EVENT_TYPES: frozenset[str] = frozenset(
-    {
-        # The real-time WebSocket alert stream (G8).
-        "alert.created",
-        # The pipeline-progress WebSocket route, same shape as the above.
-        "pipeline.progress",
-        # Domain-shaped aliases that were never wired to anything.
-        "claims.received",
-        "claims.ingested",
     }
 )
 
@@ -155,13 +137,14 @@ def test_every_capability_adapter_id_is_a_registered_manifest_id() -> None:
     )
 
 
-@pytest.mark.xfail(reason="G8 — closed by Plan 3 Task 4", strict=True)
 def test_every_declared_event_type_has_a_producer_or_is_notification_only() -> None:
     """A decodable event nothing constructs is a feature that never fires.
 
-    `alert.created` is documented as feeding the real-time WebSocket alert
-    stream and is constructed nowhere outside a test, so that stream has no
-    producer.
+    Four types once failed this: `alert.created` and `pipeline.progress` fed
+    two WebSocket routes that never emitted anything, and `claims.received` /
+    `claims.ingested` were domain-shaped aliases wired to nothing. All four
+    were retired in favour of the live equivalents that already carry the
+    data — see Plan 3 Task 4.
     """
     produced = _event_types_constructed_in_production_code()
     dead = sorted(
@@ -182,10 +165,7 @@ def test_the_notification_allow_list_only_names_real_event_types() -> None:
     It does, however, make the list look maintained while quietly rotting — and
     a stale entry is how a genuinely dead event slips back in under an old name.
     """
-    unknown = sorted(
-        (NOTIFICATION_ONLY_EVENT_TYPES | KNOWN_PRODUCERLESS_EVENT_TYPES)
-        - set(EVENT_TYPE_REGISTRY)
-    )
+    unknown = sorted(NOTIFICATION_ONLY_EVENT_TYPES - set(EVENT_TYPE_REGISTRY))
 
     assert not unknown, f"allow-list names event types that do not exist: {unknown}"
 

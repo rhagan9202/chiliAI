@@ -16,7 +16,7 @@ flowchart LR
         subgraph frontend["chili_app container<br/>React 19 + TypeScript + Vite"]
             shell["App shell + React Router<br/>Dashboard, Knowledge Bases,<br/>Alerts, Investigation, Chat, Config"]
             query["TanStack Query + API client<br/>REST cache, mutation invalidation"]
-            wsclient["WebSocket client<br/>Alerts and pipeline status"]
+            sseclient["SSE client<br/>Workspace snapshots: alerts,<br/>workflows, KB status"]
             state["Zustand stores + domain context<br/>Selected KB, selected entity,<br/>UI state, active domain config"]
             graphui["Investigation graph UI<br/>react-force-graph-2d,<br/>entity detail, evidence, timeline"]
         end
@@ -24,8 +24,7 @@ flowchart LR
         subgraph api["chili-api container<br/>FastAPI gateway"]
             cors["CORS + metrics + tracing middleware<br/>Prometheus metrics, OpenTelemetry hooks"]
             auth["Auth / RBAC middleware<br/>JWT validation paths"]
-            routers["REST routers<br/>/config, /knowledgebases, /records,<br/>/alerts, /investigation, /chat, /analytics,<br/>/workflows, /events (SSE), /ws,<br/>/policy, /cases, /evidence, /graph, /auth"]
-            wshub["WebSocket hub<br/>/ws/alerts, /ws/pipeline"]
+            routers["REST routers<br/>/config, /knowledgebases, /records,<br/>/alerts, /investigation, /chat, /analytics,<br/>/workflows, /events (SSE),<br/>/policy, /cases, /evidence, /graph, /auth"]
             di["Dependency injection composition root<br/>Config-cached services and adapters"]
             kbrepo["Knowledge base metadata repository<br/>Selectable: in-memory or object_store"]
         end
@@ -79,19 +78,17 @@ flowchart LR
     shell --> query
     shell --> state
     shell --> graphui
-    shell --> wsclient
+    shell --> sseclient
     query -->|"REST JSON + uploads"| ingress
-    wsclient -->|"WebSocket"| ingress
-    ingress -->|"routes /api and /ws"| cors
+    sseclient -->|"SSE (text/event-stream)"| ingress
+    ingress -->|"routes /api"| cors
 
     sources -->|"file upload, API push,<br/>future polled feeds"| routers
     idp -.->|"JWT / JWKS validation<br/>when auth enabled"| auth
 
     cors --> auth
     auth --> routers
-    auth --> wshub
     routers --> di
-    wshub --> di
     di --> config
     di --> kbrepo
     di --> ingestion
@@ -116,7 +113,6 @@ flowchart LR
     shared -.-> config
 
     routers -->|"publish kb.create,<br/>documents.uploaded,<br/>claims.received"| redis
-    wshub <-->|"push alerts and pipeline status"| redis
     ingestion -->|"publish parse / extraction events"| redis
     graphsvc -->|"publish graph.updated"| redis
     embedsvc -->|"publish embeddings.generated / complete"| redis
@@ -187,8 +183,8 @@ sequenceDiagram
     Worker->>Vector: Index embedding records
     Worker->>Analytics: Score risk, derive evidence, evaluate alerts
     Worker->>Redis: XADD graph.updated, vectors.indexed, alerts.created, kb.ready
-    Redis-->>API: Alert and pipeline events
-    API-->>UI: WebSocket update
+    UI->>API: GET /events/stream (SSE, 5s heartbeat)
+    API-->>UI: workspace-update snapshot read from Postgres
 ```
 
 ```mermaid

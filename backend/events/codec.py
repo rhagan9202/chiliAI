@@ -8,12 +8,9 @@ from typing import cast
 
 from events.types import (
     AgentWorkflowStartedEvent,
-    AlertCreatedEvent,
     AlertsCreatedEvent,
     AnalysisFailedEvent,
     AnyEvent,
-    ClaimsIngestedEvent,
-    ClaimsReceivedEvent,
     ConfigUpdatedEvent,
     EmbeddingsCompleteEvent,
     EmbeddingsGeneratedEvent,
@@ -37,7 +34,6 @@ from events.types import (
     KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
     LlmCompletedEvent,
-    PipelineProgressEvent,
     RagCompletedEvent,
     RecordsIngestedEvent,
     RiskScoredEvent,
@@ -54,10 +50,8 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     # are registered automatically. Add schema_version field to serialized payloads
     # for backward-compatible deserialization across deployments.
     "agent.workflow.started": AgentWorkflowStartedEvent,
-    "alert.created": AlertCreatedEvent,
     "alerts.created": AlertsCreatedEvent,
     "analysis.failed": AnalysisFailedEvent,
-    "pipeline.progress": PipelineProgressEvent,
     "kb.create": KnowledgeBaseCreatedEvent,
     "kb.delete": KnowledgeBaseDeletedEvent,
     "documents.uploaded": DocumentsUploadedEvent,
@@ -84,8 +78,6 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "explainability.generated": ExplainabilityGeneratedEvent,
     "documents.failed": DocumentsFailedEvent,
     "documents.extraction_warning": DocumentsExtractionWarningEvent,
-    "claims.received": ClaimsReceivedEvent,
-    "claims.ingested": ClaimsIngestedEvent,
     "config.updated": ConfigUpdatedEvent,
     "records.ingested": RecordsIngestedEvent,
     "score_run.status_changed": ScoreRunStatusChangedEvent,
