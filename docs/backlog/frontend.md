@@ -93,7 +93,7 @@
 
 **ID:** frontend.03
 **Status:** planned
-_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
+_Note (2026-08-08, supersedes the 2026-07-12 note): `feat/domain-packs-and-config-manager` **merged to prod on 2026-07-03** (`ff46080`) — nine days before that note called it unmerged. The shipped slice is described in the progress note below and was re-verified against the code on 2026-08-08. Status stays `planned`, but for the other reason the old note gave: every prerequisite is itself `planned`, and the CI-enforced DAG invariant requires them all `done` before `in-progress`. Nothing here is waiting on a branch._
 **Prerequisites:** [config.15, frontend.06, frontend.07]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a first Config Manager experience landed on `/configuration` (24eb58c): a pack switcher (`PackSwitcher`, driven by `GET /config/packs`) and an active-pack YAML editor (`ActivePackEditor`) with inline dry-run validation (`POST /config/validate` with edited content) and hot-swap apply/switch. This satisfies "route + navigation entry", "loads current configuration", and "validation errors shown inline without applying"; it is a raw-YAML editor + switcher, **not** the sectioned wizard shell — section navigation across environment/storage/graph/LLM/auth/ingestion/monitoring scopes and schema-metadata-driven forms remain open (blocked on config.08/config.15 schema slices).
 **Unblocks:** [frontend.25]
@@ -105,17 +105,17 @@ I want a frontend configuration wizard shell that loads schemas and validates ed
 so that configuration work can begin from the UI without saving changes yet.
 
 ### Current State
-The frontend has operational views, but no mounted wizard experience for configuration sections.
+_Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `ConfigurationPage` with `PackSwitcher`, `ActivePackEditor`, `SchemaBrowser` and `SwapResultBanner`, routed in `chili_app/src/app/router.tsx:49` and present in the sidebar (`Sidebar.tsx:55`). It is a raw-YAML editor plus schema browser, **not** the sectioned wizard this story specifies.
 
 ### Acceptance Criteria
-- [ ] Wizard route and navigation entry are available to authorized users.
-- [ ] Wizard loads schema metadata and current configuration from backend endpoints.
-- [ ] Section navigation supports environment, storage, graph, LLM, auth, ingestion, and monitoring scopes.
-- [ ] Validation errors are shown inline without applying draft values.
+- [x] Wizard route and navigation entry are available to authorized users — `/configuration` (`app/router.tsx:49`), role-gated by the pack's `ui.roles.<role>.pages`. Verified in the browser 2026-08-08 against the CMS pack: as `analyst` the sidebar shows 7 items and no Configuration; switching to `supervisor` adds Governance and Configuration. `ConfigurationPage` additionally checks `isAdmin` for the write actions.
+- [x] Wizard loads schema metadata and current configuration from backend endpoints — `GET /config/domain/schema` feeds `SchemaBrowser`; `GET /config/packs` feeds the switcher.
+- [ ] Section navigation supports environment, storage, graph, LLM, auth, ingestion, and monitoring scopes — **the open half of this story.** Blocked on the `config.08`/`config.15` schema slices; a raw-YAML buffer is not section navigation.
+- [x] Validation errors are shown inline without applying draft values — `POST /config/validate` dry-runs the edited buffer, and Apply is `disabled` until that exact buffer validates.
 
 ### Verification
-- [ ] Component tests cover schema loading, section navigation, and validation error rendering.
-- [ ] Browser smoke test confirms the wizard shell renders from live API data.
+- [ ] Component tests cover schema loading, section navigation, and validation error rendering — only `packYaml`, `schemaModel` and `transportDelta` unit tests exist under `components/config/__tests__/`; no rendering tests for the components themselves.
+- [x] Browser smoke test confirms the wizard shell renders from live API data — `chili_app/e2e/config-manager.spec.ts` (requires `CHILI_DEV_ANONYMOUS_ROLE=admin`).
 
 ### Code touch points
 - `frontend/src/**`
@@ -964,7 +964,7 @@ so that common changes can be made without editing raw YAML.
 
 **ID:** frontend.26
 **Status:** planned
-_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
+_Note (2026-08-08, supersedes the 2026-07-12 note): `feat/domain-packs-and-config-manager` **merged to prod on 2026-07-03** (`ff46080`) — nine days before that note called it unmerged. The shipped slice is described in the progress note below and was re-verified against the code on 2026-08-08. Status stays `planned`, but for the other reason the old note gave: every prerequisite is itself `planned`, and the CI-enforced DAG invariant requires them all `done` before `in-progress`. Nothing here is waiting on a branch._
 **Prerequisites:** [frontend.25, config.15]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the apply flow partially landed without a draft model (24eb58c): the Config Manager validates edited YAML inline (dry-run, backend field-level errors rendered), applies/switches packs via admin-gated `POST /config/apply|switch`, and surfaces success/failure via `SwapResultBanner`. **Semantics gotcha:** "Apply" re-validates and hot-swaps the *on-disk* pack file — the edited buffer is never persisted (no raw pack write endpoint yet; charted under config.07's remaining work). Draft save does not exist. Admin gating verified backend-side; e2e specs (`chili_app/e2e/config-manager.spec.ts`) require `CHILI_DEV_ANONYMOUS_ROLE=admin`. Remaining: draft save/apply lifecycle once config.14/15 land.
 **Unblocks:** [_observability.11]
@@ -976,12 +976,12 @@ I want the configuration wizard to save and apply drafts from the UI,
 so that configuration changes can be completed without leaving the app.
 
 ### Acceptance Criteria
-- [ ] UI saves drafts, displays backend validation errors, and applies valid drafts.
-- [ ] Admin-only actions are hidden or disabled for unauthorized users and rejected by backend tests.
-- [ ] Success and failure states are clear after apply attempts.
+- [ ] UI saves drafts, displays backend validation errors, and applies valid drafts — validation and apply shipped; **draft save does not exist**, and Apply hot-swaps the *on-disk* pack rather than the edited buffer (see the semantics gotcha in the progress note). This is the open half.
+- [x] Admin-only actions are hidden or disabled for unauthorized users and rejected by backend tests — `isAdmin` gates the UI; non-admin `403` is covered for `/config/packs|validate|apply|switch` in `backend/tests/api/test_config_routes.py`.
+- [x] Success and failure states are clear after apply attempts — `SwapResultBanner`.
 
 ### Verification
-- [ ] Browser E2E test covers validation failure, draft save, diff review, and apply success.
+- [ ] Browser E2E test covers validation failure, draft save, diff review, and apply success — `config-manager.spec.ts` covers validation and apply; there is no draft save or diff review to cover.
 - [ ] Component tests cover unauthorized and failed-save states.
 
 ### Code touch points
