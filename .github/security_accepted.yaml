@@ -1,0 +1,29 @@
+# Accepted-risk register for the dependency-audit gate (_security.12).
+#
+# The CI security gate fails on any HIGH/CRITICAL advisory that is not listed
+# here. An entry is a decision with an owner and an expiry — not a mute button.
+#
+# Rules:
+#   - Every entry needs `rationale` and `review_by`. `scripts/security_review_check.py`
+#     fails when a `review_by` date has passed, so an acceptance cannot quietly
+#     outlive the reasoning that justified it.
+#   - Remove the entry when a fixed release ships. Do not extend `review_by`
+#     without re-reading the advisory.
+#   - The rationale must say why *this codebase* is unaffected, not that the
+#     advisory looks unimportant.
+
+pip:
+  - id: PYSEC-2026-1325
+    package: ecdsa
+    rationale: >-
+      Timing side-channel in `ecdsa`, pulled in transitively by `python-jose`.
+      There is no fixed release: the ecdsa maintainers consider side-channel
+      resistance out of scope. Our JWT verification pins
+      algorithms=["RS256"] in `backend/api/middleware/auth.py`, so the ECDSA
+      code path is never reached. Revisit if python-jose is replaced or a fix
+      ships upstream.
+    accepted_on: 2026-07-12
+    review_by: 2026-10-26
+    owner: Platform Security
+
+npm: []

@@ -1,0 +1,9 @@
+{
+  "//": "scripts/ holds CI-enforced gates (backlog_consistency.py, security_review_check.py) that were typechecked by nothing: backend/pyproject.toml's [tool.pyright] include is scoped to backend/, and tools/pyrightconfig.json to tools/. Same standalone-config pattern as tools/, and for the same reason — a separate program keeps the bare top-level module names from colliding across roots.",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict",
+  "venvPath": "../backend",
+  "venv": ".venv",
+  "include": ["."],
+  "exclude": ["**/__pycache__"]
+}

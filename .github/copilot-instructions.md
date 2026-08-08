@@ -64,6 +64,8 @@
 - Use e2e/Playwright verification for workflows, UI behavior, and integration points. E2E tests MUST run against the full running stack (real API + worker + services, e.g. `make dev`); `page.route`/mock fixtures must never stand in for the component, endpoint, or integration under test — a test whose subject is mocked is not an e2e test.
 - Never silence errors, suppress warnings, bypass type checks, or leave known errors as TODOs. Fix relevant errors when found; import-order-only issues are the exception.
 - DO NOT LEAVE PRE-EXISTING ERRORS, including failures you surface by running a suite/build (a red test, type error, or lint failure in code you did not write): root-cause and fix them — do not flag them as "pre-existing" or "unrelated." Do not end a turn with any known error, warning, or failing test outstanding.
+- Repo-level gates run via `make check`: `scripts/backlog_consistency.py --check` and `scripts/security_review_check.py`. Both also run in CI.
+- Dependency audits gate on HIGH/CRITICAL (`pip-audit`, `npm audit --audit-level=high`, plus a nightly sweep). To suppress an advisory, add it to `.github/security_accepted.yaml` with a rationale, an owner and a `review_by` date — never an inline `--ignore-vuln` flag. `scripts/security_review_check.py` fails CI once a `review_by` passes, and once the quarterly security review is more than 30 days overdue (`.github/workflows/security_review_reminder.yml` opens the tracking issue).
 
 ## Agent Workflow Rules
 

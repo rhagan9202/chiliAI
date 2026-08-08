@@ -47,6 +47,11 @@ migrate: ## Run database migrations inside the API container
 # (chili_migration_check) on the compose postgres service and diff the schema
 # against backend/database/migrations/snapshots/head.sql. Never touches the
 # dev 'chili' database. Regenerate the snapshot in every migration PR.
+.PHONY: check
+check: ## Run the repo-level consistency gates (backlog DAG + security review currency)
+	backend/.venv/bin/python scripts/backlog_consistency.py --check
+	backend/.venv/bin/python scripts/security_review_check.py
+
 .PHONY: migrate-check migrate-snapshot
 migrate-check: ## Replay migrations on a scratch TimescaleDB and diff schema vs committed snapshot
 	scripts/ci_migration_check.sh
