@@ -1,0 +1,78 @@
+name: Security review reminder
+
+# _security.12. The checklist declares a quarterly cadence (Jan / Apr / Jul /
+# Oct) and an owner, but a cadence nobody schedules is a sentence in a document.
+# This opens the issue so the review has a place to happen and a trail when it
+# does not.
+#
+# The staleness *gate* lives in scripts/security_review_check.py, which fails CI
+# 30 days after a review falls due. This workflow is the nudge; that script is
+# the consequence.
+
+on:
+  schedule:
+    # 26th of Jan/Apr/Jul/Oct, matching the cadence in docs/security_checklist.md.
+    # 06:11 UTC to stay off the top of the hour, where scheduled runs queue.
+    - cron: "11 6 26 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  open-review-issue:
+    name: Open the quarterly review issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Open (or reuse) the review issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const now = new Date();
+            const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+            const title = `Security checklist quarterly review — ${now.getUTCFullYear()}-Q${quarter}`;
+
+            // Reuse an open issue with the same title rather than opening a
+            // duplicate: a manual workflow_dispatch on the same day as the cron
+            // would otherwise create two, and two issues means neither is "the"
+            // review.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'security-review',
+            });
+            if (existing.data.some((issue) => issue.title === title)) {
+              core.notice(`${title} is already open; nothing to do.`);
+              return;
+            }
+
+            const body = [
+              `Quarterly review of [docs/security_checklist.md](../blob/prod/docs/security_checklist.md).`,
+              '',
+              '## What this review must produce',
+              '',
+              '- A dated entry appended to the **Findings** section, using the template at the top of that section.',
+              '- The `last_reviewed:` front matter updated **in the same commit** — `scripts/security_review_check.py` fails the build if the front matter and the prose date disagree, and 30 days after a review falls due.',
+              '- Every acceptance in [`.github/security_accepted.yaml`](../blob/prod/.github/security_accepted.yaml) re-read: renew with fresh reasoning or delete it. An expired `review_by` fails CI.',
+              '',
+              '## Carry-over',
+              '',
+              'Open findings from the previous review remain open until explicitly closed in a Findings entry. Check the section for any marked `OPEN`.',
+              '',
+              '## Out-of-cycle triggers',
+              '',
+              'The checklist also requires an ad-hoc review when any of these land: a new external integration, a change to auth/authz logic, a new file-format parser or remote-fetch path, or a bump of `python-jose` / `httpx` / any auth-adjacent dependency.',
+            ].join('\n');
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['security-review'],
+            });
+            core.notice(`Opened ${created.data.html_url}`);

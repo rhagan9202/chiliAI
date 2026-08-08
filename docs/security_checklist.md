@@ -1,3 +1,12 @@
+---
+# Machine-readable review state. `scripts/security_review_check.py` reads
+# this and fails the build when a review is more than 30 days overdue, or
+# when the prose 'Last reviewed' line below disagrees with it.
+last_reviewed: 2026-07-26
+cadence_months: 3
+owner: Platform Security
+---
+
 # chiliAI Security Audit Checklist
 
 > Owner: Platform Security · Last reviewed: 2026-07-26 · Cadence: **quarterly**
@@ -224,6 +233,22 @@ require a documented justification in this file.
   into the backlog with priority P0/P1.
 
 ## Findings
+
+Every review appends an entry here, newest first, using this template. The
+checklist's `last_reviewed` front matter must be updated in the same commit —
+`scripts/security_review_check.py` fails if the prose and front matter disagree.
+
+```markdown
+### YYYY-MM-DD — <one-line summary> — OPEN | CLOSED
+
+- **Category:** <OWASP A0N:2021 — name>
+- **Reviewer:** <name / role>
+- **Sections covered:** <A01–A10, or the subset re-reviewed>
+- **Observation:** <what is actually true in the code today, with file paths>
+- **Risk:** <what an attacker gets, under what preconditions>
+- **Backlog:** <story ID(s) opened, or "none — accepted, see .github/security_accepted.yaml">
+- **Sign-off:** <name, date>
+```
 
 ### 2026-07-26 — Debug/docs endpoints ungated in prod — OPEN
 

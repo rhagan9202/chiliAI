@@ -116,6 +116,8 @@ Backend FastAPI OpenAPI is the source of truth for HTTP request/response shapes.
 ### 6. Quality gates
 - Backend: `pyright --strict` clean (strictness is scoped by `tool.pyright.include` in `backend/pyproject.toml`; hardened modules are added to `include`), full annotations, no untyped `Any`. pytest coverage ≥ 85% per package is the project standard (CI's enforced gate is the aggregate `--cov-fail-under=85`) — missing tests = incomplete work.
 - Frontend: TypeScript strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`). ESLint clean.
+- Repo-level gates (`make check`): `scripts/backlog_consistency.py --check` (backlog DAG + status invariants) and `scripts/security_review_check.py` (security review currency + accepted-risk expiry). Both run in CI.
+- Dependency audits gate on HIGH/CRITICAL: `pip-audit` (backend job) and `npm audit --audit-level=high` (frontend job), plus a nightly cron sweep. Suppressing an advisory means adding it to `.github/security_accepted.yaml` with a rationale, owner and `review_by` date — never an inline `--ignore-vuln` flag. An expired `review_by` fails CI.
 
 ## Backend Module Map (Target)
 

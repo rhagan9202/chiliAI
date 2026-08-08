@@ -567,7 +567,8 @@
 ## Story _security.12: Operationalize the security checklist quarterly review and dependency-scan gating
 
 **ID:** _security.12
-**Status:** planned
+**Status:** done
+**Done:** 2026-08-08
 **Prerequisites:** [_cicd.01]
 **Unblocks:** [api.25]
 **Estimated size:** S
@@ -577,33 +578,38 @@
 **so that** the security checklist is a living document with enforced cadence and an automated tripwire on HIGH/CRITICAL CVEs.
 
 ### Current State
-- `docs/security_checklist.md` § "Review cadence" declares a quarterly cadence (Jan/Apr/Jul/Oct), names the owner ("Platform Security"), and reserves a "Findings" section — but the file's Findings list reads `_None yet — first scheduled review: 2026-07-26._` and no calendar/issue exists.
-- The same file mentions `pip-audit` and `npm audit` as expected gates, but no CI workflow under `.github/workflows/` runs them with a failure threshold (no `pip-audit --strict` and no `npm audit --audit-level=high` step under this concern's ownership).
-- The release/upgrade triggers ("new external integration, change to auth, new file-format parser, bump of `python-jose`/`httpx`") are listed but there is no automation that opens a tracking issue on those events.
-- `_cicd.01` (per locked space) lands the baseline lint/type/test/build pipeline; this story bolts the security gates onto that pipeline.
+_Rewritten 2026-08-08: the original text described a repo that had since moved on._
+- The audit gates **already shipped** ahead of this story: `ci.yml` runs `pip-audit` (backend job) and `npm audit --audit-level=high` (frontend job), both failing the build, plus a **nightly** cron sweep — stricter than the weekly cadence this story specified.
+- The Findings section is **not** empty: it carries a dated `2026-07-26 — Debug/docs endpoints ungated in prod — OPEN` entry.
+- What was missing was everything that keeps the gates honest over time: the suppressed advisory (`PYSEC-2026-1325`) lived as an inline `--ignore-vuln` flag with a code comment, so it had no owner, no expiry and no review trail; the review cadence had no scheduled trigger; and the "Last reviewed" date was prose only, so nothing could detect that it had gone stale — which this file has already done once, its own header recording a 2026-05-12 stamp above a 2026-07-26 findings entry.
+- `_cicd.01` is listed as a prerequisite but is about **frontend coverage gating**, which is orthogonal to security scanning; the baseline pipeline this story bolts onto already exists.
 
 ### Acceptance Criteria
-- [ ] A new `.github/workflows/security_audit.yml` runs on `push`, weekly cron, and on `dependabot` PRs; it runs `pip-audit --strict --ignore-vuln=` for any accepted-risk CVEs (file documents acceptances) and `npm audit --audit-level=high --omit=dev` against `chili_app/`.
-- [ ] The workflow fails on any HIGH or CRITICAL vulnerability not present in `.github/security_accepted.yaml` (with rationale and review-by date per acceptance).
-- [ ] A scheduled `.github/workflows/security_review_reminder.yml` runs on the 26th of Jan/Apr/Jul/Oct and opens a GitHub issue titled `Security checklist quarterly review — YYYY-QN` assigned to the Platform Security owner with a body referencing `docs/security_checklist.md` and the prior Findings entries.
-- [ ] `docs/security_checklist.md` "Findings" section gains an enforced template (Date, Reviewer, Sections covered, Findings opened with backlog IDs, Sign-off) and the first entry stub for the 2026-07-26 review.
-- [ ] `docs/security_checklist.md` "Last reviewed" line is moved to a YAML front-matter block so the consistency-check script can read it and warn if the review is overdue.
-- [ ] An accompanying script `scripts/security_review_check.py` parses the front-matter and exits non-zero if the next review is overdue by more than 30 days; wired into `make check`.
-- [ ] CLAUDE.md and `.github/copilot-instructions.md` reference the new workflow files in the "Authoritative References" / quality-gates section.
+- [x] Dependency audits gate on HIGH/CRITICAL on push, PR and a scheduled sweep. **Deviation, deliberate:** kept in the existing `ci.yml` jobs rather than split into a new `security_audit.yml` — the audits need the same checkout, Python and Node setup the jobs already do, and a separate workflow would duplicate all of it. Two further deviations, both keeping the *stricter* behaviour already in place: the sweep is **nightly**, not weekly; and `npm audit` runs **without** `--omit=dev`, because dev-dependency advisories have repeatedly needed real fixes here (nanoid, dompurify, js-yaml).
+- [x] The build fails on any HIGH/CRITICAL not present in `.github/security_accepted.yaml`. Ignored advisories are now read from that register at run time instead of being hardcoded as `--ignore-vuln` flags, so an exemption cannot exist without a rationale, an owner and an expiry.
+- [x] `.github/workflows/security_review_reminder.yml` runs on the 26th of Jan/Apr/Jul/Oct and opens `Security checklist quarterly review — YYYY-QN`, labelled `security-review`, reusing an already-open issue of the same title rather than duplicating it. It links the checklist and the register and states what the review must produce. **Deviation:** labelled rather than assigned — assignment needs a GitHub username, and "Platform Security" is a role, not an account.
+- [x] The Findings section gained a template (Date, Category, Reviewer, Sections covered, Observation, Risk, Backlog IDs, Sign-off) above the existing dated entry.
+- [x] "Last reviewed" moved into YAML front matter (`last_reviewed`, `cadence_months`, `owner`). The prose line is kept for human readers and the checker asserts the two agree — this file has already drifted that exact way once.
+- [x] `scripts/security_review_check.py` exits non-zero when the review is more than 30 days overdue **or** an acceptance's `review_by` has passed; wired into a new `make check` target and into CI. 32 tests, 100% coverage, pyright strict clean.
+- [x] CLAUDE.md and `.github/copilot-instructions.md` document the gates and the rule that suppression means a register entry, never an inline flag.
+- [x] **Beyond the story:** `scripts/` was typechecked by nothing — backend's pyright include is scoped to `backend/`, `tools/` has its own config — while containing two CI-enforced gates. Added `scripts/pyrightconfig.json` and a CI step; `backlog_consistency.py` was already strict-clean, so this cost one file.
 
 ### Verification
-- `cd backend && python ../scripts/security_review_check.py docs/security_checklist.md` (exits 0 when current, non-zero when overdue — covered by unit test in `tests/scripts/test_security_review_check.py`).
-- `gh workflow view security_audit.yml` returns the workflow definition; a deliberate bump of a vulnerable `python-jose` version in a feature branch shows the workflow failing.
-- `pytest tests/scripts/test_security_review_check.py --cov-fail-under=85`
-- Manual: run `pip-audit --strict` and `npm audit --audit-level=high` locally and confirm clean output against current dependencies.
+- [x] `python scripts/security_review_check.py` exits 0 on the checked-in files.
+- [x] Mutation-proved rather than assumed: expiring the `PYSEC-2026-1325` acceptance to a past date exits 1 naming the advisory; setting the prose date back to 2026-05-12 exits 1 naming both dates. Restored, exits 0 again.
+- [x] `pytest tests/scripts/test_security_review_check.py --cov=scripts.security_review_check --cov-fail-under=85` — 32 passed, 100%.
+- [x] The register-to-flags shell snippet was run locally and produces exactly the flag the hardcoded version had (`--ignore-vuln PYSEC-2026-1325`), so the audit's behaviour is unchanged by the indirection.
+- [x] Both new/edited workflow files parse as YAML.
+- [ ] Not verified here: the reminder workflow's first real firing (next cron 2026-10-26) and a deliberate vulnerable-dependency bump. The register path is exercised by CI on this PR; the cron is not exercisable before its date.
 
 ### Code touch points
-- `.github/workflows/security_audit.yml` (new)
-- `.github/workflows/security_review_reminder.yml` (new)
 - `.github/security_accepted.yaml` (new)
+- `.github/workflows/security_review_reminder.yml` (new)
+- `.github/workflows/ci.yml` (modify — audit reads the register; review-check step; `scripts/` typecheck step; script test step)
 - `scripts/security_review_check.py` (new)
+- `scripts/pyrightconfig.json` (new)
 - `tests/scripts/test_security_review_check.py` (new)
-- `docs/security_checklist.md` (modify — front-matter + Findings template)
-- `CLAUDE.md` (modify)
-- `.github/copilot-instructions.md` (modify)
-- `Makefile` (modify — `make check` includes the script)
+- `docs/security_checklist.md` (modify — front matter + Findings template)
+- `CLAUDE.md`, `.github/copilot-instructions.md` (modify)
+- `Makefile` (modify — new `check` target)
+- _Not created:_ `.github/workflows/security_audit.yml` — see the first acceptance criterion.
