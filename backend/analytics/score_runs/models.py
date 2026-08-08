@@ -27,6 +27,11 @@ class ScoreRun(BaseModel):
     total_entities: int = Field(default=0, ge=0)
     scored_entities: int = Field(default=0, ge=0)
     failed_entities: int = Field(default=0, ge=0)
+    # Entities the risk service declined to score — too few signals, or a
+    # per-entity configuration problem. Neither scored nor broken, and counting
+    # them as failures reported healthy runs as catastrophes. Defaulted so runs
+    # written before this column existed still load.
+    skipped_entities: int = Field(default=0, ge=0)
     error_summary: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -35,8 +40,13 @@ class ScoreRun(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> ScoreRun:
-        if self.scored_entities + self.failed_entities > self.total_entities:
-            raise ValueError("ScoreRun scored_entities + failed_entities cannot exceed total_entities.")
+        if (
+            self.scored_entities + self.failed_entities + self.skipped_entities
+            > self.total_entities
+        ):
+            raise ValueError(
+                "ScoreRun scored + failed + skipped cannot exceed total_entities."
+            )
         if self.finished_at is not None and self.started_at is not None and self.finished_at < self.started_at:
             raise ValueError("ScoreRun finished_at cannot be before started_at.")
         return self
@@ -56,6 +66,7 @@ class ScoreBatch(BaseModel):
     # or a DLQ replay) cannot double-count.
     scored_entities: int = Field(default=0, ge=0)
     failed_entities: int = Field(default=0, ge=0)
+    skipped_entities: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
     error_summary: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -67,9 +78,12 @@ class ScoreBatch(BaseModel):
     def _validate_batch(self) -> ScoreBatch:
         if len(set(self.entity_ids)) != len(self.entity_ids):
             raise ValueError("ScoreBatch entity_ids must be unique.")
-        if self.scored_entities + self.failed_entities > len(self.entity_ids):
+        if (
+            self.scored_entities + self.failed_entities + self.skipped_entities
+            > len(self.entity_ids)
+        ):
             raise ValueError(
-                "ScoreBatch scored_entities + failed_entities cannot exceed its entity count."
+                "ScoreBatch scored + failed + skipped cannot exceed its entity count."
             )
         if self.finished_at is not None and self.started_at is not None and self.finished_at < self.started_at:
             raise ValueError("ScoreBatch finished_at cannot be before started_at.")

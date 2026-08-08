@@ -233,6 +233,7 @@ def _run_response(run: ScoreRun) -> ScoreRunResponse:
         total_entities=run.total_entities,
         scored_entities=run.scored_entities,
         failed_entities=run.failed_entities,
+        skipped_entities=run.skipped_entities,
         error_summary=run.error_summary,
         created_at=run.created_at,
         updated_at=run.updated_at,

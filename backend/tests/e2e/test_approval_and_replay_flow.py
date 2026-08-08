@@ -278,15 +278,20 @@ def test_a_replayed_score_run_executes(base_url: str) -> None:
     while time.monotonic() < deadline:
         status = _psql(
             "select status || '|' || scored_entities || '|' || failed_entities || "
-            f"'|' || total_entities from score_runs where id='{replay_id}'"
+            "'|' || skipped_entities || '|' || total_entities "
+            f"from score_runs where id='{replay_id}'"
         )
         if status.startswith(("completed", "failed")):
             break
         time.sleep(3)
 
-    state, scored, failed, total = status.split("|")
+    state, scored, failed, skipped, total = status.split("|")
     assert state == "completed", status
-    assert int(scored) + int(failed) == int(total), status
+    # The three counters must partition the run. This assertion used to be
+    # `scored + failed == total`, which held only because `failed` was a
+    # remainder that swallowed every skipped entity — the run this test drives
+    # scores nothing and skips all 57.
+    assert int(scored) + int(failed) + int(skipped) == int(total), status
 
 
 def test_a_stalled_connector_sync_run_is_reconciled(base_url: str) -> None:

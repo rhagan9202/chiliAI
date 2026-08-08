@@ -314,6 +314,7 @@ CREATE TABLE public.score_batches (
     updated_at timestamp with time zone NOT NULL,
     started_at timestamp with time zone,
     finished_at timestamp with time zone,
+    skipped_entities integer DEFAULT 0 NOT NULL,
     CONSTRAINT ck_score_batches_status CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text, 'failed'::text, 'canceled'::text, 'replayed'::text])))
 );
 CREATE TABLE public.score_runs (
@@ -334,6 +335,7 @@ CREATE TABLE public.score_runs (
     updated_at timestamp with time zone NOT NULL,
     started_at timestamp with time zone,
     finished_at timestamp with time zone,
+    skipped_entities integer DEFAULT 0 NOT NULL,
     CONSTRAINT ck_score_runs_status CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'completed'::text, 'failed'::text, 'canceled'::text, 'replayed'::text])))
 );
 CREATE TABLE public.scorecard_runs (

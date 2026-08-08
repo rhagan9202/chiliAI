@@ -72,6 +72,10 @@ export function ScoreRunStatusPanel({
               <strong>{run.scored_entities} / {run.total_entities}</strong>
             </div>
             <div className="knowledge-base-stat">
+              <span className="metric-row__label">Skipped</span>
+              <strong>{run.skipped_entities}</strong>
+            </div>
+            <div className="knowledge-base-stat">
               <span className="metric-row__label">Failed</span>
               <strong>{run.failed_entities}</strong>
             </div>

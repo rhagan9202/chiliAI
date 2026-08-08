@@ -10795,6 +10795,12 @@
             "title": "Scored Entities",
             "type": "integer"
           },
+          "skipped_entities": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped Entities",
+            "type": "integer"
+          },
           "started_at": {
             "anyOf": [
               {

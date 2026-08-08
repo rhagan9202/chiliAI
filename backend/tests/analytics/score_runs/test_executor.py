@@ -182,7 +182,16 @@ def test_executor_is_idempotent_under_duplicate_delivery() -> None:
     assert run.scored_entities == 2  # NOT 4
 
 
-def test_entities_below_the_signal_floor_count_as_failed_not_scored() -> None:
+def test_entities_below_the_signal_floor_are_skipped_not_scored_or_failed() -> None:
+    """A thin entity is neither scored nor broken.
+
+    This test previously asserted `failed_entities == 1`, which was the real
+    question at the time (does a skip inflate the *scored* count?) answered
+    under the wrong name. Nothing failed: the executor catches
+    `RiskInsufficientSignalsError`, logs it at INFO as an expected per-entity
+    condition, and moves on. Counting that as a failure told operators a run
+    had broken 57 times when it had done exactly what it was designed to do.
+    """
     repository = InMemoryScoreRunRepository()
     repository.save_run(_run())
     repository.upsert_batch(_batch(0, ["e1", "e2"]))
@@ -194,7 +203,26 @@ def test_entities_below_the_signal_floor_count_as_failed_not_scored() -> None:
     run = repository.get_run(_RUN_ID)
     assert run is not None
     assert run.scored_entities == 1
-    assert run.failed_entities == 1
+    assert run.skipped_entities == 1
+    assert run.failed_entities == 0
+
+
+def test_every_entity_lands_in_exactly_one_counter() -> None:
+    """The three counters must partition the batch, or a run silently loses
+    entities — the failure mode that made this bug invisible: `failed` was
+    computed as a remainder, so it absorbed anything unaccounted for."""
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(0, ["e1", "e2", "e3", "e4"]))
+    repository.update_run(_RUN_ID, total_entities=4)
+    risk_service = _StubRiskService(insufficient={"e2", "e4"})
+
+    handle_score_batch_queued(_event(), _deps(repository, risk_service=risk_service))
+
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.scored_entities + run.skipped_entities + run.failed_entities == 4
+    assert (run.scored_entities, run.skipped_entities, run.failed_entities) == (2, 2, 0)
 
 
 def test_executor_stops_without_scoring_when_the_run_is_cancelled() -> None:
@@ -312,7 +340,8 @@ def test_batch_records_its_own_outcome() -> None:
     batch = repository.get_batch(run_id=_RUN_ID, batch_number=0)
     assert batch is not None
     assert batch.scored_entities == 1
-    assert batch.failed_entities == 1
+    assert batch.skipped_entities == 1
+    assert batch.failed_entities == 0
 
 
 def test_executor_enumerates_and_creates_batches_for_a_deferred_run() -> None:
