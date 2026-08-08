@@ -146,6 +146,7 @@ include = [
     "connectors",
     "embeddings",
     "api/_kb_projection.py",
+    "api/_rag_bridges.py",
     "api/_workflow_projection.py",
     "api/middleware/auth.py",
     "api/middleware/rbac.py",

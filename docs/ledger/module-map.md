@@ -111,6 +111,12 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 
 **Forbidden dependencies:** `api`, `ingestion`, `analytics`
 
+**Retrieval filters on `embedding_channel`, and every write site must stamp it.** `ServiceContextRetriever` (`api/_rag_bridges.py`) adds `embedding_channel = text` to every search. Until 2026-08-08 only the *document* indexing path wrote that key; the records path (`agent/coordinator.py`, `handle_records_ingested`) did not, so **RAG retrieved nothing at all from any record-ingested knowledge base** — 1,938 vectors across 35 collections were present, correct and unreachable, with no error anywhere. Both halves are now spelled from `shared.provenance` (`EMBEDDING_CHANNEL_KEY`, `EMBEDDING_CHANNEL_TEXT`), whose docstring already required exactly that and predates the bug.
+
+Two guards, both mutation-proved: `tests/rag/test_vectorstore_bridge.py` asserts a record-shaped vector is retrievable through the real retriever and store (the pre-existing test asserted only that the filter *contained* the key — true, and satisfied by nothing), and `tests/agent/test_coordinator_records_embeds.py` asserts the indexing side stamps it.
+
+Backfill for stores written before the fix: `scripts/backfill_embedding_channel.py` (idempotent, `--dry-run` first). **The key must land under `metadata`, not the payload root** — the Qdrant adapter builds filters as `metadata.{key}`, so a root-level write is invisible; the script's first version made exactly that mistake and stamped 1,995 points with no effect.
+
 ---
 
 ## `llm/` — LLM Client Abstraction

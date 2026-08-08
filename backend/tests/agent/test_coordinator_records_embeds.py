@@ -15,6 +15,7 @@ from config.schema import (
 )
 from embeddings.service_models import EmbedResponse, EmbeddedItem
 from events.types import RecordsIngestedEvent
+from shared.provenance import EMBEDDING_CHANNEL_KEY, EMBEDDING_CHANNEL_TEXT
 from records.models import RawRecord, content_hash_for
 from records.adapters.in_memory import InMemoryRawRecordStore
 from shared.utils import generate_id
@@ -197,6 +198,15 @@ def test_handler_indexes_vectors_for_persisted_entities() -> None:
     ns, records = vector_store.upsert_records.call_args.args
     assert ns == "kb-1"
     assert {r.content_id for r in records} == {"provider:1234567890", "claim:C1"}
+
+    # Every record vector must carry the text channel, or RAG retrieval cannot
+    # see it: `ServiceContextRetriever` filters every search on this key, and
+    # this path did not stamp it until 2026-08-08. Removing the stamp used to
+    # break no test in this file — the vectors were written, indexed, and
+    # unreachable.
+    assert all(
+        r.metadata[EMBEDDING_CHANNEL_KEY] == EMBEDDING_CHANNEL_TEXT for r in records
+    )
 
 
 def test_handler_skips_embedding_when_embeddings_service_is_none() -> None:

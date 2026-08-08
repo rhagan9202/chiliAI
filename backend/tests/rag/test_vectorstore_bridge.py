@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from rag.adapters.protocols import ContextRetrieverProtocol
 from api._rag_bridges import ServiceContextRetriever
+from events.adapters.in_memory import InMemoryEventBus
+from shared.provenance import (
+    EMBEDDING_CHANNEL_KEY,
+    EMBEDDING_CHANNEL_TEXT,
+    SOURCE_ID_KEY,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+)
+from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.models import VectorRecord
+from vectorstore.service import VectorService
 from vectorstore.service_models import (
     VectorDeleteResponse,
     VectorIndexReceipt,
@@ -188,3 +198,74 @@ def test_service_context_retriever_does_not_share_metadata_dict_with_match() -> 
 
     items[0].metadata["mutated"] = "yes"
     assert "mutated" not in matches[0].metadata
+
+
+def _record_shaped_vector(kb: str, content_id: str) -> VectorRecord:
+    """A vector shaped the way `agent.coordinator` indexes record-derived rows."""
+    return VectorRecord(
+        id=f"record:{kb}:{content_id}",
+        knowledge_base_id=kb,
+        content_id=content_id,
+        embedding=[0.1, 0.2, 0.3],
+        content="id=claim:LCLM00014\ntype=claim\namount=1400.0",
+        metadata={
+            SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+            SOURCE_ID_KEY: content_id,
+            "entity_type": "claim",
+            EMBEDDING_CHANNEL_KEY: EMBEDDING_CHANNEL_TEXT,
+        },
+    )
+
+
+def test_record_derived_vectors_are_retrievable_through_rag() -> None:
+    """The defect this file's other tests could not see.
+
+    `ServiceContextRetriever` filters every search on the text channel, and the
+    records indexing path never stamped it — so a knowledge base ingested from
+    records retrieved **nothing**, with no error anywhere. The existing test
+    above asserts the forwarded filter *contains* `embedding_channel: text`,
+    which was true and useless: it never checked that an indexed vector could
+    satisfy it.
+
+    This one runs a real store so the filter is applied rather than recorded.
+    """
+    store = InMemoryVectorStore()
+    store.upsert_records("kb-records", [_record_shaped_vector("kb-records", "claim:LCLM00014")])
+    retriever = ServiceContextRetriever(
+        VectorService(store, event_bus=InMemoryEventBus())
+    )
+
+    items = retriever.retrieve(
+        knowledge_base_id="kb-records",
+        query_vector=[0.1, 0.2, 0.3],
+        limit=5,
+        filters={},
+    )
+
+    assert [item.content_id for item in items] == ["claim:LCLM00014"]
+    assert items[0].content.startswith("id=claim:LCLM00014")
+
+
+def test_a_vector_without_the_channel_is_invisible_to_rag() -> None:
+    """Pins *why* the stamp matters, so removing it fails loudly.
+
+    This is the pre-fix state reproduced deliberately: identical vector, same
+    query, channel key absent. It retrieves nothing — which is what every
+    record-ingested knowledge base did.
+    """
+    unstamped = _record_shaped_vector("kb-unstamped", "claim:LCLM00014")
+    unstamped.metadata.pop(EMBEDDING_CHANNEL_KEY)
+    store = InMemoryVectorStore()
+    store.upsert_records("kb-unstamped", [unstamped])
+    retriever = ServiceContextRetriever(
+        VectorService(store, event_bus=InMemoryEventBus())
+    )
+
+    items = retriever.retrieve(
+        knowledge_base_id="kb-unstamped",
+        query_vector=[0.1, 0.2, 0.3],
+        limit=5,
+        filters={},
+    )
+
+    assert items == []
