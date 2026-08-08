@@ -134,7 +134,31 @@ const workflows: WorkflowRunListResponse = {
       started_at: now,
       updated_at: now,
     },
+    {
+      id: 'wf-parked',
+      knowledge_base_id: 'kb-ready',
+      workflow_type: 'analytics',
+      status: 'awaiting_approval',
+      current_step: 'analyst review',
+      started_at: now,
+      updated_at: now,
+    },
   ],
+  has_more: false,
+}
+
+// A run parked on a human, with nothing else in flight — the case where the
+// dashboard used to report 'idle' at an operator who was the one being waited on.
+const onlyParkedWorkflow: WorkflowRunListResponse = {
+  items: [workflows.items[4]],
+  has_more: false,
+}
+
+// Queued *and* parked, which is the pair the branch ordering actually decides.
+// Without this, a branch placed below `queued` still passes every other test
+// here, because no other fixture contains both.
+const queuedAndParkedWorkflows: WorkflowRunListResponse = {
+  items: [workflows.items[0], workflows.items[4]],
   has_more: false,
 }
 
@@ -341,6 +365,40 @@ describe('DashboardPage', () => {
   })
 
   it('exposes the dashboard workflow state as a semantic status pill', () => {
+    renderDashboard()
+
+    expect(screen.getByLabelText('Workflow state: running')).toBeInTheDocument()
+  })
+
+  it('counts a run awaiting approval', () => {
+    renderDashboard()
+    clickTab(/queue health/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /queue health/i })
+    expectMetricRowValue(panel, /awaiting approval/i, '1')
+  })
+
+  it('reports awaiting approval as the primary state when nothing is running', () => {
+    // A parked run is the one thing an operator can act on. Reporting 'idle'
+    // hides work that is waiting specifically for them.
+    mocks.useWorkflows.mockReturnValue(querySuccess(onlyParkedWorkflow))
+    renderDashboard()
+
+    expect(screen.getByLabelText('Workflow state: awaiting approval')).toBeInTheDocument()
+  })
+
+  it('ranks a parked run above a queued one', () => {
+    // A queued run waits on a worker; a parked one waits on a person. The
+    // headline should name the one a human can clear.
+    mocks.useWorkflows.mockReturnValue(querySuccess(queuedAndParkedWorkflows))
+    renderDashboard()
+
+    expect(screen.getByLabelText('Workflow state: awaiting approval')).toBeInTheDocument()
+  })
+
+  it('ranks a running workflow above a parked one', () => {
+    // Both are present in the default fixture: running is live work, and it
+    // stays the headline. Approval outranks queued, not running.
     renderDashboard()
 
     expect(screen.getByLabelText('Workflow state: running')).toBeInTheDocument()

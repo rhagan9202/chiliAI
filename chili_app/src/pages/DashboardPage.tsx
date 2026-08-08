@@ -80,9 +80,16 @@ function formatRiskProjectionLabel({
   return parts.join(' · ')
 }
 
+// Ordered by what the headline should tell an operator, which is not the same
+// as the lifecycle order. `awaiting_approval` sits above `queued` because a
+// parked run is blocked on a *person* — plausibly the one reading this — while
+// a queued run is merely waiting on a worker and needs nobody.
 function primaryWorkflowState(workflows: { status: string }[]): string {
   if (workflows.some((workflow) => workflow.status === 'running')) return 'running'
   if (workflows.some((workflow) => workflow.status === 'failed')) return 'failed'
+  if (workflows.some((workflow) => workflow.status === 'awaiting_approval')) {
+    return 'awaiting_approval'
+  }
   if (workflows.some((workflow) => workflow.status === 'queued')) return 'queued'
   return workflows[0]?.status ?? 'idle'
 }
@@ -177,6 +184,9 @@ export function DashboardPage() {
     running: workflows.filter((workflow) => workflow.status === 'running').length,
     failed: workflows.filter((workflow) => workflow.status === 'failed').length,
     completed: workflows.filter((workflow) => workflow.status === 'completed').length,
+    awaitingApproval: workflows.filter(
+      (workflow) => workflow.status === 'awaiting_approval',
+    ).length,
   }
   const workflowState = primaryWorkflowState(workflows)
   const riskProjections = riskProjectionsQuery.data?.items ?? []
@@ -256,7 +266,11 @@ export function DashboardPage() {
                 <ConfidenceBar color="#ff4040" value={leadAlert ? Math.round(leadAlert.confidence * 100) : 0} />
                 <div className="metric-row">
                   <span className="metric-row__label">Workflow state</span>
-                  <StatusPill context="Workflow state" label={workflowState} tone={statusToneForValue(workflowState)} />
+                  <StatusPill
+                    context="Workflow state"
+                    label={workflowState.replace(/_/g, ' ')}
+                    tone={statusToneForValue(workflowState)}
+                  />
                 </div>
                 <Link className="metric-row" style={{ color: 'inherit', textDecoration: 'none' }} to="/cases">
                   <span className="metric-row__label">Open cases</span>
@@ -361,6 +375,10 @@ export function DashboardPage() {
                 <div className="metric-row">
                   <span className="metric-row__label">Queued workflows</span>
                   <StatusPill context="Queued workflows" label={String(workflowCounts.queued)} tone="default" />
+                </div>
+                <div className="metric-row">
+                  <span className="metric-row__label">Awaiting approval</span>
+                  <StatusPill context="Awaiting approval" label={String(workflowCounts.awaitingApproval)} tone={countTone(workflowCounts.awaitingApproval, 'info')} />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Running workflows</span>
