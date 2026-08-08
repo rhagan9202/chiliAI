@@ -7,7 +7,7 @@ whether it succeeded or failed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 
 import pytest
 
@@ -19,6 +19,8 @@ from capabilities.models import (
     CapabilityPermission,
 )
 from capabilities.executors import (
+    CapabilityExecutor,
+    ExecutionContext,
     clear_executors,
     register_executor,
 )
@@ -40,30 +42,30 @@ def clear_executor_registry() -> Iterator[None]:
     clear_executors()
 
 
-def _recording_executor(
-    log: list[str],
-) -> Callable[[Mapping[str, object]], Mapping[str, object]]:
-    def _run(payload: Mapping[str, object]) -> Mapping[str, object]:
+def _recording_executor(log: list[str]) -> CapabilityExecutor:
+    def _run(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         log.append("ran")
         return {}
 
     return _run
 
 
-def _capturing_executor(
-    seen: list[Mapping[str, object]],
-) -> Callable[[Mapping[str, object]], Mapping[str, object]]:
-    def _run(payload: Mapping[str, object]) -> Mapping[str, object]:
+def _capturing_executor(seen: list[Mapping[str, object]]) -> CapabilityExecutor:
+    def _run(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         seen.append(payload)
         return {}
 
     return _run
 
 
-def _constant_executor(
-    value: Mapping[str, object],
-) -> Callable[[Mapping[str, object]], Mapping[str, object]]:
-    def _run(payload: Mapping[str, object]) -> Mapping[str, object]:
+def _constant_executor(value: Mapping[str, object]) -> CapabilityExecutor:
+    def _run(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         return value
 
     return _run
@@ -222,7 +224,9 @@ def test_returns_a_failure_envelope_when_the_executor_raises() -> None:
     would dead-letter the event and lose the audit record.
     """
 
-    def _boom(payload: Mapping[str, object]) -> Mapping[str, object]:
+    def _boom(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         raise RuntimeError("upstream down")
 
     service = _service()
@@ -278,7 +282,9 @@ def test_the_audit_record_names_the_actual_actor_not_their_roles() -> None:
 def test_a_failed_execution_is_still_audited() -> None:
     """The calls worth auditing are exactly the ones that might go wrong."""
 
-    def _boom(payload: Mapping[str, object]) -> Mapping[str, object]:
+    def _boom(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
         raise RuntimeError("upstream down")
 
     audit = _audit()
@@ -385,3 +391,75 @@ def test_a_registered_manifest_without_an_executor_is_reported_not_crashed() -> 
 
     assert envelope.success is False
     assert envelope.error_code == "capability_not_executable"
+
+
+# --- execution context ------------------------------------------------------
+
+
+def test_the_executor_receives_context_separately_from_payload() -> None:
+    """Authorization context is not tool input.
+
+    It rode in the business payload because the signature had nowhere else to
+    put it, so every capability saw `actor_roles` as a business field and had to
+    know to ignore it.
+    """
+    seen: list[tuple[Mapping[str, object], ExecutionContext]] = []
+
+    def _capture(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
+        seen.append((payload, context))
+        return {}
+
+    service = _service()
+    service.register(_unaudited_manifest())
+    register_executor("test.unaudited", _capture)
+
+    _execute(service, "test.unaudited", audit=_audit(), payload={"entity_id": "e-1"})
+
+    payload, context = seen[0]
+    assert payload == {"entity_id": "e-1"}
+    assert "actor_roles" not in payload
+    assert "actor_user_id" not in payload
+    assert context.actor_user_id == _ACTOR
+    assert context.actor_roles == ("analyst",)
+    assert context.knowledge_base_id == _KB_ID
+
+
+def test_context_carries_the_domain_and_environment_that_were_authorized() -> None:
+    """A capability that re-checks must check what execute() actually checked."""
+    seen: list[ExecutionContext] = []
+
+    def _capture(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
+        seen.append(context)
+        return {}
+
+    service = _service()
+    service.register(_unaudited_manifest())
+    register_executor("test.unaudited", _capture)
+
+    _execute(service, "test.unaudited", audit=_audit())
+
+    assert seen[0].domain_name == "medicare_fraud"
+    assert seen[0].environment_tag == "local"
+
+
+def test_the_context_is_immutable() -> None:
+    """An executor must not be able to edit the authorization it was handed."""
+    seen: list[ExecutionContext] = []
+
+    def _capture(
+        payload: Mapping[str, object], context: ExecutionContext
+    ) -> Mapping[str, object]:
+        seen.append(context)
+        return {}
+
+    service = _service()
+    service.register(_unaudited_manifest())
+    register_executor("test.unaudited", _capture)
+    _execute(service, "test.unaudited", audit=_audit())
+
+    with pytest.raises((AttributeError, TypeError)):
+        seen[0].actor_user_id = "someone-else"  # type: ignore[misc]

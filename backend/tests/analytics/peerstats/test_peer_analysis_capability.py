@@ -61,9 +61,9 @@ def test_peer_analysis_capability_registry_executes_kb_scoped_peer_analysis() ->
         PeerAnalysisService(writer, min_cohort_size=2)
     )
 
-    descriptor = registry.get("analytics.peer_analysis")
+    descriptor = registry.get("analytics.peer_context")
     result = registry.execute(
-        "analytics.peer_analysis",
+        "analytics.peer_context",
         {
             "knowledge_base_id": "kb1",
             "entity_id": "facility:target",
@@ -86,7 +86,7 @@ def test_peer_analysis_capability_rejects_disabled_peer_stats() -> None:
 
     with pytest.raises(PeerAnalysisCapabilityDisabledError, match="peer_stats"):
         registry.execute(
-            "analytics.peer_analysis",
+            "analytics.peer_context",
             {"knowledge_base_id": "kb1", "entity_id": "facility:target"},
             capabilities=CapabilitiesConfig(peer_stats=False),
         )
@@ -97,3 +97,32 @@ def test_peerstats_package_exports_peer_analysis_capability_factory() -> None:
         getattr(peerstats, "create_peer_analysis_capability_registry")
         is create_peer_analysis_capability_registry
     )
+
+
+def test_the_adapter_uses_the_published_capability_id() -> None:
+    """The manifest id is the contract; the adapter id is an implementation detail.
+
+    They were `analytics.peer_context` (manifest, with no implementation) and
+    `analytics.peer_analysis` (adapter, which no manifest declared) — two halves
+    of one feature under different names, so neither was reachable. The adapter
+    is what moves: workflow definitions reference the manifest id and the browse
+    API returns it.
+    """
+    from typing import get_args
+
+    from analytics.peerstats.capability import PeerAnalysisCapabilityId
+
+    assert get_args(PeerAnalysisCapabilityId) == ("analytics.peer_context",)
+
+
+def test_the_published_id_is_a_registered_manifest() -> None:
+    from capabilities.service import create_default_capability_registry_service
+
+    registered = {
+        manifest.capability_id
+        for manifest in create_default_capability_registry_service()
+        .list_capabilities()
+        .items
+    }
+
+    assert "analytics.peer_context" in registered

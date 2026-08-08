@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 
 from auditlog.models import PLATFORM_TENANT_ID, AuditEventCreate
 from auditlog.service import AuditLogService
-from capabilities.executors import get_executor
+from capabilities.executors import ExecutionContext, get_executor
 from capabilities.models import (
     CapabilityExecutionEnvelope,
     CapabilityManifest,
@@ -223,7 +223,18 @@ class CapabilityRegistryService:
             )
         else:
             try:
-                result = executor(payload)
+                result = executor(
+                    payload,
+                    ExecutionContext(
+                        actor_user_id=actor_user_id,
+                        actor_roles=tuple(actor_roles),
+                        # The values authorization actually used, so an
+                        # executor that re-checks checks the same thing.
+                        domain_name=domain_name,
+                        environment_tag=environment_tag,
+                        knowledge_base_id=knowledge_base_id,
+                    ),
+                )
             except Exception as exc:  # noqa: BLE001 - any tool failure is a failed call
                 # A tool blowing up is a failed capability call, not a failed
                 # workflow step. Letting it propagate would dead-letter the

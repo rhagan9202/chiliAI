@@ -177,7 +177,13 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
         CapabilityManifest(
             capability_id="evidence.checklist.generate",
             version="v1",
-            module="evidence.packs",
+            # `evidence.packs` does not exist. Evidence packs are built and
+            # stored by `analytics/explainability/` (EvidencePackRepository,
+            # ObjectStoreEvidencePackRepository). `module` is a browse-API
+            # filter returned to clients, not documentation, so a phantom
+            # value makes the capability unlocatable by the field meant to
+            # locate it.
+            module="analytics.explainability",
             label="Evidence checklist generation",
             description="Generate a review checklist for a suspicious entity or alert.",
             input_schema=_object_schema(

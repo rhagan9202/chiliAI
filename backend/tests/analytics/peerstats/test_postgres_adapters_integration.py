@@ -218,3 +218,90 @@ def test_aggregate_skips_rows_missing_time_column(database_url: str) -> None:
             )
             conn.commit()
         provider.close()
+
+
+def _write_signal(
+    writer: PostgresDerivedRiskSignalWriter,
+    *,
+    metric_name: str,
+    entity_id: str = "npi-1",
+    knowledge_base_id: str = _KB,
+) -> None:
+    writer.write_signals(
+        [
+            DerivedRiskSignal(
+                knowledge_base_id=knowledge_base_id,
+                entity_id=entity_id,
+                entity_type="provider",
+                metric_name=metric_name,
+                interval_start=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                peer_group_key="provider:TN",
+                aggregate_value=100.0,
+                peer_mean=40.0,
+                peer_std=10.0,
+                z_score=6.0,
+                signal_value=0.9,
+                weight=1.0,
+                rationale="well above peers",
+                correlation_id="corr-latest",
+            )
+        ]
+    )
+
+
+def test_latest_signals_filters_by_metric_name(database_url: str) -> None:
+    """`analytics.peer_context` reads through this and could never work.
+
+    The predicate was `(%s IS NULL OR metric_name = %s)` with a bare parameter,
+    so Postgres raised `IndeterminateDatatype: could not determine data type of
+    parameter $3` on **every** call. The in-memory adapter has no SQL, so only
+    an integration test could catch it — and there was none.
+    """
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresDerivedRiskSignalWriter(provider)
+    store.delete_by_kb(_KB)
+    _write_signal(store, metric_name="weekly_billing")
+    _write_signal(store, metric_name="claim_count")
+
+    matched = store.latest_signals(
+        knowledge_base_id=_KB, entity_id="npi-1", metric_name="weekly_billing"
+    )
+
+    assert [signal.metric_name for signal in matched] == ["weekly_billing"]
+
+
+def test_latest_signals_returns_every_metric_when_none_is_given(
+    database_url: str,
+) -> None:
+    """The `IS NULL` branch of the same predicate."""
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresDerivedRiskSignalWriter(provider)
+    store.delete_by_kb(_KB)
+    _write_signal(store, metric_name="weekly_billing")
+    _write_signal(store, metric_name="claim_count")
+
+    every = store.latest_signals(knowledge_base_id=_KB, entity_id="npi-1")
+
+    assert sorted(signal.metric_name for signal in every) == [
+        "claim_count",
+        "weekly_billing",
+    ]
+
+
+def test_latest_signals_is_empty_for_an_entity_with_no_signals(
+    database_url: str,
+) -> None:
+    """Absent is empty, not an error — a workflow step must be able to say so."""
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresDerivedRiskSignalWriter(provider)
+    store.delete_by_kb(_KB)
+
+    assert (
+        store.latest_signals(
+            knowledge_base_id=_KB, entity_id="npi-nobody", metric_name="weekly_billing"
+        )
+        == []
+    )

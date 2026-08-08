@@ -70,7 +70,13 @@ _LATEST_SIGNALS_SQL = """
     FROM entity_derived_signals
     WHERE knowledge_base_id = %s
       AND entity_id = %s
-      AND (%s IS NULL OR metric_name = %s)
+      -- The ::text cast is load-bearing. An uncast placeholder here gives
+      -- Postgres nothing to infer the parameter type from, and it raised
+      -- IndeterminateDatatype (could not determine data type of parameter $3)
+      -- on every call, filtered or not.
+      -- Note: psycopg counts placeholders textually, comments included, so do
+      -- not write one in this comment.
+      AND (%s::text IS NULL OR metric_name = %s)
     ORDER BY metric_name, interval_start DESC, computed_at DESC
 """
 

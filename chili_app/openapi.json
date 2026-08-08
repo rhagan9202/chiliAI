@@ -1353,6 +1353,11 @@
             "title": "Examples",
             "type": "array"
           },
+          "executable": {
+            "default": false,
+            "title": "Executable",
+            "type": "boolean"
+          },
           "health": {
             "$ref": "#/components/schemas/CapabilityHealthResponse"
           },
