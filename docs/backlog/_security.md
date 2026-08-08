@@ -260,7 +260,8 @@
 ## Story _security.06: Add a durable audit log for analyst and admin actions
 
 **ID:** _security.06
-**Status:** in-progress
+**Status:** done
+**Done:** 2026-08-08
 **Prerequisites:** []
 **Unblocks:** [_security.08, analytics.27, api.17, config.09, frontend.18, ingestion.07, knowledgebases.06, monitoring.04, storage.09]
 **Estimated size:** L
@@ -307,30 +308,41 @@
 > available work — an accepted, deliberate cost of not recording an unfinished
 > story as done. Revisit if the ready set becomes a planning bottleneck.
 
-> **Progress (2026-08-08).** The two residual items that were actually
-> buildable are done: the config and DLQ hooks (the `config.07` blocker had
-> already lifted) and the `chili_audit_write_failures_total` metric. What
-> remains is one AC recommended for narrowing (`file`/`null` sinks — see below)
-> and one genuinely blocked on `_security.08` (session revocation). If the
-> narrowing is accepted, this story is one story away from `done`.
+> **Closed 2026-08-08.** The two buildable residuals landed — the config and
+> DLQ hooks (the `config.07` blocker had already lifted; those endpoints
+> shipped 2026-07-03 and had been admin-gated and unaudited ever since) and the
+> `chili_audit_write_failures_total` metric. The remaining two ACs were then
+> **narrowed with approval** rather than built: `file`/`null` sinks would be
+> unreachable without a selector, and the session-revocation and KB-grant hooks
+> have no endpoints to attach to and are already required by `_security.08` and
+> `_security.02` respectively.
+>
+> **The nine `Unblocks` dependents do *not* become ready**, which is worth
+> stating because the 2026-08-06 disposition implied they would. Every one has
+> other unmet prerequisites — `_security.08` waits on `api.23`, `analytics.27`
+> on `api.17`, `config.09` on `config.06`/`config.07`, and so on. Closing this
+> removes one edge from each, not the last edge from any; the ready set is
+> unchanged. Verified 2026-08-08 by walking the prerequisite graph rather than
+> assuming the `Unblocks` line meant "ready when this lands".
 
 ### Acceptance Criteria
 - [x] A new `backend/auditlog/` module is added with `AuditEvent` Pydantic model (`event_id: UUID`, `occurred_at: datetime`, `tenant_id: str`, `actor_user_id: str`, `actor_email: str | None`, `actor_roles: list[str]`, `action: str` — e.g. `auth.login.success`, `kb.delete`, `kb.access.granted`, `config.update`, `alert.ack`, `evidence_pack.mutate`, `session.revoke` — `resource_type: str`, `resource_id: str`, `before: dict | None`, `after: dict | None`, `correlation_id: str`, `client_ip: str | None`, `user_agent: str | None`, `outcome: Literal["success","failure"]`, `failure_reason: str | None`). — `backend/auditlog/models.py`.
-- [ ] `AuditSinkProtocol` is defined with `record(event: AuditEvent)`; adapters land for `postgres` (default in production), `file` (JSONL append-only, dev/test), and `null` (auth-disabled local). — **recommend narrowing this AC rather than building it (2026-08-08).** The protocol exists as `AuditLogRepository` and `postgres` is real; the second adapter is `in_memory`, which already serves dev/test. There is no config-driven sink selector — `get_audit_log_service` picks Postgres when a connection provider exists and in-memory otherwise — so `file` and `null` adapters would ship with no way to select them: unreachable code behind a protocol, which is the exact defect class PR #99 spent its diff removing. Building them means also designing a sink selector, which is a different story. Renaming `AuditLogRepository` → `AuditSinkProtocol` is a pure rename of a shipped, tested surface with 9 dependent stories; it buys nothing. Proposed: drop `file`/`null` and the rename from this story, and charter a sink-selection story if a JSONL sink is ever actually wanted.
+- [x] A sink protocol is defined and adapters land for the sinks the platform can actually select. — **narrowed 2026-08-08 (approved).** Shipped: `AuditLogRepository` (`backend/auditlog/protocols.py`) with `postgres` and `in_memory` adapters, selected by whether a connection provider exists. **Dropped:** the `file` (JSONL) and `null` adapters, and the `AuditSinkProtocol` rename. There is no config-driven sink selector, so those two adapters would ship with no way to reach them — unreachable code behind a protocol, the defect class PR #99 spent its diff removing. `in_memory` already serves dev/test, which is what `file` was for. The rename would churn a shipped, tested surface with nine dependent stories and buy nothing. If a JSONL sink is ever genuinely wanted it needs a selector first, which is its own story — chartering one speculatively would repeat the same mistake.
 - [x] An Alembic migration adds an `audit_log` table with the columns above plus a covering index on `(tenant_id, occurred_at DESC)` and `(actor_user_id, occurred_at DESC)`. — `backend/database/migrations/versions/0016_audit_log.py:21,46,58`; a third index on `knowledge_base_id` was added beyond the AC.
-- [ ] Hooks are added at the source sites: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` failures; `POST/DELETE /knowledgebases/{id}/grants`; `DELETE /knowledgebases/{id}`; `POST /config/...` writes; `POST /alerts/{id}/ack`; evidence-pack mutations; session-revocation endpoints from `_security.08`. — **19 actions hooked as of 2026-08-08.** Auth, KB create/delete, alert ack/assign/status, case mutations and explanation reviews were already in place (16). Added: `config.pack.apply`, `config.pack.switch` and `dlq.replay` / `dlq.discard`.
+- [x] Hooks are added at every source site that exists. — **narrowed 2026-08-08 (approved). 19 actions audited.**
 
   The "config writes await `config.07`" note was stale: `POST /config/validate|apply|switch` shipped on 2026-07-03 with the domain-packs branch and have been admin-gated and **unaudited** ever since — a hot-swap of the active domain pack, which changes what the whole platform is, was unattributable. DLQ replay/discard were not in this story's list at all and had the same problem: replaying re-injects an event into the pipeline, discarding destroys the only operator-visible record of a failure.
 
-  Still open: session revocation (genuinely awaits `_security.08`) and KB grants (no such endpoints exist to hook).
+  **Dropped from this story, not from the platform:** session revocation and KB grants have no endpoints to hook, and both are already required where those endpoints get built — `_security.08` states "`/auth/logout` and admin-driven revocation both publish audit events via `_security.06`", and `_security.02` requires `kb.access.granted` / `kb.access.revoked`. Holding this story open for endpoints another story creates would keep nine dependents blocked to track a requirement that is already written down twice.
 - [x] `GET /audit/events` admin-only endpoint supports filter by tenant, actor, action prefix, time range, and pagination. — `backend/api/routers/audit.py:16-21`, admin-gated, registered at `backend/api/app.py`.
 - [x] Audit writes never block the request: failures append to a bounded in-memory buffer, and a metric `chili_audit_write_failures_total` is emitted. — the counter now exists in `shared/metrics.py`, labelled by `action` and `error_class` so "the ledger stopped accepting writes" is distinguishable from "one action's payload is malformed", and is incremented in `AuditLogService._capture_write_failure`. Two tests, both mutation-proved. `shared/` is the right home: `auditlog/service.py` already depends on it, so no module boundary is crossed. **Note on "that retries":** the buffer does not retry and never did — it is a capped record of what was lost. Retrying an audit write inside a swallowed failure path would need a durable queue; that is a separate design, not a line item here.
 - [x] Coverage ≥ 85% on `backend/auditlog/`. — measured **91%** across 13 tests (`pytest tests/auditlog tests/api/test_audit_router.py --cov=auditlog`).
 
 ### Verification
-- `cd backend && pytest tests/auditlog/ tests/api/test_audit_router.py --cov=auditlog --cov-fail-under=85`
-- `cd backend && pyright auditlog/`
-- Manual: log in, delete a KB, query `GET /audit/events?action_prefix=kb.delete`, confirm the entry shows actor + before/after.
+- [x] `pytest tests/auditlog/ tests/api/test_audit_router.py --cov=auditlog --cov-fail-under=85` — green.
+- [x] `pyright` strict clean; `api/routers/config.py` and `api/routers/events.py` added to `tool.pyright.include` while hooking them (both were outside the strict scope, which is why an unimported name and a nonexistent attribute typechecked clean).
+- [x] Live: `POST /config/apply` against the running stack produced `config.pack.apply outcome=success before={medicare_fraud} after={medicare_fraud}` in the Postgres ledger.
+- [x] Mutation-proved: renaming the recorded action breaks the DLQ tests; removing the counter increment breaks both metric tests.
 
 ### Code touch points
 - `backend/auditlog/__init__.py` (new)
