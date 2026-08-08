@@ -17,6 +17,8 @@ from agent.protocols import AgentServiceProtocol
 from api._workflow_projection import count_running_workflows
 from api.contracts import RealtimeSnapshotResponse
 from api.dependencies import (
+    PLATFORM_TENANT_ID,
+    get_audit_log_service,
     get_agent_service,
     get_alert_feed_store,
     get_dlq_record_store,
@@ -24,6 +26,8 @@ from api.dependencies import (
     get_knowledge_base_repository,
 )
 from api.middleware.auth import User
+from auditlog.models import AuditEventCreate, JsonSummary
+from auditlog.service import AuditLogService
 from api.middleware.rbac import require_role
 from events.codec import decode_event
 from events.dlq_models import DlqRecord, DlqRecordListResponse, DlqRecordStatus
@@ -259,6 +263,45 @@ async def get_dlq_record(
     return record
 
 
+def _record_dlq_audit(
+    audit_service: AuditLogService,
+    *,
+    actor: User,
+    action: str,
+    record: DlqRecord,
+    before: JsonSummary,
+) -> None:
+    """Append one `dlq.{replay,discard}` entry.
+
+    Discarding a dead-lettered event destroys the only operator-visible record
+    of work that failed; replaying one re-injects it into the pipeline. Both are
+    material, both were admin-gated and neither was attributable until now.
+
+    The stored payload is deliberately not copied into the ledger: it is the
+    original event, which may carry knowledge-base content. The audit answers
+    who acted on which record, and the record itself remains queryable at
+    `GET /events/dlq/{id}`.
+    """
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=PLATFORM_TENANT_ID,
+            knowledge_base_id=None,
+            actor_user_id=actor.user_id,
+            actor_email=actor.email,
+            actor_roles=list(actor.roles),
+            action=action,
+            resource_type="dlq_record",
+            resource_id=record.dlq_id,
+            before=before,
+            after={"status": record.status},
+            correlation_id=f"dlq:{action}:{record.dlq_id}",
+            outcome="success",
+            metadata={"source": "api.events", "event_type": record.event_type},
+        )
+    )
+
+
 @router.post(
     "/dlq/{dlq_id}/replay",
     response_model=DlqRecord,
@@ -268,6 +311,8 @@ async def replay_dlq_record(
     dlq_id: str,
     store: DlqRecordStore = Depends(get_dlq_record_store),
     event_bus: EventBus = Depends(get_event_bus),
+    actor: User = Depends(require_role("admin")),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> DlqRecord:
     """Re-publish a pending DLQ record's original event and mark it replayed.
 
@@ -300,6 +345,17 @@ async def replay_dlq_record(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"DLQ record '{dlq_id}' was transitioned concurrently.",
         )
+    # Recorded after the CAS, not before: the loser of a concurrent replay must
+    # not leave a ledger entry claiming it replayed anything. The event is
+    # already on the bus by this point, so a redelivery is possible either way —
+    # what the ledger asserts is which operator's call owned the transition.
+    _record_dlq_audit(
+        audit_service,
+        actor=actor,
+        action="dlq.replay",
+        record=updated,
+        before={"status": record.status},
+    )
     return updated
 
 
@@ -311,10 +367,19 @@ async def replay_dlq_record(
 async def discard_dlq_record(
     dlq_id: str,
     store: DlqRecordStore = Depends(get_dlq_record_store),
+    actor: User = Depends(require_role("admin")),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> DlqRecord:
     """Mark a pending DLQ record discarded. 404 unknown, 409 non-pending."""
     updated = store.mark_discarded(dlq_id)
     if updated is not None:
+        _record_dlq_audit(
+            audit_service,
+            actor=actor,
+            action="dlq.discard",
+            record=updated,
+            before={"status": "pending"},
+        )
         return updated
     if store.get(dlq_id) is None:
         raise HTTPException(

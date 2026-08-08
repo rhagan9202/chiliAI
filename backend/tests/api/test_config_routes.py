@@ -9,6 +9,7 @@ path-traversal rejection, and event/degradation surfacing.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,29 @@ def isolate_config_caches() -> Iterator[None]:
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(create_app())
+
+
+def _config_audit_entries_since(
+    client: TestClient, since: datetime
+) -> list[dict[str, object]]:
+    """`config.pack.*` entries recorded at or after `since`.
+
+    The ledger is Postgres-backed in this suite and **survives across test
+    runs**. Two earlier versions of this helper were wrong in different ways:
+    asserting an absolute `== 1` passed only on a virgin database, and diffing
+    against a snapshot silently broke once the table exceeded the page size, so
+    rows beyond page one read as new. Filtering server-side by time is bounded
+    by the action under test rather than by the table's history.
+    """
+    payload = client.get(
+        "/audit/events",
+        params={
+            "action_prefix": "config.pack",
+            "from": since.isoformat(),
+            "limit": 200,
+        },
+    ).json()
+    return [item for item in payload["items"]]
 
 
 class _RecordingBus:
@@ -495,6 +519,77 @@ class TestApplyAndSwitch:
         events = [e for e in bus.events if isinstance(e, ConfigUpdatedEvent)]
         assert len(events) == 1
         assert events[0].reason == "apply"
+
+    def test_a_switch_is_recorded_in_the_audit_ledger(
+        self, client: TestClient
+    ) -> None:
+        """Swapping the active pack changes what the whole platform is.
+
+        It was admin-gated but unattributable: `grep -c audit` was 0 in this
+        router. Asserted through `GET /audit/events`, the projection a reviewer
+        actually reads, rather than against the service.
+        """
+        started = datetime.now(timezone.utc)
+
+        assert client.post("/config/switch", json={"pack": "food_supply_chain"}).status_code == 200
+
+        new = _config_audit_entries_since(client, started)
+        assert len(new) == 1
+        entry = new[0]
+        assert entry["action"] == "config.pack.switch"
+        assert entry["outcome"] == "success"
+        assert entry["resource_type"] == "domain_pack"
+        assert entry["before"]["pack_name"] == "medicare_fraud"
+        assert entry["after"]["pack_name"] == "food_supply_chain"
+
+    def test_the_ledger_records_who_swapped_the_pack(
+        self, client: TestClient
+    ) -> None:
+        """Identity comes from the authenticated actor, never derived from roles."""
+        started = datetime.now(timezone.utc)
+
+        assert client.post("/config/apply", json={}).status_code == 200
+
+        new = _config_audit_entries_since(client, started)
+        assert len(new) == 1
+        assert new[0]["action"] == "config.pack.apply"
+        assert new[0]["actor_user_id"]
+        assert new[0]["actor_roles"]
+
+    def test_a_rejected_swap_is_recorded_as_a_failure(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A ledger holding only successes cannot answer "who tried".
+
+        An admin whose pack was rejected is exactly the event a reviewer wants,
+        and the swap-once-success contract means nothing changed — so the entry
+        must say `failure`, with the active pack unmoved in `before`/`after`.
+
+        Uses a pack that *resolves* and then fails validation. An unknown pack
+        name 404s during reference resolution, before any activation is
+        attempted, and is a malformed request rather than a config change —
+        auditing it would record an attempt that never reached the config.
+        """
+        (tmp_path / "broken.yaml").write_text(
+            "domain: {name: broken}\n", encoding="utf-8"
+        )
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+
+        started = datetime.now(timezone.utc)
+
+        rejected = client.post("/config/switch", json={"pack": "broken"})
+        assert rejected.status_code == 400
+
+        new = _config_audit_entries_since(client, started)
+        assert len(new) == 1
+        failure = new[0]
+        assert failure["outcome"] == "failure"
+        assert failure["after"]["pack_name"] is None
+        assert failure["before"]["pack_name"] == "medicare_fraud"
+        assert failure["failure_reason"]
+
+        # Nothing moved: swap-once-success means the rejected pack never served.
+        assert client.get("/config/domain").json()["domain"]["name"] == "medicare_fraud"
 
     def test_apply_with_explicit_pack_path(self, client: TestClient) -> None:
         resp = client.post("/config/apply", json={"pack": str(FOOD_YAML)})

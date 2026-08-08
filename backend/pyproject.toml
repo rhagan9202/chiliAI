@@ -133,6 +133,7 @@ venv = ".venv"
 # being pulled into this program.
 extraPaths = ["."]
 include = [
+    "tests/test_pyright_scope.py",
     "agent",
     "auditlog",
     "capabilities",
@@ -150,6 +151,8 @@ include = [
     "api/middleware/rbac.py",
     "api/middleware/session_store.py",
     "api/routers/alerts.py",
+    "api/routers/config.py",
+    "api/routers/events.py",
     "api/routers/audit.py",
     "api/routers/capabilities.py",
     "api/routers/governance.py",
@@ -158,7 +161,6 @@ include = [
     "api/routers/investigation.py",
     "api/routers/knowledgebases.py",
     "api/routers/workflows.py",
-    "api/routers/ws.py",
     "config",
     "database",
     "events",
@@ -194,7 +196,6 @@ include = [
     "tests/api/test_production_guardrail.py",
     "tests/api/test_readiness_router.py",
     "tests/api/test_records_router.py",
-    "tests/api/test_ws_router.py",
     "tests/api/test_workflow_projection.py",
     "tests/api/test_workflows_router.py",
     "tests/config",

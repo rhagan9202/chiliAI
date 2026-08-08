@@ -59,14 +59,18 @@ from api.config_models import (
 )
 from api.contracts import DomainFeaturesResponse
 from api.dependencies import (
+    PLATFORM_TENANT_ID,
+    get_audit_log_service,
     get_domain_config,
     get_domain_config_features_payload,
     get_domain_config_schema_payload,
 )
-from api.middleware.auth import configure_jwks_cache
+from api.middleware.auth import User, configure_jwks_cache
 from api.middleware.rbac import require_role
 from api.state import ApiState
-from config.loader import ConfigLoadError, _overlay_paths_from_env, load_config
+from auditlog.models import AuditEventCreate
+from auditlog.service import AuditLogService
+from config.loader import ConfigLoadError, load_config, overlay_paths_from_env
 from config.overlay import OverlayError, apply_overlays
 from config.schema import DomainConfig
 from config.store import (
@@ -226,7 +230,13 @@ def _parse_pack_file(path: Path) -> dict[str, JsonValue]:
         raise _PackParseError(f"JSON parse error in {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise _PackParseError(f"Pack file {path} must contain a mapping at the top level.")
-    return cast(dict[str, JsonValue], {str(key): value for key, value in data.items()})
+    # `isinstance(data, dict)` narrows to `dict[Unknown, Unknown]`, so iterating
+    # `.items()` is a strict error. Pin both halves as `object` first — the same
+    # pattern the jsonb decoders and `scripts/security_review_check.py` use.
+    pinned = cast("dict[object, object]", data)
+    return cast(
+        dict[str, JsonValue], {str(key): value for key, value in pinned.items()}
+    )
 
 
 def _validation_issues(exc: ValidationError) -> list[ConfigValidationIssue]:
@@ -395,6 +405,98 @@ def _activate_pack(
     *,
     reason: Literal["apply", "switch"],
     request: Request,
+    actor: User,
+) -> ConfigSwapResponse:
+    """Swap the active pack and record the attempt in the audit ledger.
+
+    Wraps the pipeline rather than threading `audit_service.record` through its
+    four exit points. Failures are recorded too: an admin who tried to swap the
+    platform's configuration and was rejected by the production auth guardrail
+    is exactly the event a reviewer is looking for, and a ledger that holds only
+    successes cannot answer "who tried".
+
+    The ledger service is resolved at record time rather than injected, because
+    a successful swap resets the config-derived singletons — see the comment at
+    the success path below.
+    """
+
+    previous_pack_name = _current_pack_name()
+    try:
+        response = _swap_active_pack(candidate, reason=reason, request=request)
+    except HTTPException as exc:
+        _record_config_audit(
+            get_audit_log_service(request),
+            actor=actor,
+            reason=reason,
+            candidate=candidate,
+            previous_pack_name=previous_pack_name,
+            new_pack_name=None,
+            outcome="failure",
+            failure_reason=str(exc.detail),
+        )
+        raise
+    # Resolved *after* the swap, deliberately. `audit_log_service` is in
+    # `_CONFIG_DERIVED_APP_STATE_ATTRS`, so `reset_domain_config_caches` inside
+    # the swap discards the instance FastAPI injected when the request began —
+    # writing to that one drops the entry into an orphaned object, which is
+    # exactly what the first version of this did.
+    _record_config_audit(
+        get_audit_log_service(request),
+        actor=actor,
+        reason=reason,
+        candidate=candidate,
+        previous_pack_name=previous_pack_name,
+        new_pack_name=response.pack_name,
+        outcome="success",
+        failure_reason=None,
+    )
+    return response
+
+
+def _record_config_audit(
+    audit_service: AuditLogService,
+    *,
+    actor: User,
+    reason: Literal["apply", "switch"],
+    candidate: Path,
+    previous_pack_name: str | None,
+    new_pack_name: str | None,
+    outcome: Literal["success", "failure"],
+    failure_reason: str | None,
+) -> None:
+    """Append one `config.pack.{apply,switch}` entry.
+
+    `before`/`after` carry pack *names*, not pack contents: the ledger records
+    which configuration the platform was moved between, and a whole domain pack
+    inlined into every row would bloat the table and could carry credentials
+    from a pack's auth section.
+    """
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=PLATFORM_TENANT_ID,
+            knowledge_base_id=None,
+            actor_user_id=actor.user_id,
+            actor_email=actor.email,
+            actor_roles=list(actor.roles),
+            action=f"config.pack.{reason}",
+            resource_type="domain_pack",
+            resource_id=str(candidate),
+            before={"pack_name": previous_pack_name},
+            after={"pack_name": new_pack_name},
+            correlation_id=f"config:{reason}:{candidate}",
+            outcome=outcome,
+            failure_reason=failure_reason,
+            metadata={"source": "api.config"},
+        )
+    )
+
+
+def _swap_active_pack(
+    candidate: Path,
+    *,
+    reason: Literal["apply", "switch"],
+    request: Request,
 ) -> ConfigSwapResponse:
     """Swap-once-success pipeline: validate + guardrail → persist pointer → reset → emit.
 
@@ -526,7 +628,7 @@ async def validate_pack(
                 ],
             )
         if with_overlays:
-            overlay_paths = _overlay_paths_from_env()
+            overlay_paths = overlay_paths_from_env()
             if overlay_paths:
                 try:
                     data = apply_overlays(
@@ -576,7 +678,11 @@ async def validate_pack(
     response_model=ConfigSwapResponse,
     dependencies=[Depends(require_role("admin"))],
 )
-async def apply_pack(payload: ApplyPackRequest, request: Request) -> ConfigSwapResponse:
+async def apply_pack(
+    payload: ApplyPackRequest,
+    request: Request,
+    actor: User = Depends(require_role("admin")),
+) -> ConfigSwapResponse:
     """Validate and (re-)apply a pack; without ``pack`` re-applies the active one."""
     if payload.pack is not None:
         candidate = _resolve_pack_reference(payload.pack)
@@ -588,7 +694,12 @@ async def apply_pack(payload: ApplyPackRequest, request: Request) -> ConfigSwapR
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No active pack to re-apply: {exc}",
             ) from exc
-    return _activate_pack(candidate, reason="apply", request=request)
+    return _activate_pack(
+        candidate,
+        reason="apply",
+        request=request,
+        actor=actor,
+    )
 
 
 @router.post(
@@ -596,7 +707,16 @@ async def apply_pack(payload: ApplyPackRequest, request: Request) -> ConfigSwapR
     response_model=ConfigSwapResponse,
     dependencies=[Depends(require_role("admin"))],
 )
-async def switch_pack(payload: SwitchPackRequest, request: Request) -> ConfigSwapResponse:
+async def switch_pack(
+    payload: SwitchPackRequest,
+    request: Request,
+    actor: User = Depends(require_role("admin")),
+) -> ConfigSwapResponse:
     """Activate a different existing pack (validate → persist → swap → emit)."""
     candidate = _resolve_pack_reference(payload.pack)
-    return _activate_pack(candidate, reason="switch", request=request)
+    return _activate_pack(
+        candidate,
+        reason="switch",
+        request=request,
+        actor=actor,
+    )

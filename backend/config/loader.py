@@ -37,7 +37,7 @@ def load_config(path: str | Path | None = None) -> DomainConfig:
 
     raw = _read_file(resolved)
     data = _parse_content(raw, resolved)
-    overlay_paths = _overlay_paths_from_env()
+    overlay_paths = overlay_paths_from_env()
     if overlay_paths:
         try:
             data = apply_overlays(
@@ -118,7 +118,15 @@ def _parse_content(raw: str, path: Path) -> dict[str, JsonValue]:
     return cast(dict[str, JsonValue], data)
 
 
-def _overlay_paths_from_env() -> list[Path]:
+def overlay_paths_from_env() -> list[Path]:
+    """Overlay paths from `CHILI_CONFIG_OVERLAY_PATH`, in declaration order.
+
+    Public because `api/routers/config.py` needs the same parsing to preview a
+    candidate pack with overlays applied. Importing it as a private `_helper`
+    across the module boundary is a `reportPrivateUsage` error, and duplicating
+    the split logic would let the preview drift from what `load_config` does.
+    """
+
     raw = os.environ.get("CHILI_CONFIG_OVERLAY_PATH", "")
     return [Path(part.strip()) for part in raw.split(",") if part.strip()]
 
@@ -140,4 +148,5 @@ __all__ = [
     "ConfigLoadError",
     "load_active_config",
     "load_config",
+    "overlay_paths_from_env",
 ]
