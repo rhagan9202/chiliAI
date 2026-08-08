@@ -28,13 +28,14 @@ _UNSET: object = object()
 _RUN_COLUMNS = (
     "id, knowledge_base_id, status, requested_by, idempotency_key, "
     "model_version, catalog_version, replay_of_run_id, entity_cursor, "
-    "total_entities, scored_entities, failed_entities, error_summary, "
+    "total_entities, scored_entities, failed_entities, skipped_entities, "
+    "error_summary, "
     "created_at, updated_at, started_at, finished_at"
 )
 
 _BATCH_COLUMNS = (
     "id, run_id, knowledge_base_id, batch_number, status, entity_ids, "
-    "scored_entities, failed_entities, attempts, error_summary, "
+    "scored_entities, failed_entities, skipped_entities, attempts, error_summary, "
     "created_at, updated_at, started_at, finished_at"
 )
 
@@ -55,13 +56,14 @@ class PostgresScoreRunRepository:
                     INSERT INTO score_runs ({_RUN_COLUMNS})
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (id) DO UPDATE SET
                         status = EXCLUDED.status,
                         total_entities = EXCLUDED.total_entities,
                         scored_entities = EXCLUDED.scored_entities,
                         failed_entities = EXCLUDED.failed_entities,
+                        skipped_entities = EXCLUDED.skipped_entities,
                         error_summary = EXCLUDED.error_summary,
                         entity_cursor = EXCLUDED.entity_cursor,
                         updated_at = EXCLUDED.updated_at,
@@ -145,6 +147,7 @@ class PostgresScoreRunRepository:
         total_entities: int | None = None,
         scored_entities: int | None = None,
         failed_entities: int | None = None,
+        skipped_entities: int | None = None,
         error_summary: str | None | object = _UNSET,
         started_at: datetime | None = None,
         finished_at: datetime | None = None,
@@ -157,6 +160,7 @@ class PostgresScoreRunRepository:
             ("total_entities", total_entities),
             ("scored_entities", scored_entities),
             ("failed_entities", failed_entities),
+            ("skipped_entities", skipped_entities),
             ("started_at", started_at),
             ("finished_at", finished_at),
         ):
@@ -197,13 +201,14 @@ class PostgresScoreRunRepository:
                     INSERT INTO score_batches ({_BATCH_COLUMNS})
                     VALUES (
                         %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
-                        %s, %s, %s, %s
+                        %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (run_id, batch_number) DO UPDATE SET
                         status = EXCLUDED.status,
                         entity_ids = EXCLUDED.entity_ids,
                         scored_entities = EXCLUDED.scored_entities,
                         failed_entities = EXCLUDED.failed_entities,
+                        skipped_entities = EXCLUDED.skipped_entities,
                         attempts = EXCLUDED.attempts,
                         error_summary = EXCLUDED.error_summary,
                         updated_at = EXCLUDED.updated_at,
@@ -351,6 +356,7 @@ def _run_params(run: ScoreRun) -> tuple[object, ...]:
         run.total_entities,
         run.scored_entities,
         run.failed_entities,
+        run.skipped_entities,
         run.error_summary,
         run.created_at,
         run.updated_at,
@@ -369,6 +375,7 @@ def _batch_params(batch: ScoreBatch) -> tuple[object, ...]:
         json.dumps(list(batch.entity_ids)),
         batch.scored_entities,
         batch.failed_entities,
+        batch.skipped_entities,
         batch.attempts,
         batch.error_summary,
         batch.created_at,
@@ -391,11 +398,12 @@ def _run_from_row(row: Row) -> ScoreRun:
         total_entities=int(cast(int, row[9])),
         scored_entities=int(cast(int, row[10])),
         failed_entities=int(cast(int, row[11])),
-        error_summary=cast(str | None, row[12]),
-        created_at=cast(datetime, row[13]),
-        updated_at=cast(datetime, row[14]),
-        started_at=cast(datetime | None, row[15]),
-        finished_at=cast(datetime | None, row[16]),
+        skipped_entities=int(cast(int, row[12])),
+        error_summary=cast(str | None, row[13]),
+        created_at=cast(datetime, row[14]),
+        updated_at=cast(datetime, row[15]),
+        started_at=cast(datetime | None, row[16]),
+        finished_at=cast(datetime | None, row[17]),
     )
 
 
@@ -409,12 +417,13 @@ def _batch_from_row(row: Row) -> ScoreBatch:
         entity_ids=_decode_string_list(row[5]),
         scored_entities=int(cast(int, row[6])),
         failed_entities=int(cast(int, row[7])),
-        attempts=int(cast(int, row[8])),
-        error_summary=cast(str | None, row[9]),
-        created_at=cast(datetime, row[10]),
-        updated_at=cast(datetime, row[11]),
-        started_at=cast(datetime | None, row[12]),
-        finished_at=cast(datetime | None, row[13]),
+        skipped_entities=int(cast(int, row[8])),
+        attempts=int(cast(int, row[9])),
+        error_summary=cast(str | None, row[10]),
+        created_at=cast(datetime, row[11]),
+        updated_at=cast(datetime, row[12]),
+        started_at=cast(datetime | None, row[13]),
+        finished_at=cast(datetime | None, row[14]),
     )
 
 

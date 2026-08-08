@@ -7114,6 +7114,11 @@ export interface components {
             requested_by?: string | null;
             /** Scored Entities */
             scored_entities: number;
+            /**
+             * Skipped Entities
+             * @default 0
+             */
+            skipped_entities: number;
             /** Started At */
             started_at?: string | null;
             /**

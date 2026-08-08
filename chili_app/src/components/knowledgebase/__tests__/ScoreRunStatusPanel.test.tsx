@@ -11,6 +11,7 @@ const detail: ScoreRunDetailResponse = {
     created_at: '2026-08-02T10:00:00Z',
     error_summary: null,
     failed_entities: 1,
+    skipped_entities: 3,
     finished_at: null,
     id: 'run-1',
     idempotency_key: 'score-all-kb-1',
@@ -18,7 +19,7 @@ const detail: ScoreRunDetailResponse = {
     model_version: 'risk-v2',
     replay_of_run_id: null,
     requested_by: 'analyst@example.test',
-    scored_entities: 9,
+    scored_entities: 6,
     started_at: '2026-08-02T10:01:00Z',
     status: 'running',
     total_entities: 10,
@@ -54,7 +55,10 @@ describe('ScoreRunStatusPanel', () => {
     )
 
     expect(screen.getAllByText('Running')).toHaveLength(2)
-    expect(screen.getByText('9 / 10')).toBeInTheDocument()
+    expect(screen.getByText('6 / 10')).toBeInTheDocument()
+    // 6 scored + 3 skipped + 1 failed = 10. A skipped entity is not a failure,
+    // and showing only "Failed" made a healthy run look broken.
+    expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('risk-v2')).toBeInTheDocument()
     expect(screen.getByText('catalog-2026-08')).toBeInTheDocument()
     expect(screen.getByText('Batch 1')).toBeInTheDocument()

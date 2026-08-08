@@ -604,6 +604,10 @@ class ScoreRunResponse(BaseModel):
     total_entities: int = Field(ge=0)
     scored_entities: int = Field(ge=0)
     failed_entities: int = Field(ge=0)
+    # Declined by the risk service — too few signals, or a per-entity config
+    # problem. Separate from `failed_entities` because a skip is the designed
+    # outcome for a thin entity, not a fault.
+    skipped_entities: int = Field(default=0, ge=0)
     error_summary: str | None = None
     created_at: datetime
     updated_at: datetime

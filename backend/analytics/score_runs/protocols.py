@@ -49,6 +49,7 @@ class ScoreRunRepositoryProtocol(Protocol):
         total_entities: int | None = None,
         scored_entities: int | None = None,
         failed_entities: int | None = None,
+        skipped_entities: int | None = None,
         error_summary: str | None | object = None,
         started_at: datetime | None = None,
         finished_at: datetime | None = None,

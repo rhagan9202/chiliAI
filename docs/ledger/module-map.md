@@ -228,6 +228,8 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Adapters:** `InMemoryEventBus`, `RedisStreamsEventBus`
 
+**Known gap (surfaced 2026-08-08, not fixed):** `/events/stream` blocks uvicorn's graceful shutdown indefinitely. `_stream_workspace_updates` is a `while True` loop that only exits on `request.is_disconnected()` or `max_events`, so a connected browser holds the connection open forever; uvicorn logs `Waiting for connections to close.` and never finishes. Observed in dev, where `--reload` then leaves the API container `unhealthy` and unresponsive after any code change while a tab is open — it recovered the instant the tab was closed. The same shape would stall a production deploy until uvicorn's shutdown timeout. The stream needs to watch for the shutdown signal, not only for client disconnect.
+
 ---
 
 ## `storage/` — Object Storage Abstraction
@@ -473,7 +475,7 @@ The approval gate is server-side and fails closed. A parked run is `AWAITING_APP
 
 The honest limit: reads are bounded **per query**, but the id list is still accumulated in memory to form batches, so peak memory is still O(entities). Paging removes the single unbounded result set — the driver no longer buffers an entire knowledge base at once — not the accumulation.
 
-**Known gap (surfaced 2026-08-08 by live verification, not yet fixed):** entities the risk service declines to score — `RiskInsufficientSignalsError`, which `executor.py` logs at INFO as an *expected* per-entity condition — are counted as `failed_entities`, because that field is computed as `len(batch.entity_ids) - scored`. A run over a KB whose entities carry fewer than two signals therefore reports `status=completed, scored=0, failed=57` with no `error_message` on any batch: the reason exists only in worker logs. `WorkflowStepStatus` already draws exactly this distinction for steps (`SKIPPED` is documented as separate from both `COMPLETED` and `FAILED`); score runs do not. Fixing it needs a `skipped_entities` counter on run and batch, a migration, contract regeneration, and a dashboard change.
+**Skipped entities are counted separately as of 2026-08-08** (`skipped_entities` on run and batch, migration `0027`). Entities the risk service declines to score raise `RiskInsufficientSignalsError`, which the executor logs at INFO as an *expected* per-entity condition; they were previously counted as failures because `failed_entities` was computed as `len(entity_ids) - scored`. A live run over a KB whose entities carry fewer than two signals reported `completed, scored=0, failed=57` with no `error_message` anywhere — the reason existed only in worker logs. It now reports `skipped=57, failed=0`. `failed_entities` remains a remainder deliberately: anything neither scored nor skipped went missing in a way nothing anticipated, and that is a failure. Two unit tests encoded the old behaviour as intended (`..._count_as_failed_not_scored`); their real subject was "a skip must not inflate the scored count", which still holds.
 
 ---
 

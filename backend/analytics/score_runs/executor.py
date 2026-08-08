@@ -181,6 +181,7 @@ def handle_score_batch_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
         repository.update_run(run.id, status="running", started_at=utc_now())
 
     scored = 0
+    skipped = 0
     for entity_id in batch.entity_ids:
         try:
             risk_service.assess(
@@ -199,13 +200,19 @@ def handle_score_batch_queued(event: AnyEvent, deps: ExecutionDeps) -> int:
             # Expected per-entity conditions: one thin entity must not abort a
             # batch. Infrastructure failures propagate to the retry/DLQ path.
             logger.info("Skipping risk assess for entity=%s: %s", entity_id, exc)
+            skipped += 1
 
     repository.upsert_batch(
         batch.model_copy(
             update={
                 "status": "completed",
                 "scored_entities": scored,
-                "failed_entities": len(batch.entity_ids) - scored,
+                "skipped_entities": skipped,
+                # A remainder, deliberately: anything neither scored nor
+                # skipped went missing in a way nothing here anticipated, and
+                # that *is* a failure. Skips used to land here too, which is
+                # how a run that worked reported 57 failures.
+                "failed_entities": len(batch.entity_ids) - scored - skipped,
                 "finished_at": utc_now(),
                 "updated_at": utc_now(),
             }
@@ -299,8 +306,9 @@ def _reconcile_run_counters(
     Never incremented. A batch can be delivered more than once — a Redis
     redelivery, `replay_failed_batches`, or a DLQ replay — and incrementing
     would double-count, which also trips the run's
-    `scored + failed <= total` validator on an otherwise legitimate update.
-    Summing is naturally idempotent because each batch carries its own outcome.
+    `scored + failed + skipped <= total` validator on an otherwise legitimate
+    update. Summing is naturally idempotent because each batch carries its own
+    outcome.
     """
 
     batches = repository.list_batches(run_id=run_id)
@@ -308,6 +316,7 @@ def _reconcile_run_counters(
         run_id,
         scored_entities=sum(batch.scored_entities for batch in batches),
         failed_entities=sum(batch.failed_entities for batch in batches),
+        skipped_entities=sum(batch.skipped_entities for batch in batches),
     )
 
 

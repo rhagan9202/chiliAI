@@ -86,6 +86,7 @@ class InMemoryScoreRunRepository:
         total_entities: int | None = None,
         scored_entities: int | None = None,
         failed_entities: int | None = None,
+        skipped_entities: int | None = None,
         error_summary: str | None | object = _UNSET,
         started_at: datetime | None = None,
         finished_at: datetime | None = None,
@@ -103,6 +104,8 @@ class InMemoryScoreRunRepository:
             update["scored_entities"] = scored_entities
         if failed_entities is not None:
             update["failed_entities"] = failed_entities
+        if skipped_entities is not None:
+            update["skipped_entities"] = skipped_entities
         if error_summary is not _UNSET:
             update["error_summary"] = error_summary
         if started_at is not None:
