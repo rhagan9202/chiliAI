@@ -278,3 +278,91 @@ def test_role_gates() -> None:
         replay_response = client.post("/events/dlq/dlq-2/replay")
         assert replay_response.status_code == 200
         assert replay_response.json()["status"] == "replayed"
+
+
+def _dlq_audit_entries_since(client: TestClient, since: datetime) -> list[dict[str, object]]:
+    """`dlq.*` ledger entries recorded at or after `since`.
+
+    Time-scoped rather than counted absolutely: the ledger is Postgres-backed
+    in this suite and survives across runs, so `== 1` on a total would pass
+    only on a virgin database.
+    """
+    payload = client.get(
+        "/audit/events",
+        params={"action_prefix": "dlq.", "from": since.isoformat(), "limit": 200},
+    ).json()
+    return list(payload["items"])
+
+
+def test_replay_is_recorded_in_the_audit_ledger() -> None:
+    """Replaying a dead-lettered event re-injects it into the pipeline.
+
+    Admin-gated but unattributable until now — `grep -c audit` was 0 in this
+    router.
+    """
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-audit")
+    store = InMemoryDlqRecordStore()
+    store.persist(
+        _make_record("dlq-a", event_type=event.event_type, payload=encode_event(event))
+    )
+    app = _build_app(store=store, event_bus=InMemoryEventBus())
+
+    with TestClient(app) as client:
+        started = datetime.now(timezone.utc)
+        assert client.post("/events/dlq/dlq-a/replay").status_code == 200
+
+        entries = _dlq_audit_entries_since(client, started)
+
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["action"] == "dlq.replay"
+    assert entry["resource_type"] == "dlq_record"
+    assert entry["resource_id"] == "dlq-a"
+    assert entry["before"]["status"] == "pending"
+    assert entry["after"]["status"] == "replayed"
+    # The stored payload is the original event and may carry KB content; the
+    # ledger records who acted on which record, not what the record held.
+    assert "payload" not in entry["after"]
+
+
+def test_discard_is_recorded_in_the_audit_ledger() -> None:
+    """Discarding destroys the only operator-visible record of a failure."""
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-audit")
+    store = InMemoryDlqRecordStore()
+    store.persist(
+        _make_record("dlq-b", event_type=event.event_type, payload=encode_event(event))
+    )
+    app = _build_app(store=store, event_bus=InMemoryEventBus())
+
+    with TestClient(app) as client:
+        started = datetime.now(timezone.utc)
+        assert client.post("/events/dlq/dlq-b/discard").status_code == 200
+
+        entries = _dlq_audit_entries_since(client, started)
+
+    assert len(entries) == 1
+    assert entries[0]["action"] == "dlq.discard"
+    assert entries[0]["after"]["status"] == "discarded"
+
+
+def test_a_losing_concurrent_replay_records_nothing() -> None:
+    """The second caller gets 409 and must not claim it replayed anything.
+
+    The entry is written after the CAS for exactly this reason: a ledger that
+    recorded both callers would attribute one replay to two operators.
+    """
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-audit")
+    store = InMemoryDlqRecordStore()
+    store.persist(
+        _make_record("dlq-c", event_type=event.event_type, payload=encode_event(event))
+    )
+    app = _build_app(store=store, event_bus=InMemoryEventBus())
+
+    with TestClient(app) as client:
+        started = datetime.now(timezone.utc)
+        assert client.post("/events/dlq/dlq-c/replay").status_code == 200
+        assert client.post("/events/dlq/dlq-c/replay").status_code == 409
+
+        entries = _dlq_audit_entries_since(client, started)
+
+    assert len(entries) == 1

@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.models import AuditEventCreate, AuditEventQuery
 from auditlog.protocols import AuditLogRepository
+from prometheus_client import REGISTRY
+
 from auditlog.service import AuditLogService
 
 
@@ -145,6 +147,50 @@ def test_record_captures_write_failures_without_raising() -> None:
     assert service.write_failures[0].action == "case.update"
     assert service.write_failures[0].error_class == "RuntimeError"
     assert service.write_failures[0].error_message == "disk full"
+
+
+def test_a_swallowed_write_failure_increments_the_metric() -> None:
+    """The buffer is per-process and capped at 100; the counter is what alerts.
+
+    Audit writes are swallowed so they cannot corrupt the request they
+    describe, which means a ledger that has silently stopped accepting writes
+    looks exactly like a quiet system. `GET /audit/status` answers for a human
+    who already suspects something; `chili_audit_write_failures_total` is what
+    a monitor can watch.
+    """
+    before = _counter_value(action="case.update", error_class="RuntimeError")
+    service = AuditLogService(FailingRepository())  # type: ignore[arg-type]
+
+    service.record(_create_event("case.update"))
+
+    after = _counter_value(action="case.update", error_class="RuntimeError")
+    assert after == before + 1
+
+
+def test_the_metric_is_labelled_by_action_and_error_class() -> None:
+    """"The ledger is down" and "one action's payload is malformed" are
+    different incidents and must not share a counter."""
+    before = _counter_value(action="kb.delete", error_class="RuntimeError")
+    service = AuditLogService(FailingRepository())  # type: ignore[arg-type]
+
+    service.record(_create_event("kb.delete"))
+
+    assert _counter_value(action="kb.delete", error_class="RuntimeError") == before + 1
+    # A different action's series is untouched.
+    assert _counter_value(action="case.promote", error_class="RuntimeError") == 0.0
+
+
+def _counter_value(*, action: str, error_class: str) -> float:
+    """Current value of the failure counter for one label pair.
+
+    Reads the registry rather than the child object, because a series that has
+    never been incremented has no child and must read as 0, not raise.
+    """
+    value = REGISTRY.get_sample_value(
+        "chili_audit_write_failures_total",
+        {"action": action, "error_class": error_class},
+    )
+    return 0.0 if value is None else value
 
 
 def test_in_memory_repository_matches_protocol_shape() -> None:

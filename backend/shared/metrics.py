@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "StageOutcome",
+    "chili_audit_write_failures_total",
     "ingestion_dedup_suppressed_total",
     "ingestion_documents_empty_extraction_total",
     "ingestion_documents_failed_total",
@@ -42,6 +43,19 @@ __all__ = [
 ]
 
 StageOutcome = Literal["success", "failed", "empty"]
+
+# _security.06. An audit write that fails is swallowed so it cannot corrupt the
+# request it describes — which means the only trace is this counter and the
+# bounded in-process buffer behind `GET /audit/status`. The buffer holds 100
+# entries per process and dies with the process; the counter is what an alert
+# can actually be built on. Labelled by action and error class so "the ledger
+# stopped accepting writes" is distinguishable from "one action's payload is
+# malformed".
+chili_audit_write_failures_total: Counter = Counter(
+    "chili_audit_write_failures_total",
+    "Audit-ledger writes that raised and were swallowed, by action and error class.",
+    ["action", "error_class"],
+)
 
 ingestion_documents_failed_total: Counter = Counter(
     "ingestion_documents_failed_total",

@@ -10,6 +10,7 @@ from auditlog.models import (
     AuditWriteFailure,
 )
 from auditlog.protocols import AuditLogRepository
+from shared.metrics import chili_audit_write_failures_total
 from shared.utils import generate_id, utc_now
 
 
@@ -66,6 +67,9 @@ class AuditLogService:
         return self._repository.list(query)
 
     def _capture_write_failure(self, event: AuditEvent, exc: Exception) -> None:
+        chili_audit_write_failures_total.labels(
+            action=event.action, error_class=exc.__class__.__name__
+        ).inc()
         failure = AuditWriteFailure(
             occurred_at=utc_now(),
             action=event.action,
