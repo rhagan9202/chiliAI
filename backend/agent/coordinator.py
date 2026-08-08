@@ -340,6 +340,9 @@ from shared.provenance import (
     SOURCE_ID_KEY,
     SOURCE_KIND_DOCUMENT,
     SOURCE_KIND_KEY,
+    EMBEDDING_CHANNEL_GRAPH,
+    EMBEDDING_CHANNEL_KEY,
+    EMBEDDING_CHANNEL_TEXT,
     SOURCE_KIND_RECORD,
 )
 from shared.tracing import setup_tracing, start_pipeline_span
@@ -3311,6 +3314,11 @@ def handle_records_ingested(
                     SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
                     SOURCE_ID_KEY: entity.id,
                     "entity_type": entity.type,
+                    # Without this, RAG retrieval cannot see the vector at all:
+                    # `ServiceContextRetriever` filters every search on the text
+                    # channel, and only the document path used to stamp it. The
+                    # text stored above exists to be retrieved.
+                    EMBEDDING_CHANNEL_KEY: EMBEDDING_CHANNEL_TEXT,
                 },
             )
             for entity, text in zip(stored_entities, texts, strict=True)
@@ -3686,7 +3694,7 @@ def handle_embeddings_complete(
             metadata: dict[str, str | int | float | bool] = {
                 "knowledge_base_id": document.knowledge_base_id,
                 "entity_id": content_id,
-                "embedding_channel": channel,
+                EMBEDDING_CHANNEL_KEY: channel,
                 "embedding_model_name": embedding_item.model_name,
                 "embedding_provider": embedding_item.provider,
                 "embedding_dimensions": embedding_item.dimensions,
@@ -3758,7 +3766,7 @@ def handle_embeddings_complete(
 
 
 def _embedding_namespace(knowledge_base_id: str, channel: str) -> str:
-    if channel == "graph":
+    if channel == EMBEDDING_CHANNEL_GRAPH:
         return f"{knowledge_base_id}__graph"
     return knowledge_base_id
 

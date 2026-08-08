@@ -27,6 +27,7 @@ from rag.models import (
     RagGenerationResult,
     RetrievedContextItem,
 )
+from shared.provenance import EMBEDDING_CHANNEL_KEY, EMBEDDING_CHANNEL_TEXT
 from vectorstore.protocols import VectorServiceProtocol
 from vectorstore.service_models import VectorSearchRequest
 
@@ -116,7 +117,11 @@ class ServiceContextRetriever:
         filters: dict[str, str | int | float | bool],
     ) -> list[RetrievedContextItem]:
         search_filters: dict[str, str | int | float | bool] = dict(filters)
-        search_filters["embedding_channel"] = "text"
+        # Both halves of this contract are now spelled from `shared.provenance`.
+        # They were bare literals on either side of the module boundary, and the
+        # records indexing path never stamped the key at all — so every
+        # record-ingested knowledge base retrieved nothing, silently.
+        search_filters[EMBEDDING_CHANNEL_KEY] = EMBEDDING_CHANNEL_TEXT
 
         request = VectorSearchRequest(
             knowledge_base_ids=[knowledge_base_id],
