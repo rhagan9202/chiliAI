@@ -21,7 +21,7 @@
 | _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 0 | 16 | 0% |
-| _security.md | 9 | 1 | 2 | 0 | 12 | 16% |
+| _security.md | 9 | 0 | 3 | 0 | 12 | 25% |
 | agent.md | 20 | 0 | 1 | 0 | 21 | 4% |
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
 | api.md | 27 | 0 | 1 | 1 | 29 | 3% |
@@ -41,7 +41,7 @@
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 413 | 9 | 33 | 3 | 458 | 7% |
+| **Total** | 413 | 8 | 34 | 3 | 458 | 7% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
