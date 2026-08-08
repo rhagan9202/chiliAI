@@ -934,7 +934,7 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 
 **ID:** api.25
 **Status:** planned
-_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
+_Note (2026-08-08, supersedes the 2026-07-12 note): `feat/domain-packs-and-config-manager` **merged to prod on 2026-07-03** (`ff46080`) — nine days before that note called it unmerged. The shipped slice is described in the progress note below and was re-verified against the code on 2026-08-08. Status stays `planned`, but for the other reason the old note gave: every prerequisite is itself `planned`, and the CI-enforced DAG invariant requires them all `done` before `in-progress`. Nothing here is waiting on a branch._
 **Prerequisites:** [config.07, agent.19, events.16, _security.12, api.17]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the runtime-config slice of this surface landed (a8573e5, 5b6646c) as admin-gated routes under the existing `/config` router rather than a new `/admin/*` family: `GET /config/packs`, `POST /config/validate|apply|switch` (`require_role("admin")`), with the production auth guardrail enforced on candidate packs and a `ConfigUpdatedEvent` published on swap — this supersedes the `POST /admin/config/reload` intent. Still open: the router-family decision (the shipped routes chose folding into `/config`; revisit or ratify when the rest of the surface is built), DLQ replay, alert backfill, JWKS cache invalidation, session revoke, and `_security.12` audit events for admin actions.
 **Unblocks:** []
@@ -945,16 +945,19 @@ _Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-pac
 **so that** ops actions are first-class API operations with audit and RBAC rather than container-shell rituals.
 
 ### Current State
-- `backend/api/routers/config.py:18-21` carries a `TODO(production)` for `POST /config/domain`, `POST /config/reload`, ETag/Last-Modified, change-audit logging.
-- `backend/api/routers/workflows.py:19-39` only mounts `GET /workflows`; `AgentServiceProtocol` exposes `submit_workflow`, `cancel_workflow`, and DLQ listing.
-- No admin surface for DLQ replay, alert backfill, JWKS cache invalidation, session revoke, or hot reload.
+_Re-verified 2026-08-08 against the running API._
+- Runtime config **shipped**, admin-gated, folded into `/config` rather than a new family: `GET /config/packs`, `POST /config/validate|apply|switch` (all `require_role("admin")`).
+- DLQ replay **shipped** under `/events`, not `/admin`: `GET /events/dlq`, `GET /events/dlq/{dlq_id}`, `POST /events/dlq/{dlq_id}/replay|discard`, admin-gated.
+- Still absent: alert backfill, JWKS cache invalidation, session revoke. There is no `backend/api/routers/admin.py`; the only `/admin/*` path mounted is `POST /admin/dev-seed`.
+- **None of the shipped admin actions emit an audit event** — `grep -c audit` is 0 in both `api/routers/config.py` and `api/routers/events.py`, while an `auditlog/` module exists and is used elsewhere. A hot-swap of the active domain pack is currently unattributable.
 
 ### Acceptance Criteria
-- [ ] New `/admin/*` router family gated by `require_role("admin")`.
-- [ ] Endpoints: `POST /admin/config/domain`, `POST /admin/config/reload`, `POST /admin/dlq/{stream}/replay`, `POST /admin/alerts/backfill`, `POST /admin/auth/jwks/invalidate`, `POST /admin/auth/sessions/{sid}/revoke`.
-- [ ] Decision recorded (separate router family vs folded into existing) — choose separate router family.
-- [ ] Every admin endpoint emits an audit event per `_security.12`.
-- [ ] Coverage ≥ 85% on the admin router.
+- [x] Decision recorded (separate router family vs folded into existing) — **decided the other way**: the shipped routes fold into the owning routers (`/config/*` for pack actions, `/events/dlq/*` for replay), because each already owns its domain's models and DI. The AC previously prescribed "choose separate router family"; that is superseded by what shipped, not left as an open choice.
+- [x] Runtime-config actions gated by `require_role("admin")` — `POST /config/validate|apply|switch`, with non-admin `403` covered in `backend/tests/api/test_config_routes.py`.
+- [x] DLQ replay/discard gated by `require_role("admin")`.
+- [ ] Remaining ops actions: `POST /alerts/backfill`, JWKS cache invalidation, session revoke.
+- [ ] Every admin action emits an audit event per `_security.12` — **none do today**; this is the largest open piece and the reason the story stays `planned`.
+- [ ] Coverage ≥ 85% on whichever routers gain the remaining actions.
 
 ### Verification
 - `pytest backend/tests/api/test_admin_router.py` green.
