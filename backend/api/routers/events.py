@@ -37,6 +37,7 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/events", tags=["events"])
 _SNAPSHOT_PAGE_SIZE = 500
+_HEARTBEAT_SECONDS = 5.0
 
 
 async def _stream_workspace_updates(
@@ -47,8 +48,13 @@ async def _stream_workspace_updates(
     user: User,
     max_events: int | None,
 ) -> AsyncIterator[str]:
+    shutdown = _shutdown_event(request)
     sequence = 0
     while True:
+        # Three ways out, and the server's own is the one that was missing:
+        # a client that left, a bounded request, or a process going down.
+        if shutdown.is_set():
+            break
         if await request.is_disconnected():
             break
         if max_events is not None and sequence >= max_events:
@@ -63,7 +69,33 @@ async def _stream_workspace_updates(
         )
         yield f"event: workspace-update\ndata: {snapshot.model_dump_json()}\n\n"
         sequence += 1
-        await asyncio.sleep(5)
+        if await _wait_for_shutdown(shutdown, _HEARTBEAT_SECONDS):
+            break
+
+
+def _shutdown_event(request: Request) -> asyncio.Event:
+    """The app's shutdown signal, or a never-set one if there is none.
+
+    A missing signal must not break streaming — the fallback simply restores
+    the old behaviour for that request rather than raising at yield time.
+    """
+
+    event = getattr(request.app.state, "shutdown_event", None)
+    return event if isinstance(event, asyncio.Event) else asyncio.Event()
+
+
+async def _wait_for_shutdown(shutdown: asyncio.Event, timeout: float) -> bool:
+    """Sleep for `timeout`, returning True if shutdown fired first.
+
+    Waiting on the event rather than sleeping blind means shutdown is acted on
+    immediately instead of up to a full heartbeat later.
+    """
+
+    try:
+        await asyncio.wait_for(shutdown.wait(), timeout=timeout)
+    except TimeoutError:
+        return False
+    return True
 
 
 @router.get("/stream")

@@ -1122,7 +1122,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
 | API client | Typed fetch wrapper + TanStack Query hooks + generated OpenAPI schema aliases | `lib/apiClient.ts` handles transport; `src/api/contracts.ts` aliases `src/lib/api/schema.ts` generated from backend OpenAPI |
-| Real-time | Server-Sent Events | Workspace snapshots over SSE, rebuilt from Postgres on each 5s tick. Replica-safe by construction: any API replica can serve any client because nothing is held in process memory |
+| Real-time | Server-Sent Events | Workspace snapshots over SSE, rebuilt from Postgres on each 5s tick. Replica-safe by construction: any API replica can serve any client because nothing is held in process memory. The stream watches the app's shutdown signal, so an open client cannot stall a deploy — see `_signal_shutdown_to_long_lived_responses` in `api/app.py` |
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 

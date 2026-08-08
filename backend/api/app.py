@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import signal
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager, suppress
+from functools import partial
+from types import FrameType
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -67,6 +73,70 @@ def _load_allowed_origins() -> list[str]:
     return origins or ["http://localhost:5173"]
 
 
+# What `signal.getsignal` returns: our own callable, one of the SIG_* ints, or
+# None. Spelled out rather than `Any`, which this codebase does not allow.
+_SignalHandler = (
+    Callable[[int, FrameType | None], object] | int | signal.Handlers | None
+)
+
+
+@asynccontextmanager
+async def _signal_shutdown_to_long_lived_responses(
+    app: FastAPI,
+) -> AsyncGenerator[None]:
+    """Tell streaming responses to finish *before* the server drains them.
+
+    uvicorn's graceful shutdown waits for open connections and only then runs
+    this lifespan's shutdown half. `/events/stream` holds a connection open
+    indefinitely by design, so a signal-free implementation deadlocks: the
+    drain waits on the stream, and the stream waits on a signal that the drain
+    is blocking. Setting the event here on the way out is therefore too late —
+    it has to happen when the signal arrives.
+
+    So this hooks SIGTERM/SIGINT ahead of uvicorn's own handler and chains to
+    it. `signal.signal` is main-thread-only and raises `ValueError` elsewhere
+    (Starlette's TestClient runs the app in a worker thread), which is not an
+    error: in-process there is no drain to unblock, and the shutdown half below
+    still ends the stream.
+    """
+
+    event = _shutdown_event_for(app)
+    loop = asyncio.get_running_loop()
+    restore: list[tuple[int, _SignalHandler]] = []
+
+    def _handle(
+        signum: int, frame: FrameType | None, previous: _SignalHandler = None
+    ) -> None:
+        loop.call_soon_threadsafe(event.set)
+        if callable(previous):
+            previous(signum, frame)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            previous = signal.getsignal(sig)
+            signal.signal(sig, partial(_handle, previous=previous))
+        except ValueError:  # not the main thread
+            break
+        restore.append((sig, previous))
+
+    try:
+        yield
+    finally:
+        for sig, previous in restore:
+            with suppress(ValueError):
+                signal.signal(sig, previous)
+        event.set()
+
+
+def _shutdown_event_for(app: FastAPI) -> asyncio.Event:
+    """The app's shutdown signal, created on demand."""
+
+    event = getattr(app.state, "shutdown_event", None)
+    if not isinstance(event, asyncio.Event):
+        event = asyncio.Event()
+        app.state.shutdown_event = event
+    return event
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
@@ -92,7 +162,13 @@ def create_app() -> FastAPI:
         title="chiliAI API",
         version="0.1.0",
         description="Backend API gateway for the chiliAI Graph RAG analytics platform.",
+        lifespan=_signal_shutdown_to_long_lived_responses,
     )
+
+    # Created here rather than in the lifespan so it exists even when the
+    # lifespan never runs — `TestClient(app)` outside a `with` block skips it,
+    # and a route reading a missing attribute would fail at request time.
+    app.state.shutdown_event = asyncio.Event()
 
     app.add_middleware(
         CORSMiddleware,
