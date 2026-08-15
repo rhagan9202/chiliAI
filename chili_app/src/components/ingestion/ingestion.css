@@ -459,6 +459,12 @@
   cursor: pointer;
 }
 
+.ingestion-records-source__parse:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: saturate(0.4) brightness(0.8);
+}
+
 .ingestion-records-preview {
   min-width: 0;
 }

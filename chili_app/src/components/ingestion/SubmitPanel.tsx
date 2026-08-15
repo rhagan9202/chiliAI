@@ -36,7 +36,9 @@ export function SubmitPanel({
   onRunIngestion,
 }: SubmitPanelProps) {
   const label = statusLabel({ sourceType, canRunIngestion, runPending })
-  const tone = runPending ? 'info' : canRunIngestion ? 'default' : 'warning'
+  // The chip is the "why is this disabled" text for this control: it names the
+  // missing prerequisite, and reads success once nothing is missing.
+  const tone = runPending ? 'info' : canRunIngestion ? 'success' : 'warning'
 
   return (
     <section className="ingestion-submit-panel" aria-labelledby="ingestion-submit-title">

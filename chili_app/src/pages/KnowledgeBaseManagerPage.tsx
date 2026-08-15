@@ -413,6 +413,14 @@ export function KnowledgeBaseManagerPage() {
 
   const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
   const scoreRunStartDisabled = !knowledgeBase || knowledgeBase.entity_count === 0
+  // A disabled control explains itself in adjacent text, and the explanation
+  // has to match the actual blocker — "requires ingested entities" is a lie
+  // when the real problem is that no knowledge base is selected.
+  const scoreRunStartReason = !activeKnowledgeBaseId
+    ? 'Select a knowledge base first.'
+    : scoreRunStartDisabled
+      ? 'Start requires ingested entities in this knowledge base.'
+      : null
   const scoreRunPendingAction = startScoreRunMutation.isPending
     ? 'start'
     : cancelScoreRunMutation.isPending
@@ -663,11 +671,7 @@ export function KnowledgeBaseManagerPage() {
               }}
               pendingAction={scoreRunPendingAction}
               startDisabled={scoreRunStartDisabled}
-              startTitle={
-                scoreRunStartDisabled
-                  ? 'Start requires ingested entities in this knowledge base.'
-                  : undefined
-              }
+              startReason={scoreRunStartReason}
             />
           </Card>
 

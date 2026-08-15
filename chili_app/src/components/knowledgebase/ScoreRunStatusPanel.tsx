@@ -13,7 +13,8 @@ type ScoreRunStatusPanelProps = {
   onStart: () => void
   pendingAction?: 'cancel' | 'replay' | 'start' | null
   startDisabled?: boolean
-  startTitle?: string
+  /** Why Start is unavailable. Rendered as visible text, never a tooltip. */
+  startReason?: string | null
 }
 
 const statusCopy: Record<ScoreRunStatus, { label: string; tone: 'info' | 'success' | 'danger' | 'warning' | 'default' }> = {
@@ -43,7 +44,7 @@ export function ScoreRunStatusPanel({
   onStart,
   pendingAction = null,
   startDisabled = false,
-  startTitle,
+  startReason = null,
 }: ScoreRunStatusPanelProps) {
   const run = detail?.run ?? null
   const status = run?.status ?? null
@@ -136,12 +137,17 @@ export function ScoreRunStatusPanel({
         />
       )}
 
+      {startReason ? (
+        <p className="metric-row__label" role="note">
+          {startReason}
+        </p>
+      ) : null}
+
       <div className="ingestion-next-actions__buttons">
         <button
           className="page-button page-button--primary"
           disabled={disabled || busy || startDisabled}
           onClick={onStart}
-          title={startTitle}
           type="button"
         >
           {pendingAction === 'start' ? 'Starting' : 'Start score-all'}

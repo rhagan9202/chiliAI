@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CHIP_TONE_COLORS } from '../../ui/chipTones'
 import { SubmitPanel } from '../SubmitPanel'
 
 describe('SubmitPanel', () => {
@@ -33,6 +34,34 @@ describe('SubmitPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeDisabled()
     expect(screen.getByText('Parse records')).toBeInTheDocument()
+  })
+
+  it('explains why Run ingestion is disabled and marks the ready state green', () => {
+    const { rerender } = render(
+      <SubmitPanel
+        sourceType="documents"
+        canRunIngestion={false}
+        runPending={false}
+        onRunIngestion={vi.fn()}
+      />,
+    )
+
+    // The chip *is* the disabled-reason text for this control.
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeDisabled()
+    expect(screen.getByText('Select documents')).toBeInTheDocument()
+
+    rerender(
+      <SubmitPanel
+        sourceType="documents"
+        canRunIngestion
+        runPending={false}
+        onRunIngestion={vi.fn()}
+      />,
+    )
+
+    const ready = screen.getByText('Documents ready')
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeEnabled()
+    expect(ready.style.getPropertyValue('--chip-color')).toBe(CHIP_TONE_COLORS.success)
   })
 
   it('shows pending copy without changing the run action label', () => {

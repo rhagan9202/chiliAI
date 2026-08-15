@@ -184,8 +184,8 @@
   transition: background 120ms ease, border-color 120ms ease;
 }
 
-.page-button:hover,
-.page-list-item:hover,
+.page-button:hover:not(:disabled),
+.page-list-item:hover:not(:disabled),
 .page-list-item--active {
   background: rgba(0, 212, 255, 0.14);
   border-color: rgba(0, 212, 255, 0.4);
@@ -205,10 +205,38 @@
   font-weight: 700;
 }
 
-.page-button--primary:hover {
+.page-button--primary:hover:not(:disabled) {
   background: var(--c-cyan);
   border-color: var(--c-cyan);
   filter: brightness(1.08);
+}
+
+/* A disabled control must look disabled. Every button on the ingestion page
+   kept its full-strength fill and hover response while unclickable, so the
+   only way to learn a control was dead was to click it. */
+.page-button:disabled,
+.page-list-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.page-button:disabled:hover,
+.page-list-item:disabled:hover {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.22);
+}
+
+.page-button--secondary:disabled:hover {
+  background: rgba(136, 153, 187, 0.08);
+  border-color: rgba(136, 153, 187, 0.22);
+}
+
+.page-button--primary:disabled,
+.page-button--primary:disabled:hover {
+  background: var(--c-cyan);
+  border-color: var(--c-cyan);
+  filter: saturate(0.4) brightness(0.8);
 }
 
 .page-copy-block {

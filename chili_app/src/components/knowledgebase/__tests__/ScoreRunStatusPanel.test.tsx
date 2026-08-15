@@ -139,6 +139,39 @@ describe('ScoreRunStatusPanel', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('states why start is unavailable as visible text, not a tooltip', () => {
+    render(
+      <ScoreRunStatusPanel
+        detail={null}
+        onCancel={vi.fn()}
+        onReplay={vi.fn()}
+        onStart={vi.fn()}
+        startDisabled
+        startReason="Select a knowledge base first."
+      />,
+    )
+
+    const start = screen.getByRole('button', { name: 'Start score-all' })
+    expect(start).toBeDisabled()
+    expect(start).not.toHaveAttribute('title')
+    expect(screen.getByRole('note')).toHaveTextContent('Select a knowledge base first.')
+  })
+
+  it('renders the run update time in relative form with the instant on hover', () => {
+    render(
+      <ScoreRunStatusPanel
+        detail={detail}
+        onCancel={vi.fn()}
+        onReplay={vi.fn()}
+        onStart={vi.fn()}
+      />,
+    )
+
+    const meta = screen.getByLabelText('Score run metadata')
+    // The fixture is far enough in the past to always fall back to absolute.
+    expect(within(meta).getByTitle('2026-08-02T10:02:00Z')).toHaveTextContent(/Aug 2, 2026/)
+  })
+
   it('shows an empty state but still lets a selected knowledge base start score-all', () => {
     const onStart = vi.fn()
     render(
