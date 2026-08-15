@@ -397,8 +397,15 @@
 
 .ingestion-document-filter {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.ingestion-document-filter__select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .knowledge-base-stats,

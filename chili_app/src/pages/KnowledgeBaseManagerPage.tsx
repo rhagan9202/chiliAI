@@ -943,22 +943,25 @@ function DocumentInventory({
       <div className="metric-row">
         <strong id="document-inventory-title">Document inventory</strong>
         <Chip label={`${documents.length} tracked`} tone="network" />
-        <label className="ingestion-document-filter">
-          <span className="metric-row__label">Filter documents by status</span>
-          <select
-            aria-label="Filter documents by status"
-            className="page-input"
-            onChange={(event) => onStatusFilterChange(event.target.value)}
-            value={statusFilter}
-          >
-            {DOCUMENT_STATUS_FILTERS.map((value) => (
-              <option key={value} value={value}>
-                {value === 'all' ? 'All statuses' : statusToken('document', value).label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
+
+      {/* Its own row: sharing the heading's flex line squeezed the select below
+          its widest option in the 320px context rail. */}
+      <label className="ingestion-document-filter">
+        <span className="metric-row__label">Filter documents by status</span>
+        <select
+          aria-label="Filter documents by status"
+          className="page-input ingestion-document-filter__select"
+          onChange={(event) => onStatusFilterChange(event.target.value)}
+          value={statusFilter}
+        >
+          {DOCUMENT_STATUS_FILTERS.map((value) => (
+            <option key={value} value={value}>
+              {value === 'all' ? 'All statuses' : statusToken('document', value).label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {documents.length > 0 ? (
         <div className="knowledge-base-documents">
