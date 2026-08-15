@@ -40,6 +40,7 @@ import { UploadProgress } from '../components/ingestion/UploadProgress'
 import type { UploadStatus } from '../components/ingestion/UploadProgress'
 import { ValidationPanel } from '../components/ingestion/ValidationPanel'
 import { showToast } from '../components/common/toastStore'
+import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
 import { formatFileSize, formatTimestamp } from '../components/status/formatters'
 import { Card } from '../components/ui/Card'
@@ -85,6 +86,12 @@ export function KnowledgeBaseManagerPage() {
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
+  // Destructive actions are staged in state and executed from a confirmation
+  // dialog: both deletions used to fire on the first click.
+  const [confirmingKnowledgeBaseDelete, setConfirmingKnowledgeBaseDelete] = useState(false)
+  const [confirmingDocumentDeleteId, setConfirmingDocumentDeleteId] = useState<string | null>(
+    null,
+  )
   // The staging form lives in the main column while the inventory that reports
   // "no documents yet" sits in the aside; the empty state's action has to take
   // the analyst back across the page to it (UXA-305).
@@ -478,16 +485,7 @@ export function KnowledgeBaseManagerPage() {
                   },
                 )
               }}
-              onDelete={(knowledgeBaseId) => {
-                deleteKnowledgeBaseMutation.mutate(knowledgeBaseId, {
-                  onSuccess: () => {
-                    setSelectedKnowledgeBaseId(null)
-                    setSelectedDocumentId(null)
-                    setActiveScoreRunId(null)
-                    studio.setCurrentStep('knowledge-base')
-                  },
-                })
-              }}
+              onDelete={() => setConfirmingKnowledgeBaseDelete(true)}
               onSelect={(knowledgeBaseId) => {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
                 setSelectedDocumentId(null)
@@ -496,6 +494,40 @@ export function KnowledgeBaseManagerPage() {
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
               showAllDomains={showAllDomains}
+            />
+            <ConfirmDialog
+              body={
+                knowledgeBase
+                  ? `Deletes ${countLabel(knowledgeBase.document_count, 'document')}, ${countLabel(
+                      knowledgeBase.entity_count,
+                      'entity',
+                      'entities',
+                    )}, ${countLabel(
+                      knowledgeBase.relationship_count,
+                      'relationship',
+                    )}, and every run recorded against it. This cannot be undone.`
+                  : 'This cannot be undone.'
+              }
+              confirmLabel="Delete knowledge base"
+              confirmTypedText={knowledgeBase?.name ?? null}
+              destructive
+              onCancel={() => setConfirmingKnowledgeBaseDelete(false)}
+              onConfirm={() => {
+                setConfirmingKnowledgeBaseDelete(false)
+                if (!activeKnowledgeBaseId) {
+                  return
+                }
+                deleteKnowledgeBaseMutation.mutate(activeKnowledgeBaseId, {
+                  onSuccess: () => {
+                    setSelectedKnowledgeBaseId(null)
+                    setSelectedDocumentId(null)
+                    setActiveScoreRunId(null)
+                    studio.setCurrentStep('knowledge-base')
+                  },
+                })
+              }}
+              open={confirmingKnowledgeBaseDelete}
+              title="Delete knowledge base"
             />
           </Card>
 
@@ -683,11 +715,7 @@ export function KnowledgeBaseManagerPage() {
               preview={documentPreviewQuery.data ?? null}
               previewError={documentPreviewQuery.isError}
               previewLoading={documentPreviewQuery.isLoading}
-              onDeleteDocument={(documentId) => {
-                deleteDocumentMutation.mutate(documentId, {
-                  onSuccess: () => setSelectedDocumentId(null),
-                })
-              }}
+              onDeleteDocument={(documentId) => setConfirmingDocumentDeleteId(documentId)}
               onSelectDocument={setSelectedDocumentId}
               onStageSource={() => {
                 studio.setCurrentStep('source')
@@ -696,6 +724,27 @@ export function KnowledgeBaseManagerPage() {
                   section.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }
               }}
+            />
+            <ConfirmDialog
+              body={`Removes ${
+                documents.find((document) => document.id === confirmingDocumentDeleteId)
+                  ?.filename ?? 'this document'
+              } and the graph and vector artifacts built from it.`}
+              confirmLabel="Remove document"
+              destructive
+              onCancel={() => setConfirmingDocumentDeleteId(null)}
+              onConfirm={() => {
+                const documentId = confirmingDocumentDeleteId
+                setConfirmingDocumentDeleteId(null)
+                if (!documentId) {
+                  return
+                }
+                deleteDocumentMutation.mutate(documentId, {
+                  onSuccess: () => setSelectedDocumentId(null),
+                })
+              }}
+              open={confirmingDocumentDeleteId !== null}
+              title="Remove document"
             />
           </Card>
         </aside>

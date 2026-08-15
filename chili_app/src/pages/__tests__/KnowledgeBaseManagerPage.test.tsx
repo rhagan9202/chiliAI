@@ -564,11 +564,23 @@ function installFetchMock({
       )
     }
 
+    if (init?.method === 'DELETE') {
+      return new Response(null, { status: 204 })
+    }
+
     return new Response('{}', {
       status: 404,
       headers: { 'content-type': 'application/json' },
     })
   }) as unknown as typeof fetch
+}
+
+/** URLs of every DELETE the page has issued — destructive actions must not fire unconfirmed. */
+function deleteRequests(): string[] {
+  const mock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+  return mock.mock.calls
+    .filter((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')
+    .map((call) => String(call[0]))
 }
 
 async function parseValidRecords() {
@@ -1213,6 +1225,45 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
     const validateItem = getStepperItem('Validate')
     expect(within(validateItem).getByText('Complete')).toBeInTheDocument()
+  })
+
+  it('gates knowledge base deletion behind a typed-name confirmation', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
+    await userEvent.click(screen.getByRole('button', { name: 'Delete selected knowledge base' }))
+
+    const dialog = screen.getByRole('dialog')
+    // The blast radius is stated in counts, not "this action cannot be undone".
+    expect(dialog).toHaveTextContent('2 entities')
+    expect(dialog).toHaveTextContent('1 relationship')
+
+    const confirm = within(dialog).getByRole('button', { name: 'Delete knowledge base' })
+    expect(confirm).toBeDisabled()
+    expect(deleteRequests()).toHaveLength(0)
+
+    await userEvent.type(within(dialog).getByRole('textbox'), 'Fraud KB')
+    expect(confirm).toBeEnabled()
+    await userEvent.click(confirm)
+
+    await waitFor(() => expect(deleteRequests()).toHaveLength(1))
+    expect(deleteRequests()[0]).toContain('/knowledgebases/kb-1')
+  })
+
+  it('lets a cancelled document removal leave the document in place', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
+    await userEvent.click(screen.getByRole('button', { name: 'Remove document' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('existing-policy.txt')
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(deleteRequests()).toHaveLength(0)
+    expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
   })
 
   it('keeps Validate idle after Documents source is picked but no files have been uploaded', async () => {
