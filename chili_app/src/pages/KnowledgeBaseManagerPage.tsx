@@ -553,6 +553,7 @@ export function KnowledgeBaseManagerPage() {
 
               {studio.sourceType === 'documents' ? (
                 <DocumentSourcePanel
+                  acceptContentTypes={domainConfigQuery.data?.validation.allowed_content_types}
                   files={studio.pendingFiles}
                   onFilesChange={(files) => {
                     studio.setPendingFiles(files)
