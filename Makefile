@@ -4,20 +4,25 @@
 COMPOSE_DEV  = docker compose -f docker-compose.dev.yaml
 COMPOSE_PROD = docker compose
 
-.PHONY: dev dev-domain down build logs clean prod prod-down api-shell migrate test test-e2e help
+.PHONY: dev dev-domain down build logs clean prod prod-down api-shell migrate test test-e2e env-file help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
+# Compose loads `.env`; on a fresh checkout it does not exist yet, so every
+# stack-launching target creates it from the tracked example first.
+env-file:
+	@test -f .env || { cp .env.example .env; echo ">> Created .env from .env.example — edit it if you need non-default settings"; }
+
 # ---------- Development ----------
 
-dev: ## Start dev stack (hot-reload)
+dev: env-file ## Start dev stack (hot-reload)
 	$(COMPOSE_DEV) up --build
 
 # Domain packs live in backend/config/defaults/<name>.yaml. The compose files
 # parameterize CHILI_CONFIG_PATH (defaulting to the medicare exemplar), so a
 # single env var retargets both api and worker. See backend/config/README.md.
-dev-domain: ## Start dev stack under a named domain pack (make dev-domain DOMAIN=food_supply_chain)
+dev-domain: env-file ## Start dev stack under a named domain pack (make dev-domain DOMAIN=food_supply_chain)
 ifndef DOMAIN
 	$(error DOMAIN is required, e.g. make dev-domain DOMAIN=food_supply_chain)
 endif
@@ -66,7 +71,7 @@ migrate-snapshot: ## Regenerate backend/database/migrations/snapshots/head.sql (
 test: ## Run backend tests via the host venv (against chili_test, never the dev DB)
 	cd backend && DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test .venv/bin/pytest --cov
 
-test-e2e: ## Run Playwright e2e against the full dev stack (real API/worker/services)
+test-e2e: env-file ## Run Playwright e2e against the full dev stack (real API/worker/services)
 	$(COMPOSE_DEV) down -v
 	CHILI_DEV_ANONYMOUS_ROLE=analyst $(COMPOSE_DEV) up -d --build
 	scripts/wait_for_stack.sh
@@ -75,7 +80,7 @@ test-e2e: ## Run Playwright e2e against the full dev stack (real API/worker/serv
 
 # ---------- Production ----------
 
-prod: ## Start production stack
+prod: env-file ## Start production stack
 	$(COMPOSE_PROD) up --build -d
 
 prod-down: ## Stop production stack

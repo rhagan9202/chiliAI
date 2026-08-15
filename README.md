@@ -68,7 +68,6 @@ chiliAI/
 
 ```bash
 # Development — full stack with hot-reload
-cp .env.example .env          # create local config (gitignored; includes CHILI_ENV=local)
 make dev                       # or: docker compose -f docker-compose.dev.yaml up --build
 
 # Optional live graph smoke after the dev stack is healthy
@@ -77,6 +76,8 @@ bash scripts/smoke_graph_workflow.sh
 # Production — built images, nginx, no hot-reload
 make prod                      # or: docker compose up --build -d
 ```
+
+Platform notes for fresh checkouts: `make dev`/`make prod` create the gitignored `.env` from `.env.example` automatically (edit it afterwards for non-default settings; raw `docker compose` invocations still need `cp .env.example .env` first). On SELinux-enforcing hosts (Fedora/RHEL) the host bind mounts in `docker-compose.dev.yaml` carry the `:z` flag so containers can read them without manual `chcon` relabeling; the flag is a no-op on macOS, Windows/WSL, and non-SELinux Linux.
 
 The development Compose stack wires API and worker through Redis Streams, shared local filesystem object storage, and Neo4j graph persistence via `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (the default pack for `make dev`/`make prod`; see `backend/config/README.md` for the full pack list and the `CHILI_CONFIG_OVERLAY_PATH` environment-overlay mechanism). The smoke script creates a temporary KB, uploads a Medicare-domain JSON document, waits for the graph pipeline, validates Investigation search/detail/neighborhood APIs, and prints an Investigation route containing a real generated entity ID.
 

@@ -9,10 +9,13 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ./chili_app/src:/app/src
-      - ./chili_app/public:/app/public
-      - ./chili_app/index.html:/app/index.html
-      - ./chili_app/vite.config.ts:/app/vite.config.ts
+      # Host bind mounts carry the `z` flag so SELinux-enforcing hosts
+      # (Fedora/RHEL) relabel them for container access; it is a no-op
+      # everywhere else. Applies to every `./…` mount in this file.
+      - ./chili_app/src:/app/src:z
+      - ./chili_app/public:/app/public:z
+      - ./chili_app/index.html:/app/index.html:z
+      - ./chili_app/vite.config.ts:/app/vite.config.ts:z
     environment:
       - VITE_API_PROXY_TARGET=http://api:8000
       - VITE_WS_PROXY_TARGET=ws://api:8000
@@ -52,7 +55,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - ./backend:/app:z
       - chili-object-data:/app/data
     environment:
       - CHILI_ENV=local
@@ -103,13 +106,13 @@ services:
       # published so operators can scrape it from the host in dev.
       - "8001:8001"
     volumes:
-      - ./backend:/app
+      - ./backend:/app:z
       - chili-object-data:/app/data
       # Drop directory for filesystem connectors. Bind-mounted so a developer
       # can drop a CSV in from the host; lives under the gitignored
       # sample_data/ because it holds bulk input, not fixtures (see
       # docs/testing/DATA.md).
-      - ./sample_data/connector_imports:/imports
+      - ./sample_data/connector_imports:/imports:z
     environment:
       - CHILI_ENV=local
       # Every path a filesystem connector may read is confined to this root.
@@ -183,7 +186,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       # Creates the chili_test integration-test DB on fresh volumes so host
       # pytest can never target (and wipe) the dev `chili` DB by default.
-      - ./infra/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+      - ./infra/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U chili -d chili"]
       interval: 10s

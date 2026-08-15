@@ -55,7 +55,7 @@ make seed-housing # seed the Air Force housing demo KB via the running API (hous
 make demo-cms     # CMS fraud demo bring-up: TN 1% staging + ingest + readiness probes; analytics fire natively on ingest (stack must be running; see docs/demo/)
 make prod         # production stack (built images, nginx, no hot reload)
 ```
-Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. Create `.env` (gitignored) by copying the tracked `.env.example` (`cp .env.example .env`); compose loads `.env`.
+Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. Compose loads the gitignored `.env`; the stack-launching make targets (`dev`, `dev-domain`, `prod`, `test-e2e`) create it from `.env.example` automatically, but raw `docker compose` invocations need `cp .env.example .env` first. Host bind mounts in `docker-compose.dev.yaml` carry the `:z` flag for SELinux hosts (Fedora/RHEL) — keep it on any new bind mount.
 
 ### Backend (`cd backend`)
 ```bash
