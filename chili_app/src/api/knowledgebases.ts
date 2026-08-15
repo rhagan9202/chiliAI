@@ -16,6 +16,12 @@ export const knowledgeBasesQueryKey = ['knowledge-bases'] as const
 export interface KnowledgeBaseDocumentsOptions {
   limit?: number
   offset?: number
+  /**
+   * Filter on the durable lifecycle projection (`pending` … `validated`,
+   * `extracted_empty`, `failed`). Documents with no projected status row never
+   * match a filter.
+   */
+  status?: string
 }
 
 export function knowledgeBaseDetailQueryKey(knowledgeBaseId: string) {
@@ -26,7 +32,8 @@ export function knowledgeBaseDocumentsQueryKey(
   knowledgeBaseId: string,
   options: KnowledgeBaseDocumentsOptions = {},
 ) {
-  const hasPagination = options.limit !== undefined || options.offset !== undefined
+  const hasPagination =
+    options.limit !== undefined || options.offset !== undefined || options.status !== undefined
   return hasPagination
     ? ['knowledge-bases', knowledgeBaseId, 'documents', options] as const
     : ['knowledge-bases', knowledgeBaseId, 'documents'] as const
@@ -73,6 +80,9 @@ export function getKnowledgeBaseDocuments(
   }
   if (options.offset !== undefined) {
     searchParams.set('offset', String(options.offset))
+  }
+  if (options.status !== undefined) {
+    searchParams.set('status', options.status)
   }
   const queryString = searchParams.toString()
   const path = `/knowledgebases/${knowledgeBaseId}/documents${queryString ? `?${queryString}` : ''}`

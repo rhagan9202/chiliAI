@@ -376,6 +376,31 @@
   gap: 14px;
 }
 
+/* A document row is a selectable button plus controls that cannot nest inside
+   it (a button inside a button is invalid), so the row wraps both. */
+.knowledge-base-document-row {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.knowledge-base-document-row > .page-list-item {
+  width: 100%;
+}
+
+.ingestion-document-row__error {
+  color: var(--c-red);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.ingestion-document-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .knowledge-base-stats,
 .knowledge-base-detail-grid {
   display: grid;

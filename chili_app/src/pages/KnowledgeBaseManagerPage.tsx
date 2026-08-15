@@ -21,6 +21,7 @@ import {
   useStartScoreRun,
 } from '../api/scoreRuns'
 import type {
+  KnowledgeBaseDocumentListResponse,
   KnowledgeBaseDocumentPreviewResponse,
   RecordIngestReceipt,
 } from '../api/contracts'
@@ -42,6 +43,7 @@ import { ValidationPanel } from '../components/ingestion/ValidationPanel'
 import { showToast } from '../components/common/toastStore'
 import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
+import { statusToken } from '../components/status/statusTokens'
 import { formatFileSize, formatTimestamp } from '../components/status/formatters'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -94,6 +96,7 @@ export function KnowledgeBaseManagerPage() {
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
+  const [documentStatusFilter, setDocumentStatusFilter] = useState('all')
   // Destructive actions are staged in state and executed from a confirmation
   // dialog: both deletions used to fire on the first click.
   const [confirmingKnowledgeBaseDelete, setConfirmingKnowledgeBaseDelete] = useState(false)
@@ -130,7 +133,9 @@ export function KnowledgeBaseManagerPage() {
     { enabled: Boolean(activeKnowledgeBaseId) },
   )
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
-  const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId)
+  const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId, {
+    ...(documentStatusFilter === 'all' ? {} : { status: documentStatusFilter }),
+  })
   const scoreRunsQuery = useScoreRuns(activeKnowledgeBaseId, { limit: 1 })
   const scoreRuns = scoreRunsQuery.data?.items ?? []
   const activeScoreRunId = selectedScoreRunId ?? scoreRuns[0]?.id ?? null
@@ -728,6 +733,8 @@ export function KnowledgeBaseManagerPage() {
               activeDocumentId={activeDocumentId}
               deleteDisabled={deleteDocumentMutation.isPending}
               documents={documents}
+              statusFilter={documentStatusFilter}
+              onStatusFilterChange={setDocumentStatusFilter}
               preview={documentPreviewQuery.data ?? null}
               previewError={documentPreviewQuery.isError}
               previewLoading={documentPreviewQuery.isLoading}
@@ -896,21 +903,18 @@ function SelectedKnowledgeBaseSummary({
   )
 }
 
+/** Lifecycle states worth filtering by; the in-progress states churn too fast. */
+const DOCUMENT_STATUS_FILTERS = ['all', 'validated', 'extracted_empty', 'failed'] as const
+
 type DocumentInventoryProps = {
   activeDocumentId: string | null
   deleteDisabled: boolean
-  documents: Array<{
-    id: string
-    filename: string
-    size_bytes?: number | null
-    status: string
-    created_at: string
-    warning_count?: number
-    warning_reasons?: string[]
-  }>
+  documents: KnowledgeBaseDocumentListResponse['items']
   preview: KnowledgeBaseDocumentPreviewResponse | null
   previewLoading: boolean
   previewError: boolean
+  statusFilter: string
+  onStatusFilterChange: (status: string) => void
   onStageSource: () => void
   onDeleteDocument: (documentId: string) => void
   onSelectDocument: (documentId: string) => void
@@ -923,55 +927,122 @@ function DocumentInventory({
   preview,
   previewLoading,
   previewError,
+  statusFilter,
+  onStatusFilterChange,
   onDeleteDocument,
   onSelectDocument,
   onStageSource,
 }: DocumentInventoryProps) {
+  // Which row has its warning reasons open. Reasons used to be reachable only
+  // by hovering a `title` or by selecting the row — undiscoverable, and dead on
+  // touch.
+  const [expandedWarningsId, setExpandedWarningsId] = useState<string | null>(null)
+
   return (
     <section className="ingestion-studio-documents" aria-labelledby="document-inventory-title">
       <div className="metric-row">
         <strong id="document-inventory-title">Document inventory</strong>
         <Chip label={`${documents.length} tracked`} tone="network" />
+        <label className="ingestion-document-filter">
+          <span className="metric-row__label">Filter documents by status</span>
+          <select
+            aria-label="Filter documents by status"
+            className="page-input"
+            onChange={(event) => onStatusFilterChange(event.target.value)}
+            value={statusFilter}
+          >
+            {DOCUMENT_STATUS_FILTERS.map((value) => (
+              <option key={value} value={value}>
+                {value === 'all' ? 'All statuses' : statusToken('document', value).label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {documents.length > 0 ? (
         <div className="knowledge-base-documents">
-          {documents.map((document) => (
-            <button
-              className={
-                activeDocumentId === document.id
-                  ? 'page-list-item page-list-item--active'
-                  : 'page-list-item'
-              }
-              key={document.id}
-              onClick={() => onSelectDocument(document.id)}
-              type="button"
-            >
-              <strong>{document.filename}</strong>
-              <span className="metric-row__label">
-                {formatFileSize(document.size_bytes)} | {formatTimestamp(document.created_at)}
-              </span>
-              <span className="alert-row-card__meta">
-                <StatusChip kind="document" status={document.status} />
-                {(document.warning_count ?? 0) > 0 ? (
-                  <span title={(document.warning_reasons ?? []).join('\n')}>
-                    <Chip
-                      label={countLabel(document.warning_count, 'warning')}
-                      tone="warning"
-                    />
+          {documents.map((document) => {
+            const warningReasons = document.warning_reasons ?? []
+            const droppedEntities = document.dropped_entity_count ?? 0
+            const droppedRelationships = document.dropped_relationship_count ?? 0
+
+            return (
+              <div className="knowledge-base-document-row" key={document.id}>
+                <button
+                  className={
+                    activeDocumentId === document.id
+                      ? 'page-list-item page-list-item--active'
+                      : 'page-list-item'
+                  }
+                  onClick={() => onSelectDocument(document.id)}
+                  type="button"
+                >
+                  <strong>{document.filename}</strong>
+                  <span className="metric-row__label">
+                    {formatFileSize(document.size_bytes)} | {formatTimestamp(document.created_at)}
                   </span>
+                  <span className="alert-row-card__meta">
+                    {/* The durable lifecycle, not the registration status: the
+                        latter says "ready" for a document that produced nothing. */}
+                    <StatusChip
+                      kind="document"
+                      status={document.current_status ?? document.status}
+                    />
+                    {warningReasons.length > 0 || (document.warning_count ?? 0) > 0 ? (
+                      <Chip label={countLabel(document.warning_count ?? 0, 'warning')} tone="warning" />
+                    ) : null}
+                  </span>
+                  {document.last_error ? (
+                    <span className="ingestion-document-row__error" role="alert">
+                      {document.last_error}
+                    </span>
+                  ) : null}
+                  {droppedEntities > 0 || droppedRelationships > 0 ? (
+                    // Exact counts only: how many of each were kept is not
+                    // knowable from this payload, so it is not claimed.
+                    <span className="metric-row__label">
+                      {[
+                        droppedEntities > 0
+                          ? `${countLabel(droppedEntities, 'entity', 'entities')} dropped`
+                          : null,
+                        droppedRelationships > 0
+                          ? `${countLabel(droppedRelationships, 'relationship')} dropped`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  ) : null}
+                </button>
+                {warningReasons.length > 0 ? (
+                  <button
+                    aria-expanded={expandedWarningsId === document.id}
+                    className="page-button page-button--sm page-button--secondary"
+                    onClick={() =>
+                      setExpandedWarningsId((current) =>
+                        current === document.id ? null : document.id,
+                      )
+                    }
+                    type="button"
+                  >
+                    {expandedWarningsId === document.id ? 'Hide' : 'Show'}{' '}
+                    {countLabel(warningReasons.length, 'warning')}
+                  </button>
                 ) : null}
-              </span>
-              {activeDocumentId === document.id &&
-              (document.warning_reasons ?? []).length > 0 ? (
-                <ul className="metric-row__label" data-testid="document-warning-reasons">
-                  {(document.warning_reasons ?? []).map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </button>
-          ))}
+                {expandedWarningsId === document.id ? (
+                  <ul className="metric-row__label" data-testid="document-warning-reasons">
+                    {warningReasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                    {(document.drop_sample_reasons ?? []).map((reason) => (
+                      <li key={`drop-${reason}`}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       ) : (
         <EmptyState

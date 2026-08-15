@@ -137,7 +137,13 @@ type MockDocumentSummary = {
   filename: string
   content_type: string
   size_bytes: number
+  /** Registration status; the durable lifecycle lives in `current_status`. */
   status: string
+  current_status?: string | null
+  last_error?: string | null
+  dropped_entity_count?: number
+  dropped_relationship_count?: number
+  drop_sample_reasons?: string[]
   created_at: string
   warning_count: number
   warning_reasons: string[]
@@ -796,7 +802,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.getAllByText('Fraud KB')).toHaveLength(2)
   })
 
-  it('shows a warning chip and reasons for documents with ingestion warnings', async () => {
+  it('shows a warning chip and reasons behind an explicit toggle', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     const documentRow = await screen.findByRole('button', {
@@ -804,10 +810,95 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     })
     expect(within(documentRow).getByText('2 warnings')).toBeInTheDocument()
 
-    await userEvent.click(documentRow)
+    // Reasons used to be reachable only by hover (a `title`) or by selecting
+    // the row. Neither is discoverable, and neither works on touch.
+    await userEvent.click(screen.getByRole('button', { name: 'Show 2 warnings' }))
     const reasons = await screen.findByTestId('document-warning-reasons')
     expect(within(reasons).getByText(/csv\.ragged_row/)).toBeInTheDocument()
     expect(within(reasons).getByText(/normalization_failed/)).toBeInTheDocument()
+  })
+
+  it('renders the durable lifecycle state, not the registration status', async () => {
+    installFetchMock({
+      documentItems: [
+        {
+          ...existingDocument,
+          id: 'doc-empty',
+          filename: 'resume-like.txt',
+          status: 'ready',
+          current_status: 'extracted_empty',
+          warning_count: 0,
+          warning_reasons: [],
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    // A document that produced no entities used to read as a green "ready".
+    const row = await screen.findByRole('button', { name: /resume-like\.txt/ })
+    expect(within(row).getByText('No entities')).toBeInTheDocument()
+    expect(within(row).queryByText('Validated')).not.toBeInTheDocument()
+  })
+
+  it('shows the failure reason on a failed document without any clicks', async () => {
+    installFetchMock({
+      documentItems: [
+        {
+          ...existingDocument,
+          id: 'doc-failed',
+          filename: 'broken.json',
+          status: 'ready',
+          current_status: 'failed',
+          last_error: 'Parser gave up: unexpected token at line 3',
+          warning_count: 0,
+          warning_reasons: [],
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    const row = await screen.findByRole('button', { name: /broken\.json/ })
+    expect(within(row).getByText('Failed')).toBeInTheDocument()
+    expect(within(row).getByText(/Parser gave up/)).toBeInTheDocument()
+  })
+
+  it('reports dropped entities and relationships as exact counts', async () => {
+    installFetchMock({
+      documentItems: [
+        {
+          ...existingDocument,
+          id: 'doc-drops',
+          filename: 'partial.json',
+          current_status: 'validated',
+          dropped_entity_count: 3,
+          dropped_relationship_count: 2,
+          warning_count: 0,
+          warning_reasons: [],
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    const row = await screen.findByRole('button', { name: /partial\.json/ })
+    expect(within(row).getByText(/3 entities dropped/)).toBeInTheDocument()
+    expect(within(row).getByText(/2 relationships dropped/)).toBeInTheDocument()
+  })
+
+  it('asks the API for a filtered inventory when a lifecycle filter is chosen', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('existing-policy.txt')
+    await userEvent.selectOptions(
+      screen.getByLabelText('Filter documents by status'),
+      'extracted_empty',
+    )
+
+    await waitFor(() => {
+      const requested = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .map((call) => String(call[0]))
+        .filter((url) => url.includes('/documents?'))
+      expect(requested.some((url) => url.includes('status=extracted_empty'))).toBe(true)
+    })
   })
 
   it('states an empty knowledge base once, with an action (UXA-305)', async () => {
