@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import ValidationError
+
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepStatus
 from api.contracts import WorkflowRunListResponse, WorkflowRunResponse
+from records.service_models import RecordIngestReceipt
 
 __all__ = [
     "count_running_workflows",
@@ -51,6 +54,7 @@ def project_workflow_run(run: WorkflowRun) -> WorkflowRunResponse:
         updated_at=run.updated_at,
         current_step=_current_step(run),
         last_error=_last_error(run),
+        receipt=_receipt(run),
     )
 
 
@@ -106,6 +110,24 @@ def _current_step(run: WorkflowRun) -> str:
 def _last_error(run: WorkflowRun) -> str | None:
     value = run.metadata.get("last_error")
     return value if isinstance(value, str) and value else None
+
+
+def _receipt(run: WorkflowRun) -> RecordIngestReceipt | None:
+    """Re-type the record-ingest receipt carried in the run's flat metadata.
+
+    Document runs carry no receipt, and a run written by an older build may
+    carry something unparseable. Both are reported as absence rather than as
+    an error: a timeline that 500s because one historical run has odd metadata
+    is worse than one that shows that run without counts.
+    """
+
+    raw = run.metadata.get("record_receipt_json")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return RecordIngestReceipt.model_validate_json(raw)
+    except ValidationError:
+        return None
 
 
 def _workflow_type_for_trigger(trigger_event_type: str) -> WorkflowTypeValue:

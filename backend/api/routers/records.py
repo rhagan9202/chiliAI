@@ -108,6 +108,11 @@ def _start_records_workflow(
             trigger_event_type="records.ingested",
             requested_steps=default_steps_for_trigger("records.ingested"),
             correlation_id=correlation_id,
+            # The receipt is durable state, not a property of the browser tab
+            # that submitted the rows: attached to the run, any later reader
+            # still sees what was accepted, skipped and rejected. Metadata
+            # values are scalars, so it travels as a JSON string.
+            metadata={"record_receipt_json": receipt.model_dump_json()},
         )
     )
 

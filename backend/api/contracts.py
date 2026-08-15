@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
 from playbooks.models import PlaybookImportArtifact, PlaybookRef
+from records.service_models import RecordIngestReceipt
 from shared.types import Entity
 
 
@@ -1644,6 +1645,11 @@ class WorkflowRunResponse(BaseModel):
     updated_at: datetime
     current_step: str
     last_error: str | None = None
+    # Record-ingest receipt for records-triggered runs; None for document runs.
+    # It rides the run's flat metadata as a JSON string (agent metadata holds
+    # only scalars) and is re-typed here at the projection boundary, so a
+    # reader that never saw the submitting request still gets the counts.
+    receipt: RecordIngestReceipt | None = None
 
 
 class WorkflowStepApprovalRequest(BaseModel):

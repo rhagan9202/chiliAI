@@ -7996,6 +7996,7 @@ export interface components {
             knowledge_base_id: string;
             /** Last Error */
             last_error?: string | null;
+            receipt?: components["schemas"]["RecordIngestReceipt"] | null;
             /**
              * Started At
              * Format: date-time

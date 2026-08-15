@@ -69,7 +69,7 @@ class AgentService:
         existing = self._run_store.find_by_correlation_id(correlation_id)
         if existing is not None:
             self._verify_correlation_match(existing, request, correlation_id)
-            return self._response_from_run(existing)
+            return self._response_from_run(self._backfill_metadata(existing, request))
 
         workflow_id = generate_id()
         metadata = dict(request.metadata)
@@ -95,7 +95,7 @@ class AgentService:
             existing = self._run_store.find_by_correlation_id(correlation_id)
             if existing is not None:
                 self._verify_correlation_match(existing, request, correlation_id)
-                return self._response_from_run(existing)
+                return self._response_from_run(self._backfill_metadata(existing, request))
             raise AgentConfigurationError(str(exc)) from exc
         except Exception as exc:
             raise AgentStateStoreError("Failed to persist workflow run.") from exc
@@ -332,6 +332,35 @@ class AgentService:
             raise IdempotencyKeyConflictError(
                 request.idempotency_key, conflicting_field="metadata"
             )
+
+    def _backfill_metadata(
+        self,
+        run: WorkflowRun,
+        request: WorkflowSubmissionRequest,
+    ) -> WorkflowRun:
+        """Write request metadata keys the adopted run does not already carry.
+
+        A caller that adopts a fallback-created run still has facts the worker
+        never had — the records API carries its ingest receipt this way. Losing
+        them because the worker won the race would make the receipt's survival
+        a coin flip. Existing keys are left alone: the run's own record of what
+        happened outranks the request's account of what was asked for.
+        """
+
+        missing = {
+            key: value
+            for key, value in request.metadata.items()
+            if key not in run.metadata
+        }
+        if not missing:
+            return run
+        try:
+            return self._run_store.update_run(
+                run.workflow_id,
+                WorkflowRunUpdate(metadata={**run.metadata, **missing}, updated_at=utc_now()),
+            )
+        except Exception as exc:
+            raise AgentStateStoreError("Failed to record workflow metadata.") from exc
 
     @staticmethod
     def _verify_correlation_match(

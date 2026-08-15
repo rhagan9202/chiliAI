@@ -12700,6 +12700,16 @@
             ],
             "title": "Last Error"
           },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordIngestReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "started_at": {
             "format": "date-time",
             "title": "Started At",

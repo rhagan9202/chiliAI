@@ -499,6 +499,37 @@ def test_start_workflow_adopts_existing_run_for_same_correlation() -> None:
     ] == []
 
 
+def test_start_workflow_backfills_request_metadata_onto_an_adopted_run() -> None:
+    # The records API attaches its ingest receipt to the run it starts. When
+    # the worker fallback-creates that run first, adopting it verbatim would
+    # drop the receipt and leave that run permanently countless in the run
+    # timeline — the receipt would survive or not depending on who won a race.
+    existing = WorkflowRun(
+        workflow_id="fallback-1",
+        knowledge_base_id="kb-1",
+        trigger_event_type="records.ingested",
+        status=WorkflowRunStatus.RUNNING,
+        steps=[WorkflowStepState(step_name="records_ingest")],
+        metadata={"correlation_id": "corr-pre", "source_event_type": "records.ingested"},
+    )
+    service, run_store, _ = _service(runs=[existing])
+
+    service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="records.ingested",
+            requested_steps=["records_ingest"],
+            correlation_id="corr-pre",
+            metadata={"record_receipt_json": '{"accepted_count": 10}'},
+        )
+    )
+
+    adopted = run_store.get_run("fallback-1")
+    assert adopted.metadata["record_receipt_json"] == '{"accepted_count": 10}'
+    # Keys the adopted run already carries stay its own; the request never wins.
+    assert adopted.metadata["source_event_type"] == "records.ingested"
+
+
 def test_start_workflow_rejects_correlation_reuse_for_different_knowledge_base() -> None:
     service, _, _ = _service(
         runs=[
