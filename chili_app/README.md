@@ -24,8 +24,29 @@ Document and records-file uploads go through `apiUploadWithProgress`
 (`XMLHttpRequest`, since `fetch` cannot observe request-body upload progress),
 rendering an accessible progress bar during upload and a Retry button on
 failure. Submission receipts surface in the run timeline with an
-"X accepted, Y duplicate, Z rejected" summary, a duplicate-submission (no-op)
-indicator, and a bounded list of rejected-row reasons.
+"X accepted, Y duplicate, Z rejected" summary (plus "N already existed
+(skipped)" wherever the insert-only record store dropped rows whose ids
+already existed), a duplicate-submission (no-op) indicator, and a bounded list
+of rejected-row reasons.
+
+Receipts ride the workflow run they start (`WorkflowRunResponse.receipt`), so
+the run timeline hydrates entirely from `GET /workflows`: counts survive a
+reload and are visible to readers other than the tab that submitted them.
+Staging drafts are the opposite — per-tab, and **keyed by knowledge base**
+(`ingestionStudioStore.draftsByKb`), so files staged for one corpus can never
+submit into another; a successful submission clears that corpus's draft.
+
+The document inventory renders the durable lifecycle (`current_status`), not
+the registration status: a document that parsed cleanly but yielded no domain
+entities reads "No entities" rather than a green "ready", failures carry
+`last_error` inline, and dropped entity/relationship counts appear where the
+backend reports them. Warning reasons open from a per-row toggle, and the
+lifecycle filter above the list queries the API (`?status=`).
+
+Destructive actions are confirmed: removing a document takes a plain dialog,
+and deleting a knowledge base states its blast radius in counts and requires
+the corpus name to be typed. Disabled controls are visibly disabled and say
+what is missing — in adjacent text, never in a hover tooltip.
 
 ## Target Technology Stack
 
@@ -307,7 +328,8 @@ not on mutable status, so they are order-independent.
 | `authenticated-shell.spec.ts` | Config-driven sidebar nav ("Alert Feed", "Knowledge Bases") |
 | `login-redirect.spec.ts` | Protected route renders without a login redirect (auth disabled) |
 | `knowledge-base-list.spec.ts` | Seeded "E2E Seed KB" appears in the Ingestion Studio |
-| `ingestion-records.spec.ts` | Records `carrier_claims_a` CSV upload → success receipt + counts in the run timeline |
+| `ingestion-records.spec.ts` | Records `carrier_claims_a` CSV upload → server-served receipt counts in the run timeline |
+| `ingestion-truth-safety.spec.ts` | Phase-1 regressions: disabled controls read as disabled and name what is missing, staging appends/removes/re-picks, drafts never cross knowledge bases, runs survive a reload, a zero-entity document reads "No entities" and filters, both deletions are confirmed (corpus by typed name) |
 | `investigation-workbench.spec.ts` | Graph canvas mounts for the seeded entity neighborhood |
 | `alert-feed.spec.ts` | Seeded alert rows + severity/status chips + filter bar |
 | `alert-acknowledge.spec.ts` | Acknowledge a real alert → status chip transitions |
@@ -574,10 +596,9 @@ to preview until something lands, so only the document inventory's empty state
 survives, and that one carries a *Stage a source* button that scrolls back to
 the staging form in the main column.
 
-The run timeline earns its card once `documents`, `studio.receipts` or
-`workflows` is non-empty — documents are in the test because a KB ingested in an
-earlier session has no receipts (those are per-session) and may have no live
-workflow, and its inventory is the honest signal that runs happened. **Next
+The run timeline earns its card once `documents` or `workflows` is non-empty —
+documents are in the test because a knowledge base whose runs have aged out
+still has an inventory, the honest signal that ingestion happened. **Next
 actions' *Watch runs* keys off the same value**: hiding the timeline without
 disabling that button would leave it scrolling to a card that is not rendered.
 

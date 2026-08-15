@@ -886,6 +886,8 @@ The worker `/health` endpoint reports honestly. `HealthState` distinguishes a **
 
 Workflow runs are created intentionally by `AgentService.start_workflow`, wired into the two pipeline entry points in the API gateway (`POST /knowledgebases/{kb}/documents` → `documents.uploaded`; `POST /records/{kb}/files`|`/push` → `records.ingested`). The route threads the run's `correlation_id` into the published event, and `start_workflow` is **create-or-get by correlation id**, so it converges with any fallback run the worker's `WorkflowEventTracker` minted in a race (no duplicates). The tracker fallback is retained as a safety net; `agent.workflow_tracking.default_steps_for_trigger` is the single source of truth for step plans. The `WorkflowRunStore` keeps a `correlation_id → workflow_id` index (`find_by_correlation_id`) so resolution is O(1), not a scan. Because the run is created synchronously at submit, `ensure_kb_idle` enforces **one ingestion workflow per KB at a time** (a second mutation while non-terminal → 409); API and worker must share the run store (`CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`).
 
+A records submission attaches its ingest receipt to the run it starts, as JSON under the `record_receipt_json` metadata key (run metadata holds scalars only), and `api._workflow_projection` re-types it into `WorkflowRunResponse.receipt`; a run whose metadata is missing or unparseable reports no receipt rather than failing the listing. Adoption of a fallback-created run backfills request metadata keys the run does not already carry, so the receipt does not survive or vanish depending on who won the create race. This is what lets the frontend run timeline hydrate entirely from `GET /workflows` instead of keeping a per-tab receipt log.
+
 Cancellation (`POST /workflows/{id}/cancel`, analyst role) is **cooperative**: the tracker skips a cancelled run's remaining steps at each event boundary; long handlers (`handle_graph_updated_for_analytics`, `handle_records_ingested`) re-check `is_run_cancelled` at loop/stage boundaries and stop early (an in-flight synchronous stage still finishes); and tracker writes use a status-only CAS (`update_run_if_current` with `expected_statuses={QUEUED, RUNNING}`) so a concurrent cancel is never clobbered.
 
 #### Plan C design deviations
@@ -1146,7 +1148,7 @@ chili_app/src/
 │   ├── appStore.ts             # Sidebar, selected entity, active KB
 │   ├── chatStore.ts            # Local chat/session state
 │   ├── uiStore.ts              # Panel/sidebar visibility, realtime status, role
-│   └── ingestionStudioStore.ts # Ingestion Studio wizard state
+│   └── ingestionStudioStore.ts # Staging drafts keyed by knowledge base id
 ├── pages/
 │   ├── DashboardPage.tsx
 │   ├── KnowledgeBaseManagerPage.tsx
