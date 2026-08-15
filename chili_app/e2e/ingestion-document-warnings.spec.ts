@@ -31,7 +31,11 @@ test.describe('Knowledge Bases document warnings', () => {
     const kbName = `warn-e2e-${Date.now()}`
     await page.getByLabel('Knowledge base name').fill(kbName)
     await page.getByRole('button', { name: 'Create knowledge base' }).click()
-    await expect(page.getByText(kbName).first()).toBeVisible()
+    // Scoped to the list card: the top-bar picker carries every KB name too,
+    // in hidden <option> elements that an unscoped match resolves to first.
+    await expect(
+      page.getByRole('region', { name: 'Choose a knowledge base' }).getByText(kbName).first(),
+    ).toBeVisible()
 
     // dispatchEvent instead of a coordinate click: the KB-created toast can
     // overlay the option, and label activation forwards the click to the
@@ -65,8 +69,9 @@ test.describe('Knowledge Bases document warnings', () => {
     await expect(documentRow).toBeVisible({ timeout: 120_000 })
     await expect(documentRow.getByText(/\d+ warnings?/)).toBeVisible({ timeout: 120_000 })
 
-    // Selecting the document reveals the persisted reasons.
-    await documentRow.click()
+    // Reasons are behind an explicit toggle now: selecting the row used to be
+    // the only way in, which nothing on screen said.
+    await page.getByRole('button', { name: /^Show \d+ warning/ }).first().click()
     const reasons = page.getByTestId('document-warning-reasons')
     await expect(reasons).toBeVisible()
     await expect(reasons).toContainText('csv.ragged_row')

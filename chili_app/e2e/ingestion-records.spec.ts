@@ -70,14 +70,14 @@ test.describe('Knowledge Bases records flow', () => {
     await expect(submit).toBeEnabled()
     await submit.click()
 
-    // A success receipt for the feed appears in the run timeline (the run list
-    // is labelled "Ingestion runs").
+    // The receipt appears in the run timeline (the run list is labelled
+    // "Ingestion runs"). It is served with the run itself, not held in this
+    // tab, so the counts come back from GET /workflows.
     const timeline = page.getByRole('list', { name: /ingestion runs/i })
     await expect(
-      timeline.getByText(/records accepted for carrier_claims_a\./i),
-    ).toBeVisible()
-    // The receipt carries an "accepted" status chip plus the counts summary.
-    await expect(timeline.getByText(/\d+ accepted, \d+ duplicate, \d+ rejected/)).toBeVisible()
+      timeline.getByText(/\d+ accepted, \d+ duplicate, \d+ rejected/).first(),
+    ).toBeVisible({ timeout: 30_000 })
+    await expect(timeline.getByText('carrier_claims_a').first()).toBeVisible()
 
     // The API starts a tracked workflow run synchronously at submit time, so a
     // real "ingestion" run (created via AgentService.start_workflow, not a

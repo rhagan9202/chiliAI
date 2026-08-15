@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiDelete, apiFetch, apiPost, apiUploadWithProgress } from './client'
 import type { UploadOptions } from './client'
+import { workflowsQueryKey } from './workflows'
 import type {
   DocumentRegistrationResponse,
   KnowledgeBaseCreateRequest,
@@ -210,6 +211,10 @@ export function useUploadKnowledgeBaseDocuments(knowledgeBaseId: string | null) 
       uploadKnowledgeBaseDocuments(knowledgeBaseId ?? '', files, { onUploadProgress }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: knowledgeBasesQueryKey })
+      // The upload starts a tracked run. The records mutations have always
+      // invalidated this; documents did not, and only got away with it while
+      // the timeline kept a client-side copy of the submission.
+      void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
       if (knowledgeBaseId) {
         void queryClient.invalidateQueries({ queryKey: knowledgeBaseDetailQueryKey(knowledgeBaseId) })
         void queryClient.invalidateQueries({ queryKey: knowledgeBaseDocumentsQueryKey(knowledgeBaseId) })
