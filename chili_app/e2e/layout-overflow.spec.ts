@@ -93,6 +93,16 @@ test.describe('Layout overflow', () => {
             // Elements that scroll their own content are doing so on purpose
             // (the housing table wrapper is the in-repo precedent).
             if (style.overflowX === 'auto' || style.overflowX === 'scroll') continue
+            // Native form controls own their own overflow. A <select> reports
+            // the intrinsic width of its widest option, which no CSS can wrap
+            // or ellipsize: the closed control truncates with an ellipsis and
+            // the popup renders every option in full. Without this carve-out
+            // any knowledge base whose name is longer than its rail fails the
+            // guard, which is a fact about the data, not about the layout.
+            // Same for a single-line <input>: its scrollWidth is the width of
+            // the value someone typed, which the control scrolls internally as
+            // the caret moves. Neither is a layout defect this guard can fix.
+            if (element.tagName === 'SELECT' || element.tagName === 'INPUT') continue
             // Screen-reader-only labels are *deliberately* clipped to 1px via
             // the standard `clip: rect(0 0 0 0)` pattern — e.g. the tab panel
             // headings and the "Source type" fieldset legend.

@@ -45,6 +45,10 @@ async function expectRegionHasNoHorizontalOverflow(page: Page, selector: string)
       const element = el
       const style = getComputedStyle(element)
       if (style.overflowX === 'auto' || style.overflowX === 'scroll') continue
+      // Native form controls own their own overflow: a <select> is as wide as
+      // its widest option and an <input> as wide as its value, and neither can
+      // be wrapped or ellipsized by CSS. (Same carve-out as layout-overflow.)
+      if (element.tagName === 'SELECT' || element.tagName === 'INPUT') continue
       if (style.position === 'absolute' && style.clip !== 'auto') continue
       if (
         (element.closest('[data-testid="investigation-graph-canvas"]') ||

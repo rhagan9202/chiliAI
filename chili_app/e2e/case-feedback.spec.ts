@@ -17,7 +17,10 @@ test.describe('Case feedback submission', () => {
     await page.getByPlaceholder('Document the current evidence assessment').fill(NOTES)
     await page.getByRole('button', { name: 'Save feedback' }).click()
 
-    await expect(page.getByText(NOTES)).toBeVisible()
+    // First match: the note is appended to history, and a stack that has run
+    // this spec before already carries an identical earlier entry. The claim
+    // is that saving lands the note, not that it is the only one.
+    await expect(page.getByText(NOTES).first()).toBeVisible()
     // Scope to the history entry: a bare getByText('suspicious') resolves to
     // the hidden combobox <option> first.
     await expect(

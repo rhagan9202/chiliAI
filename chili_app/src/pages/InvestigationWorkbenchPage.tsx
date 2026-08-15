@@ -652,7 +652,10 @@ export function InvestigationWorkbenchPage() {
         <div className="workbench-rail">
           <Card>
             <div className="metric-stack">
-              <div className="metric-row">
+              {/* Stacked: sharing one flex line with its label squeezed the
+                  select to 167px in the rail while its widest option needed
+                  330px, clipping every knowledge-base name mid-word. */}
+              <div className="metric-row metric-row--stacked">
                 <label className="metric-row__label" htmlFor="investigation-kb-select">
                   Knowledge base
                 </label>

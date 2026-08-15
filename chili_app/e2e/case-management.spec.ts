@@ -14,9 +14,13 @@ test.describe('Case Management', () => {
     await page.goto(`/cases?kb=${kb}`)
 
     await expect(page.getByRole('heading', { name: 'Case Management' })).toBeVisible()
-    await expect(page.getByText('Redwood DME escalation').first()).toBeVisible()
 
-    // Auto-selected detail panel shows the (seed-stable) priority chip + actions.
+    // Select the seeded case by name rather than trusting the auto-selection:
+    // earlier specs promote alerts into new cases, any of which may sort ahead
+    // of it in the queue.
+    await page.getByRole('button', { name: /Redwood DME escalation/ }).first().click()
+
+    // The detail panel shows that case's seed-stable priority plus its actions.
     const detailPanel = page.locator('.case-layout')
     await expect(
       detailPanel
