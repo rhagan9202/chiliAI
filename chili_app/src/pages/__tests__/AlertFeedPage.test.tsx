@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DomainCapabilities, DomainConfig } from '../../api/contracts'
 import { useToastStore } from '../../components/common/toastStore'
@@ -207,7 +207,18 @@ function LocationProbe({ onChange }: { onChange: (location: string) => void }) {
 }
 
 describe('AlertFeedPage', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
+    // Score freshness ("fresh" within 14 days) and the SLA label are computed
+    // against the wall clock, so the fixtures' verdicts change with the date:
+    // alert-1 read "fresh" until 2026-08-15 and then silently went stale.
+    // Pin the clock so these assertions test the classification, not the day
+    // the suite happens to run.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-08-05T12:00:00Z'))
     mocks.acknowledge.mockReset()
     mocks.assign.mockReset()
     mocks.bulkStatus.mockReset()
