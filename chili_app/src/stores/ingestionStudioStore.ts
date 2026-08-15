@@ -1,69 +1,86 @@
 import { create } from 'zustand'
 
 import type {
-  IngestionReceiptEntry,
   IngestionSourceType,
   IngestionStepId,
   ValidationIssue,
 } from '../lib/ingestion/types'
 
-type IngestionStudioStateValues = {
-  currentStep: IngestionStepId
+/**
+ * In-flight staging work for one knowledge base.
+ *
+ * This used to be a single global draft: staged `File` handles, parsed rows
+ * and validation issues lived at the top of the store and were never cleared
+ * when the analyst switched knowledge base. Files staged for KB A submitted
+ * into KB B, and KB A's validation issues rendered against KB B's inventory.
+ * Keying drafts by knowledge base makes that leak unrepresentable.
+ */
+export type IngestionDraft = {
   sourceType: IngestionSourceType | null
   selectedFeedName: string | null
   pendingFiles: File[]
   pendingRecordFile: File | null
   parsedRows: Record<string, unknown>[]
   validationIssues: ValidationIssue[]
-  receipts: IngestionReceiptEntry[]
-  activeTimelineEntryId: string | null
 }
 
-type IngestionStudioActions = {
-  setCurrentStep: (currentStep: IngestionStepId) => void
-  setSourceType: (sourceType: IngestionSourceType | null) => void
-  setSelectedFeedName: (selectedFeedName: string | null) => void
-  setPendingFiles: (pendingFiles: File[]) => void
-  setPendingRecordFile: (pendingRecordFile: File | null) => void
-  setParsedRows: (parsedRows: Record<string, unknown>[]) => void
-  setValidationIssues: (validationIssues: ValidationIssue[]) => void
-  addValidationIssues: (validationIssues: ValidationIssue[]) => void
-  addReceipt: (receipt: IngestionReceiptEntry) => void
-  setActiveTimelineEntryId: (activeTimelineEntryId: string | null) => void
-  reset: () => void
-}
-
-export type IngestionStudioState = IngestionStudioStateValues &
-  IngestionStudioActions
-
-const createInitialState = (): IngestionStudioStateValues => ({
-  currentStep: 'knowledge-base',
+export const emptyDraft = (): IngestionDraft => ({
   sourceType: null,
   selectedFeedName: null,
   pendingFiles: [],
   pendingRecordFile: null,
   parsedRows: [],
   validationIssues: [],
-  receipts: [],
-  activeTimelineEntryId: null,
 })
 
+type IngestionStudioState = {
+  /** Page chrome, not per-KB: the stepper describes where the analyst is looking. */
+  currentStep: IngestionStepId
+  draftsByKb: Record<string, IngestionDraft>
+  setCurrentStep: (currentStep: IngestionStepId) => void
+  updateDraft: (kbId: string, patch: Partial<IngestionDraft>) => void
+  addValidationIssues: (kbId: string, issues: ValidationIssue[]) => void
+  clearDraft: (kbId: string) => void
+  reset: () => void
+}
+
 export const useIngestionStudioStore = create<IngestionStudioState>((set) => ({
-  ...createInitialState(),
+  currentStep: 'knowledge-base',
+  draftsByKb: {},
   setCurrentStep: (currentStep) => set({ currentStep }),
-  setSourceType: (sourceType) => set({ sourceType }),
-  setSelectedFeedName: (selectedFeedName) => set({ selectedFeedName }),
-  setPendingFiles: (pendingFiles) => set({ pendingFiles }),
-  setPendingRecordFile: (pendingRecordFile) => set({ pendingRecordFile }),
-  setParsedRows: (parsedRows) => set({ parsedRows }),
-  setValidationIssues: (validationIssues) => set({ validationIssues }),
-  addValidationIssues: (validationIssues) =>
+  updateDraft: (kbId, patch) =>
     set((state) => ({
-      validationIssues: [...state.validationIssues, ...validationIssues],
+      draftsByKb: {
+        ...state.draftsByKb,
+        [kbId]: { ...(state.draftsByKb[kbId] ?? emptyDraft()), ...patch },
+      },
     })),
-  addReceipt: (receipt) =>
-    set((state) => ({ receipts: [receipt, ...state.receipts] })),
-  setActiveTimelineEntryId: (activeTimelineEntryId) =>
-    set({ activeTimelineEntryId }),
-  reset: () => set(createInitialState()),
+  addValidationIssues: (kbId, issues) =>
+    set((state) => {
+      const draft = state.draftsByKb[kbId] ?? emptyDraft()
+      return {
+        draftsByKb: {
+          ...state.draftsByKb,
+          [kbId]: { ...draft, validationIssues: [...draft.validationIssues, ...issues] },
+        },
+      }
+    }),
+  clearDraft: (kbId) =>
+    set((state) => ({
+      draftsByKb: Object.fromEntries(
+        Object.entries(state.draftsByKb).filter(([key]) => key !== kbId),
+      ),
+    })),
+  reset: () => set({ currentStep: 'knowledge-base', draftsByKb: {} }),
 }))
+
+// Stable identity so the selector below does not hand back a new object on
+// every render (which would re-render the page in a loop).
+const EMPTY_DRAFT_SINGLETON: IngestionDraft = emptyDraft()
+
+/** The draft for the given knowledge base, or an empty draft when none is selected. */
+export function useIngestionDraft(kbId: string | null): IngestionDraft {
+  return useIngestionStudioStore((state) =>
+    kbId ? state.draftsByKb[kbId] ?? EMPTY_DRAFT_SINGLETON : EMPTY_DRAFT_SINGLETON,
+  )
+}

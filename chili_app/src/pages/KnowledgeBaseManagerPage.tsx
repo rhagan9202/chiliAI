@@ -56,13 +56,21 @@ import {
   validateRequiredWizardState,
 } from '../lib/ingestion/validateIngestion'
 import { apiErrorMessage } from '../lib/apiClient'
-import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
+import type { ValidationIssue } from '../lib/ingestion/types'
+import { useIngestionDraft, useIngestionStudioStore } from '../stores/ingestionStudioStore'
+import type { IngestionDraft } from '../stores/ingestionStudioStore'
 import { countLabel } from '../utils/countLabel'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
   const navigate = useNavigate()
-  const studio = useIngestionStudioStore()
+  // Selector subscriptions only: a bare `useIngestionStudioStore()` re-renders
+  // the entire page on every keystroke landing in any draft.
+  const currentStep = useIngestionStudioStore((state) => state.currentStep)
+  const setCurrentStep = useIngestionStudioStore((state) => state.setCurrentStep)
+  const updateDraft = useIngestionStudioStore((state) => state.updateDraft)
+  const addValidationIssues = useIngestionStudioStore((state) => state.addValidationIssues)
+  const clearDraft = useIngestionStudioStore((state) => state.clearDraft)
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
@@ -114,6 +122,9 @@ export function KnowledgeBaseManagerPage() {
   )
     ? selectedKnowledgeBaseId
     : scopedKnowledgeBases[0]?.id ?? visibleKnowledgeBases[0]?.id ?? null
+  // Staging work belongs to the knowledge base it was staged for. Switching
+  // knowledge base switches drafts; it never carries one across.
+  const draft = useIngestionDraft(activeKnowledgeBaseId)
   const workflowsQuery = useWorkflows(
     { knowledgeBaseId: activeKnowledgeBaseId ?? undefined },
     { enabled: Boolean(activeKnowledgeBaseId) },
@@ -138,8 +149,7 @@ export function KnowledgeBaseManagerPage() {
   // the document inventory already says so; the timeline only earns its card
   // once there is something to time (UXA-305). "Watch runs" keys off the same
   // value so it can never scroll to a card that isn't rendered.
-  const runTimelineVisible =
-    documents.length > 0 || studio.receipts.length > 0 || workflows.length > 0
+  const runTimelineVisible = documents.length > 0 || workflows.length > 0
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
@@ -152,27 +162,40 @@ export function KnowledgeBaseManagerPage() {
   const replayScoreRunMutation = useReplayScoreRun(activeKnowledgeBaseId, activeScoreRunId)
 
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
-  const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
+  const selectedFeed = feeds.find((feed) => feed.name === draft.selectedFeedName) ?? null
   const documentIssues = validateDocumentFiles(
-    studio.pendingFiles,
+    draft.pendingFiles,
     domainConfigQuery.data?.validation,
   )
   const recordIssues = selectedFeed
-    ? validateRecordRows(selectedFeed, studio.parsedRows, {
-        recordFile: studio.pendingRecordFile,
+    ? validateRecordRows(selectedFeed, draft.parsedRows, {
+        recordFile: draft.pendingRecordFile,
       })
     : []
   const requiredIssues = validateRequiredWizardState({
     knowledgeBaseId: activeKnowledgeBaseId,
-    sourceType: studio.sourceType,
-    feedName: studio.selectedFeedName,
+    sourceType: draft.sourceType,
+    feedName: draft.selectedFeedName,
   })
   const currentIssues = [
     ...requiredIssues,
-    ...(studio.sourceType === 'documents' ? documentIssues : []),
-    ...(studio.sourceType === 'records' ? recordIssues : []),
-    ...studio.validationIssues,
+    ...(draft.sourceType === 'documents' ? documentIssues : []),
+    ...(draft.sourceType === 'records' ? recordIssues : []),
+    ...draft.validationIssues,
   ]
+
+  /** Write to the active knowledge base's draft; a no-op when none is selected. */
+  function patchDraft(patch: Partial<IngestionDraft>) {
+    if (activeKnowledgeBaseId) {
+      updateDraft(activeKnowledgeBaseId, patch)
+    }
+  }
+
+  function addDraftValidationIssues(issues: ValidationIssue[]) {
+    if (activeKnowledgeBaseId) {
+      addValidationIssues(activeKnowledgeBaseId, issues)
+    }
+  }
 
   function beginUpload(retry: () => void) {
     setUploadStatus('uploading')
@@ -196,23 +219,20 @@ export function KnowledgeBaseManagerPage() {
           setUploadStatus('done')
           setUploadPercent(100)
           setRetryUpload(null)
-          studio.setValidationIssues([])
-          studio.addReceipt({
-            id: `documents-${response.documents.map((document) => document.source_document_id).join('-')}`,
-            sourceType: 'documents',
-            status: 'accepted',
-            message: `${documentsLabel} accepted.`,
-            createdAt: response.documents[0]?.created_at ?? new Date().toISOString(),
-          })
-          studio.setPendingFiles([])
-          studio.setCurrentStep('runs')
+          // The submission is the server's business from here: the run and its
+          // receipt arrive through GET /workflows. Nothing about it stays in
+          // this tab's draft.
+          if (activeKnowledgeBaseId) {
+            clearDraft(activeKnowledgeBaseId)
+          }
+          setCurrentStep('runs')
           showToast('success', `${documentsLabel} uploaded.`)
         },
         onError: (error) => {
           const message = apiErrorMessage(error, 'Document submission failed.')
           setUploadStatus('error')
           setUploadError(message)
-          studio.addValidationIssues([
+          addDraftValidationIssues([
             {
               id: `documents-backend-error-${Date.now()}`,
               source: 'backend',
@@ -235,23 +255,17 @@ export function KnowledgeBaseManagerPage() {
           setUploadStatus('done')
           setUploadPercent(100)
           setRetryUpload(null)
-          studio.setValidationIssues([])
-          studio.addReceipt({
-            id: `records-${receipt.correlation_id}`,
-            sourceType: 'records',
-            status: 'accepted',
-            message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
-            createdAt: receipt.created_at,
-            receipt,
-          })
-          studio.setCurrentStep('runs')
+          if (activeKnowledgeBaseId) {
+            clearDraft(activeKnowledgeBaseId)
+          }
+          setCurrentStep('runs')
           showToast('success', receiptToastMessage(receipt))
         },
         onError: (error) => {
           const message = apiErrorMessage(error, 'Records submission failed.')
           setUploadStatus('error')
           setUploadError(message)
-          studio.addValidationIssues([
+          addDraftValidationIssues([
             {
               id: `records-backend-error-${Date.now()}`,
               source: 'backend',
@@ -270,46 +284,46 @@ export function KnowledgeBaseManagerPage() {
       ...validateRequiredWizardState({
         knowledgeBaseId: activeKnowledgeBaseId,
         sourceType: 'documents',
-        feedName: studio.selectedFeedName,
+        feedName: draft.selectedFeedName,
       }),
-      ...validateDocumentFiles(studio.pendingFiles, domainConfigQuery.data?.validation),
+      ...validateDocumentFiles(draft.pendingFiles, domainConfigQuery.data?.validation),
     ]
 
     if (issues.some((issue) => issue.severity === 'error')) {
-      studio.setValidationIssues(issues)
+      patchDraft({ validationIssues: issues })
       return
     }
 
-    runDocumentUpload(studio.pendingFiles)
+    runDocumentUpload(draft.pendingFiles)
   }
 
   function submitRecords() {
     const recordFileIssues = selectedFeed?.source === 'file_upload'
-      ? validateRecordFile(studio.pendingRecordFile)
+      ? validateRecordFile(draft.pendingRecordFile)
       : []
     const issues = [
       ...validateRequiredWizardState({
         knowledgeBaseId: activeKnowledgeBaseId,
         sourceType: 'records',
-        feedName: studio.selectedFeedName,
+        feedName: draft.selectedFeedName,
       }),
       ...recordFileIssues,
       ...(selectedFeed
-        ? validateRecordRows(selectedFeed, studio.parsedRows, {
-            recordFile: studio.pendingRecordFile,
+        ? validateRecordRows(selectedFeed, draft.parsedRows, {
+            recordFile: draft.pendingRecordFile,
           })
         : []),
     ]
 
     if (issues.some((issue) => issue.severity === 'error') || !selectedFeed) {
-      studio.setValidationIssues(issues)
+      patchDraft({ validationIssues: issues })
       return
     }
 
     if (selectedFeed.source === 'file_upload') {
-      const recordFile = studio.pendingRecordFile
+      const recordFile = draft.pendingRecordFile
       if (!recordFile) {
-        studio.setValidationIssues(recordFileIssues)
+        patchDraft({ validationIssues: recordFileIssues })
         return
       }
       runRecordFileUpload(selectedFeed.name, recordFile)
@@ -319,25 +333,19 @@ export function KnowledgeBaseManagerPage() {
     pushRecordsMutation.mutate(
       {
         feed_name: selectedFeed.name,
-        rows: studio.parsedRows,
+        rows: draft.parsedRows,
       },
       {
         onSuccess: (receipt) => {
-          studio.setValidationIssues([])
-          studio.addReceipt({
-            id: `records-${receipt.correlation_id}`,
-            sourceType: 'records',
-            status: 'accepted',
-            message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
-            createdAt: receipt.created_at,
-            receipt,
-          })
-          studio.setCurrentStep('runs')
+          if (activeKnowledgeBaseId) {
+            clearDraft(activeKnowledgeBaseId)
+          }
+          setCurrentStep('runs')
           showToast('success', receiptToastMessage(receipt))
         },
         onError: (error) => {
           const message = apiErrorMessage(error, 'Records submission failed.')
-          studio.addValidationIssues([
+          addDraftValidationIssues([
             {
               id: `records-backend-error-${Date.now()}`,
               source: 'backend',
@@ -352,23 +360,23 @@ export function KnowledgeBaseManagerPage() {
   }
 
   function runIngestion() {
-    if (studio.sourceType === 'documents') {
+    if (draft.sourceType === 'documents') {
       submitDocuments()
       return
     }
 
-    if (studio.sourceType === 'records') {
+    if (draft.sourceType === 'records') {
       submitRecords()
       return
     }
 
-    studio.setValidationIssues(
-      validateRequiredWizardState({
+    patchDraft({
+      validationIssues: validateRequiredWizardState({
         knowledgeBaseId: activeKnowledgeBaseId,
-        sourceType: studio.sourceType,
-        feedName: studio.selectedFeedName,
+        sourceType: draft.sourceType,
+        feedName: draft.selectedFeedName,
       }),
-    )
+    })
   }
 
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
@@ -396,25 +404,32 @@ export function KnowledgeBaseManagerPage() {
   )
   const userHasSubmittableState =
     Boolean(activeKnowledgeBaseId) &&
-    Boolean(studio.sourceType) &&
-    (studio.pendingFiles.length > 0 || studio.parsedRows.length > 0)
+    Boolean(draft.sourceType) &&
+    (draft.pendingFiles.length > 0 || draft.parsedRows.length > 0)
   const canRunIngestion =
-    (studio.sourceType === 'documents' &&
-      studio.pendingFiles.length > 0 &&
+    (draft.sourceType === 'documents' &&
+      draft.pendingFiles.length > 0 &&
       documentIssues.every((issue) => issue.severity !== 'error')) ||
-    (studio.sourceType === 'records' &&
+    (draft.sourceType === 'records' &&
       selectedFeed !== null &&
-      (selectedFeed.source !== 'file_upload' || studio.pendingRecordFile !== null) &&
-      studio.parsedRows.length > 0 &&
+      (selectedFeed.source !== 'file_upload' || draft.pendingRecordFile !== null) &&
+      draft.parsedRows.length > 0 &&
       recordIssues.every((issue) => issue.severity !== 'error'))
   const runPending = uploadMutation.isPending || pushRecordsMutation.isPending || uploadRecordFileMutation.isPending
+  // This tab just handed a submission to the server. It says nothing about
+  // history — the run timeline is the record of what happened — only that the
+  // handoff succeeded and the run has yet to surface in the poll.
+  const submissionAccepted =
+    uploadStatus === 'done' || uploadMutation.isSuccess || pushRecordsMutation.isSuccess
 
   const completedStepIds = new Set([
     ...(activeKnowledgeBaseId ? (['knowledge-base'] as const) : []),
-    ...(studio.sourceType ? (['source'] as const) : []),
-    ...(studio.pendingFiles.length > 0 || studio.parsedRows.length > 0 ? (['preview'] as const) : []),
+    ...(draft.sourceType ? (['source'] as const) : []),
+    ...(draft.pendingFiles.length > 0 || draft.parsedRows.length > 0 ? (['preview'] as const) : []),
     ...(userHasSubmittableState && contentErrors.length === 0 ? (['validate'] as const) : []),
-    ...(studio.receipts.length > 0 ? (['submit'] as const) : []),
+    // Submitted means the server took it: a run exists, or this tab's upload
+    // just finished and the run has yet to appear in the poll.
+    ...(workflows.length > 0 || submissionAccepted ? (['submit'] as const) : []),
   ])
   const errorStepIds = new Set(contentErrors.length > 0 ? (['validate'] as const) : [])
 
@@ -448,7 +463,7 @@ export function KnowledgeBaseManagerPage() {
       <div className="ingestion-studio-layout">
         <Card>
           <IngestionStepper
-            currentStep={studio.currentStep}
+            currentStep={currentStep}
             completedStepIds={completedStepIds}
             errorStepIds={errorStepIds}
           />
@@ -480,7 +495,7 @@ export function KnowledgeBaseManagerPage() {
                       setActiveScoreRunId(null)
                       setKnowledgeBaseName('')
                       setKnowledgeBaseDescription('')
-                      studio.setCurrentStep('source')
+                      setCurrentStep('source')
                     },
                   },
                 )
@@ -490,7 +505,7 @@ export function KnowledgeBaseManagerPage() {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
                 setSelectedDocumentId(null)
                 setActiveScoreRunId(null)
-                studio.setCurrentStep('source')
+                setCurrentStep('source')
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
               showAllDomains={showAllDomains}
@@ -517,12 +532,15 @@ export function KnowledgeBaseManagerPage() {
                 if (!activeKnowledgeBaseId) {
                   return
                 }
-                deleteKnowledgeBaseMutation.mutate(activeKnowledgeBaseId, {
+                const deletedId = activeKnowledgeBaseId
+                deleteKnowledgeBaseMutation.mutate(deletedId, {
                   onSuccess: () => {
+                    // Its draft has nowhere to submit to now.
+                    clearDraft(deletedId)
                     setSelectedKnowledgeBaseId(null)
                     setSelectedDocumentId(null)
                     setActiveScoreRunId(null)
-                    studio.setCurrentStep('knowledge-base')
+                    setCurrentStep('knowledge-base')
                   },
                 })
               }}
@@ -544,49 +562,49 @@ export function KnowledgeBaseManagerPage() {
                 </p>
               </div>
               <SourceTypeStep
-                selectedSourceType={studio.sourceType}
+                selectedSourceType={draft.sourceType}
                 onChange={(sourceType) => {
-                  studio.setSourceType(sourceType)
-                  studio.setCurrentStep('preview')
+                  patchDraft({ sourceType: sourceType })
+                  setCurrentStep('preview')
                 }}
               />
 
-              {studio.sourceType === 'documents' ? (
+              {draft.sourceType === 'documents' ? (
                 <DocumentSourcePanel
                   acceptContentTypes={domainConfigQuery.data?.validation.allowed_content_types}
-                  files={studio.pendingFiles}
+                  files={draft.pendingFiles}
                   onFilesChange={(files) => {
-                    studio.setPendingFiles(files)
-                    studio.setValidationIssues([])
-                    studio.setCurrentStep('validate')
+                    patchDraft({ pendingFiles: files })
+                    patchDraft({ validationIssues: [] })
+                    setCurrentStep('validate')
                   }}
                 />
               ) : null}
 
-              {studio.sourceType === 'records' ? (
+              {draft.sourceType === 'records' ? (
                 <RecordsSourcePanel
                   feeds={feeds}
                   issues={recordIssues}
                   showPreviewTable={false}
                   onDraftChange={() => {
-                    studio.setParsedRows([])
-                    studio.setValidationIssues([])
-                    studio.setCurrentStep('preview')
+                    patchDraft({ parsedRows: [] })
+                    patchDraft({ validationIssues: [] })
+                    setCurrentStep('preview')
                   }}
                   onFileChange={(file) => {
-                    studio.setPendingRecordFile(file)
+                    patchDraft({ pendingRecordFile: file })
                   }}
-                  rows={studio.parsedRows}
-                  recordFile={studio.pendingRecordFile}
-                  selectedFeedName={studio.selectedFeedName}
+                  rows={draft.parsedRows}
+                  recordFile={draft.pendingRecordFile}
+                  selectedFeedName={draft.selectedFeedName}
                   onFeedChange={(feedName) => {
-                    studio.setSelectedFeedName(feedName)
-                    studio.setPendingRecordFile(null)
+                    patchDraft({ selectedFeedName: feedName })
+                    patchDraft({ pendingRecordFile: null })
                   }}
                   onRowsParsed={(rows, parseIssues) => {
-                    studio.setParsedRows(rows)
-                    studio.setValidationIssues(parseIssues)
-                    studio.setCurrentStep('validate')
+                    patchDraft({ parsedRows: rows })
+                    patchDraft({ validationIssues: parseIssues })
+                    setCurrentStep('validate')
                   }}
                 />
               ) : null}
@@ -602,9 +620,9 @@ export function KnowledgeBaseManagerPage() {
                 </p>
               </div>
 
-              {studio.sourceType === 'records' ? (
+              {draft.sourceType === 'records' ? (
                 <RecordsPreviewTable
-                  rows={studio.parsedRows}
+                  rows={draft.parsedRows}
                   issues={recordIssues}
                   emptyDescription="Parse records to review staged rows before running ingestion."
                 />
@@ -612,14 +630,14 @@ export function KnowledgeBaseManagerPage() {
 
               <ValidationPanel issues={currentIssues} />
               <SubmitPanel
-                sourceType={studio.sourceType}
+                sourceType={draft.sourceType}
                 canRunIngestion={canRunIngestion}
                 runPending={runPending}
                 onRunIngestion={runIngestion}
               />
               <UploadProgress
                 label={
-                  studio.sourceType === 'documents'
+                  draft.sourceType === 'documents'
                     ? 'Document upload progress'
                     : 'Records upload progress'
                 }
@@ -644,7 +662,7 @@ export function KnowledgeBaseManagerPage() {
             <NextActionsPanel
               activeKnowledgeBaseId={activeKnowledgeBaseId}
               canWatchRuns={runTimelineVisible}
-              hasReceipts={studio.receipts.length > 0}
+              submissionAccepted={submissionAccepted}
               hasWorkflows={workflows.length > 0}
               onInvestigateEntities={() => {
                 if (!activeKnowledgeBaseSearch) {
@@ -658,16 +676,13 @@ export function KnowledgeBaseManagerPage() {
                 }
                 navigate({ pathname: '/alerts', search: activeKnowledgeBaseSearch })
               }}
-              onWatchRuns={() => studio.setCurrentStep('runs')}
+              onWatchRuns={() => setCurrentStep('runs')}
             />
           </Card>
 
           {runTimelineVisible ? (
             <Card>
-              <RunTimeline
-                receipts={studio.receipts}
-                workflows={workflows}
-              />
+              <RunTimeline workflows={workflows} />
             </Card>
           ) : null}
 
@@ -719,7 +734,7 @@ export function KnowledgeBaseManagerPage() {
               onDeleteDocument={(documentId) => setConfirmingDocumentDeleteId(documentId)}
               onSelectDocument={setSelectedDocumentId}
               onStageSource={() => {
-                studio.setCurrentStep('source')
+                setCurrentStep('source')
                 const section = sourceStepRef.current
                 if (section && typeof section.scrollIntoView === 'function') {
                   section.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -761,8 +776,8 @@ function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
 function NextActionsPanel({
   activeKnowledgeBaseId,
   canWatchRuns,
-  hasReceipts,
   hasWorkflows,
+  submissionAccepted,
   onInvestigateEntities,
   onReviewAlerts,
   onWatchRuns,
@@ -770,8 +785,9 @@ function NextActionsPanel({
   activeKnowledgeBaseId: string | null
   /** Whether the run timeline is on screen for this knowledge base. */
   canWatchRuns: boolean
-  hasReceipts: boolean
   hasWorkflows: boolean
+  /** This tab's submission was accepted and its run has yet to appear. */
+  submissionAccepted: boolean
   onInvestigateEntities: () => void
   onReviewAlerts: () => void
   onWatchRuns: () => void
@@ -779,7 +795,7 @@ function NextActionsPanel({
   const disabled = !activeKnowledgeBaseId
   const message = hasWorkflows
     ? 'Runs are updating for this knowledge base.'
-    : hasReceipts
+    : submissionAccepted
       ? 'Submission accepted. Watch for queued or running workflow updates.'
       : 'Submit documents or records to unlock the handoff path.'
 

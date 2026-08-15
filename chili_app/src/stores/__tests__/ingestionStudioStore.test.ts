@@ -1,26 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import type {
-  IngestionReceiptEntry,
-  ValidationIssue,
-} from '../../lib/ingestion/types'
-import { useIngestionStudioStore } from '../ingestionStudioStore'
-
-const documentReceipt: IngestionReceiptEntry = {
-  id: 'receipt-documents',
-  sourceType: 'documents',
-  status: 'accepted',
-  message: 'Documents accepted',
-  createdAt: '2026-05-16T12:00:00.000Z',
-}
-
-const recordReceipt: IngestionReceiptEntry = {
-  id: 'receipt-records',
-  sourceType: 'records',
-  status: 'failed',
-  message: 'Records failed validation',
-  createdAt: '2026-05-16T12:05:00.000Z',
-}
+import type { ValidationIssue } from '../../lib/ingestion/types'
+import { emptyDraft, useIngestionStudioStore } from '../ingestionStudioStore'
 
 const validationIssue: ValidationIssue = {
   id: 'issue-1',
@@ -31,126 +12,72 @@ const validationIssue: ValidationIssue = {
   field: 'name',
 }
 
-describe('useIngestionStudioStore', () => {
+describe('ingestionStudioStore drafts are scoped by knowledge base', () => {
   beforeEach(() => {
     useIngestionStudioStore.getState().reset()
   })
 
-  it('exposes the documented initial state', () => {
-    const state = useIngestionStudioStore.getState()
+  it('a draft staged for KB A never appears under KB B', () => {
+    const file = new File(['x'], 'a.json', { type: 'application/json' })
 
-    expect(state.currentStep).toBe('knowledge-base')
-    expect(state.sourceType).toBeNull()
-    expect(state.selectedFeedName).toBeNull()
-    expect(state.pendingFiles).toEqual([])
-    expect(state.pendingRecordFile).toBeNull()
-    expect(state.parsedRows).toEqual([])
-    expect(state.validationIssues).toEqual([])
-    expect(state.receipts).toEqual([])
-    expect(state.activeTimelineEntryId).toBeNull()
-  })
-
-  it('updates step, source, feed, files, rows, and validation issues', () => {
-    const file = new File(['claim_id,amount\n1,25'], 'claims.csv', {
-      type: 'text/csv',
-    })
-    const rows = [{ claim_id: '1', amount: 25 }]
-    const nextIssue: ValidationIssue = {
-      id: 'issue-2',
-      source: 'backend',
-      severity: 'warning',
-      message: 'Amount is unusually low',
-      rowIndex: 0,
-      field: 'amount',
-    }
-
-    useIngestionStudioStore.getState().setCurrentStep('validate')
-    useIngestionStudioStore.getState().setSourceType('records')
-    useIngestionStudioStore.getState().setSelectedFeedName('Claims CSV')
-    useIngestionStudioStore.getState().setPendingFiles([file])
-    useIngestionStudioStore.getState().setPendingRecordFile(file)
-    useIngestionStudioStore.getState().setParsedRows(rows)
-    useIngestionStudioStore.getState().setValidationIssues([validationIssue])
-    useIngestionStudioStore.getState().addValidationIssues([nextIssue])
-    useIngestionStudioStore.getState().setActiveTimelineEntryId('timeline-1')
+    useIngestionStudioStore
+      .getState()
+      .updateDraft('kb-a', { pendingFiles: [file], sourceType: 'documents' })
 
     const state = useIngestionStudioStore.getState()
-    expect(state.currentStep).toBe('validate')
-    expect(state.sourceType).toBe('records')
-    expect(state.selectedFeedName).toBe('Claims CSV')
-    expect(state.pendingFiles).toEqual([file])
-    expect(state.pendingRecordFile).toBe(file)
-    expect(state.parsedRows).toEqual(rows)
-    expect(state.validationIssues).toEqual([validationIssue, nextIssue])
-    expect(state.activeTimelineEntryId).toBe('timeline-1')
+    expect(state.draftsByKb['kb-a']?.pendingFiles).toHaveLength(1)
+    expect(state.draftsByKb['kb-b']).toBeUndefined()
   })
 
-  it('prepends document and record receipts', () => {
-    useIngestionStudioStore.getState().addReceipt(documentReceipt)
-    useIngestionStudioStore.getState().addReceipt(recordReceipt)
+  it('clearDraft removes exactly one knowledge base draft', () => {
+    const store = useIngestionStudioStore.getState()
+    store.updateDraft('kb-a', { selectedFeedName: 'pde' })
+    store.updateDraft('kb-b', { selectedFeedName: 'nppes_providers' })
 
-    expect(useIngestionStudioStore.getState().receipts).toEqual([
-      recordReceipt,
-      documentReceipt,
-    ])
+    store.clearDraft('kb-a')
+
+    const state = useIngestionStudioStore.getState()
+    expect(state.draftsByKb['kb-a']).toBeUndefined()
+    expect(state.draftsByKb['kb-b']?.selectedFeedName).toBe('nppes_providers')
   })
 
-  it('reset clears draft state and receipts', () => {
-    useIngestionStudioStore.getState().setCurrentStep('submit')
-    useIngestionStudioStore.getState().setSourceType('documents')
-    useIngestionStudioStore.getState().setSelectedFeedName('Policies')
-    useIngestionStudioStore.getState().setPendingFiles([
-      new File(['policy'], 'policy.pdf', { type: 'application/pdf' }),
-    ])
-    useIngestionStudioStore.getState().setPendingRecordFile(
-      new File(['claim_id\nc1\n'], 'claims.csv', { type: 'text/csv' }),
-    )
-    useIngestionStudioStore.getState().setParsedRows([{ id: 'record-1' }])
-    useIngestionStudioStore.getState().setValidationIssues([validationIssue])
-    useIngestionStudioStore.getState().addReceipt(documentReceipt)
-    useIngestionStudioStore.getState().setActiveTimelineEntryId('timeline-2')
+  it('addValidationIssues appends within the right draft', () => {
+    const store = useIngestionStudioStore.getState()
+    store.updateDraft('kb-a', {})
+    store.updateDraft('kb-b', {})
 
-    useIngestionStudioStore.getState().reset()
+    store.addValidationIssues('kb-a', [validationIssue])
+
+    const state = useIngestionStudioStore.getState()
+    expect(state.draftsByKb['kb-a']?.validationIssues).toHaveLength(1)
+    expect(state.draftsByKb['kb-b']?.validationIssues).toHaveLength(0)
+  })
+
+  it('emptyDraft is the fallback shape', () => {
+    expect(emptyDraft().pendingFiles).toEqual([])
+    expect(emptyDraft().parsedRows).toEqual([])
+    expect(emptyDraft().validationIssues).toEqual([])
+    expect(emptyDraft().sourceType).toBeNull()
+    expect(emptyDraft().selectedFeedName).toBeNull()
+    expect(emptyDraft().pendingRecordFile).toBeNull()
+  })
+
+  it('reset drops every draft and returns the stepper to its first step', () => {
+    const store = useIngestionStudioStore.getState()
+    store.setCurrentStep('submit')
+    store.updateDraft('kb-a', { parsedRows: [{ id: 'record-1' }] })
+
+    store.reset()
 
     const state = useIngestionStudioStore.getState()
     expect(state.currentStep).toBe('knowledge-base')
-    expect(state.sourceType).toBeNull()
-    expect(state.selectedFeedName).toBeNull()
-    expect(state.pendingFiles).toEqual([])
-    expect(state.pendingRecordFile).toBeNull()
-    expect(state.parsedRows).toEqual([])
-    expect(state.validationIssues).toEqual([])
-    expect(state.receipts).toEqual([])
-    expect(state.activeTimelineEntryId).toBeNull()
+    expect(state.draftsByKb).toEqual({})
   })
 
-  it('reset returns clean fresh arrays after accidental in-place mutation', () => {
-    useIngestionStudioStore.getState().reset()
-    const pollutedPendingFiles = useIngestionStudioStore.getState().pendingFiles
-    const pollutedParsedRows = useIngestionStudioStore.getState().parsedRows
-    const pollutedValidationIssues =
-      useIngestionStudioStore.getState().validationIssues
-    const pollutedReceipts = useIngestionStudioStore.getState().receipts
+  it('emptyDraft hands out fresh arrays, so in-place mutation cannot leak', () => {
+    const first = emptyDraft()
+    first.pendingFiles.push(new File(['x'], 'a.json'))
 
-    pollutedPendingFiles.push(
-      new File(['policy'], 'mutated-policy.pdf', {
-        type: 'application/pdf',
-      }),
-    )
-    pollutedParsedRows.push({ id: 'mutated-record' })
-    pollutedValidationIssues.push(validationIssue)
-    pollutedReceipts.push(documentReceipt)
-
-    useIngestionStudioStore.getState().reset()
-
-    const state = useIngestionStudioStore.getState()
-    expect(state.pendingFiles).toEqual([])
-    expect(state.parsedRows).toEqual([])
-    expect(state.validationIssues).toEqual([])
-    expect(state.receipts).toEqual([])
-    expect(state.pendingFiles).not.toBe(pollutedPendingFiles)
-    expect(state.parsedRows).not.toBe(pollutedParsedRows)
-    expect(state.validationIssues).not.toBe(pollutedValidationIssues)
-    expect(state.receipts).not.toBe(pollutedReceipts)
+    expect(emptyDraft().pendingFiles).toEqual([])
   })
 })

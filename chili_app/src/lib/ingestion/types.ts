@@ -1,5 +1,3 @@
-import type { RecordIngestReceipt, WorkflowRunResponse } from '../../api/contracts'
-
 export type IngestionSourceType = 'documents' | 'records'
 
 export type IngestionStepId =
@@ -30,21 +28,3 @@ export type ParsedRecordsResult = {
   errors: ValidationIssue[]
 }
 
-export type IngestionReceiptEntry = {
-  id: string
-  sourceType: IngestionSourceType
-  status: 'accepted' | 'failed'
-  message: string
-  createdAt: string
-  receipt?: RecordIngestReceipt
-}
-
-export type TimelineEntry = {
-  id: string
-  label: string
-  status: 'draft' | 'accepted' | 'running' | 'succeeded' | 'failed'
-  detail: string
-  timestamp: string | null
-  workflow?: WorkflowRunResponse
-  receipt?: IngestionReceiptEntry
-}

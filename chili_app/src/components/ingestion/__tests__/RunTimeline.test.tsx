@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { apiFetch } from '../../../api/client'
 import type { WorkflowRunResponse } from '../../../api/contracts'
-import type { IngestionReceiptEntry } from '../../../lib/ingestion/types'
 import { RunTimeline } from '../RunTimeline'
 
 vi.mock('../../../api/client', () => ({
@@ -32,37 +31,48 @@ const workflows: WorkflowRunResponse[] = [
   },
 ]
 
-const receipts: IngestionReceiptEntry[] = [
-  {
-    id: 'receipt-1',
-    sourceType: 'records',
-    status: 'accepted',
-    message: 'Accepted 2 claim records.',
-    createdAt: '2026-05-17T12:02:00Z',
-    receipt: {
-      knowledge_base_id: 'kb-1',
-      feed_name: 'claims_feed',
-      record_type: 'claim_record',
-      correlation_id: 'corr-1',
-      accepted_count: 2,
-      duplicate: false,
-      duplicate_count: 0,
-      suppressed_existing_count: 0,
-      rejected_count: 0,
-      created_at: '2026-05-17T12:02:00Z',
-    },
+/** A records run as the API reports it: the receipt rides the run itself. */
+const recordsWorkflow: WorkflowRunResponse = {
+  id: 'workflow-records',
+  workflow_type: 'ingestion',
+  status: 'completed',
+  knowledge_base_id: 'kb-1',
+  started_at: '2026-05-17T12:02:00Z',
+  updated_at: '2026-05-17T12:02:00Z',
+  current_step: 'completed',
+  last_error: null,
+  receipt: {
+    knowledge_base_id: 'kb-1',
+    feed_name: 'claims_feed',
+    record_type: 'claim_record',
+    correlation_id: 'corr-1',
+    accepted_count: 2,
+    duplicate: false,
+    duplicate_count: 0,
+    suppressed_existing_count: 0,
+    rejected_count: 0,
+    rejected: [],
+    created_at: '2026-05-17T12:02:00Z',
   },
-]
+}
+
+/** The same run with its receipt patched for a specific case. */
+function withReceipt(patch: Partial<NonNullable<WorkflowRunResponse['receipt']>>): WorkflowRunResponse {
+  return {
+    ...recordsWorkflow,
+    receipt: { ...recordsWorkflow.receipt!, ...patch },
+  }
+}
 
 describe('RunTimeline', () => {
   it('renders an empty state when there are no workflows or receipts', () => {
-    render(<RunTimeline workflows={[]} receipts={[]} />)
+    render(<RunTimeline workflows={[]} />)
 
     expect(screen.getByText('No runs yet')).toBeInTheDocument()
   })
 
   it('renders workflow type, status, and current step', () => {
-    render(<RunTimeline workflows={workflows} receipts={[]} />)
+    render(<RunTimeline workflows={workflows} />)
 
     const list = screen.getByRole('list', { name: /ingestion runs/i })
     const workflowItem = within(list).getByText('ingestion').closest('li')
@@ -110,7 +120,6 @@ describe('RunTimeline', () => {
           updated_at: `2026-05-17T12:0${index}:00Z`,
           current_step: `step-${status}`,
         }))}
-        receipts={[]}
       />,
     )
 
@@ -120,78 +129,51 @@ describe('RunTimeline', () => {
     }
   })
 
-  it('renders receipt source type, status, and message', () => {
-    render(<RunTimeline workflows={[]} receipts={receipts} />)
+  it('renders the receipt carried by a records run', () => {
+    render(<RunTimeline workflows={[recordsWorkflow]} />)
 
     const list = screen.getByRole('list', { name: /ingestion runs/i })
-    const receiptItem = within(list).getByText('records').closest('li')
-
-    expect(receiptItem).not.toBeNull()
-    expect(within(receiptItem as HTMLElement).getByText('Accepted')).toBeInTheDocument()
-    expect(within(receiptItem as HTMLElement).getByText('Accepted 2 claim records.')).toBeInTheDocument()
+    expect(within(list).getByText(/2 accepted/)).toBeInTheDocument()
+    expect(within(list).getByText('claims_feed')).toBeInTheDocument()
   })
 
-  it('renders receipt status labels and descriptions', () => {
-    const statusCopy = [
-      {
-        status: 'accepted',
-        label: 'Accepted',
-        description: 'Submission accepted. Watch for queued or running workflow updates.',
-      },
-      {
-        status: 'failed',
-        label: 'Failed',
-        description: 'Submission failed before a run could start.',
-      },
-    ] as const
+  it('renders no receipt block for a document run', () => {
+    render(<RunTimeline workflows={workflows} />)
 
-    render(
-      <RunTimeline
-        workflows={[]}
-        receipts={statusCopy.map(({ status }, index) => ({
-          ...receipts[0],
-          id: `receipt-${status}`,
-          status,
-          createdAt: `2026-05-17T12:0${index}:00Z`,
-          message: `${status} receipt message`,
-        }))}
-      />,
-    )
-
-    for (const { label, description } of statusCopy) {
-      expect(screen.getByText(label)).toBeInTheDocument()
-      expect(screen.getByText(description)).toBeInTheDocument()
-    }
+    expect(screen.queryByText(/accepted/)).not.toBeInTheDocument()
   })
 
-  it('sorts workflows and receipts by timestamp with newest first', () => {
-    render(<RunTimeline workflows={workflows} receipts={receipts} />)
+  it('surfaces rows skipped because their ids already existed', () => {
+    // Records are insert-only. A submission can report zero rejections and
+    // still change nothing, so the skipped count has to be visible.
+    render(<RunTimeline workflows={[withReceipt({ accepted_count: 4, suppressed_existing_count: 3 })]} />)
+
+    expect(screen.getByText(/3 already existed \(skipped\)/)).toBeInTheDocument()
+  })
+
+  it('sorts runs by update time with newest first', () => {
+    render(<RunTimeline workflows={[workflows[0]!, recordsWorkflow]} />)
 
     const list = screen.getByRole('list', { name: /ingestion runs/i })
     const items = within(list).getAllByRole('listitem')
 
-    expect(within(items[0]).getByText('records')).toBeInTheDocument()
-    expect(within(items[1]).getByText('ingestion')).toBeInTheDocument()
+    expect(within(items[0]!).getByText(/2 accepted/)).toBeInTheDocument()
+    expect(within(items[1]!).getByText('extract_text')).toBeInTheDocument()
   })
 
   it('summarises accepted, duplicate, and rejected counts for a receipt', () => {
     render(
       <RunTimeline
-        workflows={[]}
-        receipts={[
-          {
-            ...receipts[0],
-            receipt: {
-              ...receipts[0].receipt!,
-              accepted_count: 8,
-              duplicate_count: 1,
-              rejected_count: 2,
-              rejected: [
-                { index: 3, reason: 'missing DESYNPUF_ID' },
-                { index: 5, reason: 'invalid CLM_FROM_DT' },
-              ],
-            },
-          },
+        workflows={[
+          withReceipt({
+            accepted_count: 8,
+            duplicate_count: 1,
+            rejected_count: 2,
+            rejected: [
+              { index: 3, reason: 'missing DESYNPUF_ID' },
+              { index: 5, reason: 'invalid CLM_FROM_DT' },
+            ],
+          }),
         ]}
       />,
     )
@@ -207,18 +189,7 @@ describe('RunTimeline', () => {
   it('shows a duplicate submission no-op indicator when the receipt is a duplicate', () => {
     render(
       <RunTimeline
-        workflows={[]}
-        receipts={[
-          {
-            ...receipts[0],
-            receipt: {
-              ...receipts[0].receipt!,
-              accepted_count: 0,
-              duplicate: true,
-              duplicate_count: 2,
-            },
-          },
-        ]}
+        workflows={[withReceipt({ accepted_count: 0, duplicate: true, duplicate_count: 2 })]}
       />,
     )
 
@@ -232,20 +203,7 @@ describe('RunTimeline', () => {
     }))
 
     render(
-      <RunTimeline
-        workflows={[]}
-        receipts={[
-          {
-            ...receipts[0],
-            receipt: {
-              ...receipts[0].receipt!,
-              accepted_count: 0,
-              rejected_count: 9,
-              rejected,
-            },
-          },
-        ]}
-      />,
+      <RunTimeline workflows={[withReceipt({ accepted_count: 0, rejected_count: 9, rejected })]} />,
     )
 
     const rejectedList = screen.getByRole('list', { name: /rejected rows/i })
@@ -259,13 +217,13 @@ describe('RunTimeline', () => {
       status: 'failed',
       current_step: 'failed',
       last_error: 'Parser failed after retries.',
-    }]} receipts={[]} />)
+    }]} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Parser failed after retries.')
   })
 
   it('shows a cancel control only for non-terminal workflows', () => {
-    render(<RunTimeline workflows={workflows} receipts={[]} />)
+    render(<RunTimeline workflows={workflows} />)
     expect(screen.getByRole('button', { name: /cancel ingestion workflow/i })).toBeInTheDocument()
   })
 
@@ -273,7 +231,6 @@ describe('RunTimeline', () => {
     render(
       <RunTimeline
         workflows={[{ ...workflows[0], status: 'completed', current_step: 'ready' }]}
-        receipts={[]}
       />,
     )
     expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument()
@@ -281,7 +238,7 @@ describe('RunTimeline', () => {
 
   it('cancels the workflow via the API when the cancel control is clicked', async () => {
     apiFetchMock.mockClear()
-    render(<RunTimeline workflows={workflows} receipts={[]} />)
+    render(<RunTimeline workflows={workflows} />)
 
     fireEvent.click(screen.getByRole('button', { name: /cancel ingestion workflow/i }))
 
@@ -308,7 +265,7 @@ describe('RunTimeline awaiting approval', () => {
       },
     ]
 
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     expect(screen.getByText('Awaiting approval')).toBeInTheDocument()
     expect(screen.getByText('gate')).toBeInTheDocument()
@@ -331,7 +288,7 @@ describe('RunTimeline awaiting approval', () => {
       },
     ]
 
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
   })
@@ -352,21 +309,21 @@ describe('RunTimeline approval decisions', () => {
   ]
 
   it('offers approve and reject on a run parked at a gate', () => {
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
   })
 
   it('does not offer approval on a run that is merely running', () => {
-    render(<RunTimeline workflows={workflows} receipts={[]} />)
+    render(<RunTimeline workflows={workflows} />)
 
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
   })
 
   it('approves the step the run is parked on', async () => {
     apiFetchMock.mockResolvedValueOnce({ id: 'workflow-parked', status: 'queued' })
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     fireEvent.click(screen.getByRole('button', { name: /approve/i }))
 
@@ -379,7 +336,7 @@ describe('RunTimeline approval decisions', () => {
   })
 
   it('requires a reason before rejecting', async () => {
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     fireEvent.click(screen.getByRole('button', { name: /reject/i }))
 
@@ -390,7 +347,7 @@ describe('RunTimeline approval decisions', () => {
 
   it('sends the reason when rejecting', async () => {
     apiFetchMock.mockResolvedValueOnce({ id: 'workflow-parked', status: 'failed' })
-    render(<RunTimeline workflows={parked} receipts={[]} />)
+    render(<RunTimeline workflows={parked} />)
 
     fireEvent.click(screen.getByRole('button', { name: /reject/i }))
     fireEvent.change(screen.getByLabelText(/rejection reason/i), {

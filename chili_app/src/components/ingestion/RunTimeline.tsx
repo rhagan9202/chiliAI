@@ -10,7 +10,6 @@ import {
   useRejectWorkflowStep,
 } from '../../api/workflows'
 import type { RecordIngestReceipt, WorkflowRunResponse } from '../../api/contracts'
-import type { IngestionReceiptEntry } from '../../lib/ingestion/types'
 import './ingestion.css'
 
 const MAX_REJECTED_ROWS_SHOWN = 5
@@ -45,20 +44,6 @@ const workflowStatusCopy: Record<
   },
 }
 
-const receiptStatusCopy: Record<
-  IngestionReceiptEntry['status'],
-  { label: string; description: string }
-> = {
-  accepted: {
-    label: 'Accepted',
-    description: 'Submission accepted. Watch for queued or running workflow updates.',
-  },
-  failed: {
-    label: 'Failed',
-    description: 'Submission failed before a run could start.',
-  },
-}
-
 function isCancellable(status: WorkflowRunResponse['status']): boolean {
   // `awaiting_approval` is included because the backend permits it — the run is
   // non-terminal, so cancel_workflow honours it. Omitting it would leave a run
@@ -68,34 +53,23 @@ function isCancellable(status: WorkflowRunResponse['status']): boolean {
 }
 
 function receiptCountsSummary(receipt: RecordIngestReceipt): string {
-  return [
+  const parts = [
     `${receipt.accepted_count} accepted`,
     `${receipt.duplicate_count} duplicate`,
     `${receipt.rejected_count} rejected`,
-  ].join(', ')
+  ]
+  // Records are insert-only: rows whose id already exists are skipped rather
+  // than updated. The API has always reported how many; the UI used to drop
+  // the number, so a submission could report zero rejections and still change
+  // nothing.
+  if (receipt.suppressed_existing_count > 0) {
+    parts.push(`${receipt.suppressed_existing_count} already existed (skipped)`)
+  }
+  return parts.join(', ')
 }
 
 type RunTimelineProps = {
-  receipts: IngestionReceiptEntry[]
   workflows: WorkflowRunResponse[]
-}
-
-type TimelineItem =
-  | {
-      id: string
-      timestamp: string
-      type: 'workflow'
-      workflow: WorkflowRunResponse
-    }
-  | {
-      id: string
-      timestamp: string
-      type: 'receipt'
-      receipt: IngestionReceiptEntry
-    }
-
-function receiptTone(status: IngestionReceiptEntry['status']) {
-  return status === 'accepted' ? 'success' : 'danger'
 }
 
 function timestampValue(timestamp: string) {
@@ -103,33 +77,17 @@ function timestampValue(timestamp: string) {
   return Number.isNaN(value) ? 0 : value
 }
 
-function buildTimelineItems(
-  workflows: WorkflowRunResponse[],
-  receipts: IngestionReceiptEntry[],
-): TimelineItem[] {
-  return [
-    ...workflows.map((workflow) => ({
-      id: `workflow-${workflow.id}`,
-      timestamp: workflow.updated_at,
-      type: 'workflow' as const,
-      workflow,
-    })),
-    ...receipts.map((receipt) => ({
-      id: `receipt-${receipt.id}`,
-      timestamp: receipt.createdAt,
-      type: 'receipt' as const,
-      receipt,
-    })),
-  ].sort((first, second) => (
-    timestampValue(second.timestamp) - timestampValue(first.timestamp)
-  ))
+function sortedWorkflows(workflows: WorkflowRunResponse[]): WorkflowRunResponse[] {
+  return [...workflows].sort(
+    (first, second) => timestampValue(second.updated_at) - timestampValue(first.updated_at),
+  )
 }
 
 function isAwaitingApproval(status: WorkflowRunResponse['status']): boolean {
   return status === 'awaiting_approval'
 }
 
-export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
+export function RunTimeline({ workflows }: RunTimelineProps) {
   const cancelWorkflow = useCancelWorkflow()
   const approveStep = useApproveWorkflowStep()
   const rejectStep = useRejectWorkflowStep()
@@ -139,7 +97,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [reason, setReason] = useState('')
 
-  if (receipts.length === 0 && workflows.length === 0) {
+  if (workflows.length === 0) {
     return (
       <EmptyState
         title="No runs yet"
@@ -147,8 +105,6 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
       />
     )
   }
-
-  const timelineItems = buildTimelineItems(workflows, receipts)
 
   return (
     <section className="ingestion-run-timeline" aria-labelledby="ingestion-runs-title">
@@ -159,13 +115,11 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
       </div>
 
       <ol className="ingestion-run-timeline__list" aria-label="Ingestion runs">
-        {timelineItems.map((item) => {
-          if (item.type === 'workflow') {
-            const { workflow } = item
-            const statusCopy = workflowStatusCopy[workflow.status]
+        {sortedWorkflows(workflows).map((workflow) => {
+          const statusCopy = workflowStatusCopy[workflow.status]
 
-            return (
-              <li className="ingestion-run-timeline__item" key={item.id}>
+          return (
+              <li className="ingestion-run-timeline__item" key={workflow.id}>
                 <div className="ingestion-run-timeline__marker" aria-hidden="true" />
                 <div className="ingestion-run-timeline__body">
                   <div className="ingestion-run-timeline__header">
@@ -254,29 +208,14 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                       {workflow.last_error ?? 'This step failed and no reason was reported. Retry the run, or ask an administrator to check the service logs.'}
                     </p>
                   ) : null}
+                  {/* Records runs carry their ingest receipt; document runs
+                      have none. Both come from the server, so the counts
+                      survive a reload and are visible to every reader. */}
+                  {workflow.receipt ? (
+                    <ReceiptDetails receipt={workflow.receipt} entryId={workflow.id} />
+                  ) : null}
                 </div>
               </li>
-            )
-          }
-
-          const { receipt } = item
-          const statusCopy = receiptStatusCopy[receipt.status]
-
-          return (
-            <li className="ingestion-run-timeline__item" key={item.id}>
-              <div className="ingestion-run-timeline__marker" aria-hidden="true" />
-              <div className="ingestion-run-timeline__body">
-                <div className="ingestion-run-timeline__header">
-                  <span className="ingestion-run-timeline__title">{receipt.sourceType}</span>
-                  <Chip tone={receiptTone(receipt.status)} label={statusCopy.label} />
-                </div>
-                <p className="ingestion-run-timeline__message">{statusCopy.description}</p>
-                <p className="ingestion-run-timeline__message">{receipt.message}</p>
-                {receipt.receipt ? (
-                  <ReceiptDetails receipt={receipt.receipt} entryId={receipt.id} />
-                ) : null}
-              </div>
-            </li>
           )
         })}
       </ol>

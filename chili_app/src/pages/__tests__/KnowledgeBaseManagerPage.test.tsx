@@ -969,7 +969,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
   })
 
-  it('submits documents and stores a receipt in the timeline', async () => {
+  it('clears the staged draft once a document submission is accepted', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
@@ -980,7 +980,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
+    // The draft belonged to an in-flight submission that the server now owns.
+    expect(screen.queryByText('policy.txt')).not.toBeInTheDocument()
   })
 
   it('shows next actions after document submission', async () => {
@@ -994,7 +996,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /watch runs/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /investigate entities/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /review alerts/i })).toBeInTheDocument()
@@ -1011,7 +1013,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /investigate entities/i }))
 
     expect(routerMocks.navigate).toHaveBeenCalledWith({
@@ -1027,7 +1029,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('1 records accepted for provider_push.')).toBeInTheDocument()
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
   })
 
   it('uploads configured file-upload records feeds through the records file endpoint', async () => {
@@ -1048,9 +1050,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     // The file-upload feed posts through XMLHttpRequest (for byte-level upload
-    // progress), not fetch; a successful receipt in the timeline confirms the
-    // multipart upload round-tripped.
-    expect(await screen.findByText('1 records accepted for claims_feed.')).toBeInTheDocument()
+    // progress), not fetch; the accepted handoff confirms the multipart
+    // upload round-tripped.
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
   })
 
   it('auto-re-parses when the records file upload draft changes', async () => {
@@ -1153,7 +1155,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     installFetchMock()
     await userEvent.click(retry)
 
-    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
   })
 
   it('shows structured backend validation arrays for records errors', async () => {
@@ -1168,7 +1170,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.getByText('body.rows.0.provider_npi: Field required')).toBeInTheDocument()
   })
 
-  it('preserves successful document receipt when records validation fails', async () => {
+  it('keeps the accepted-submission state when a later records submit fails validation', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
@@ -1178,13 +1180,13 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
       new File(['hello'], 'policy.txt', { type: 'text/plain' }),
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
-    await screen.findByText('1 document accepted.')
+    await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')
 
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     await waitFor(() => {
-      expect(screen.getByText('1 document accepted.')).toBeInTheDocument()
+      expect(screen.getByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
       expect(screen.getByText('Select a structured records feed before submitting.')).toBeInTheDocument()
     })
   })
