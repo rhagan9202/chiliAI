@@ -158,7 +158,10 @@ test.describe('Demo walkthrough — reference mode (dev-seed)', () => {
     page,
   }) => {
     const { alert_id: alertId, knowledge_base_id: kb } = seeded()
-    const { alert } = await fetchJson<{ alert: AlertListItem }>(`/alerts/${alertId}`)
+    // The alert detail route is KB-scoped; without the parameter it 422s.
+    const { alert } = await fetchJson<{ alert: AlertListItem }>(
+      `/alerts/${alertId}?knowledge_base_id=${kb}`,
+    )
 
     await page.goto(`/alerts?kb=${kb}`)
 

@@ -19,8 +19,15 @@ test.describe('Alert Feed filters', () => {
 
     // Specs run serially against one shared stack and earlier ones may have
     // acknowledged the seeded alert, so the status dimension is read from the
-    // live counts rather than assumed to be `open`.
-    const status = (await page.locator('.alert-row-card .ui-chip').nth(1).innerText()).trim()
+    // row rather than assumed to be `open`. Severity and status render as
+    // labelled StatusPills, not positional chips.
+    const status = (
+      await page
+        .locator('.alert-row-card')
+        .first()
+        .getByLabel(/^Alert status:/)
+        .innerText()
+    ).trim()
 
     await page.getByRole('button', { name: /^Critical, \d+ matching$/ }).click()
     await page.getByRole('button', { name: new RegExp(`^${status}, \\d+ matching$`, 'i') }).click()

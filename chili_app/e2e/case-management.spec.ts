@@ -18,7 +18,11 @@ test.describe('Case Management', () => {
 
     // Auto-selected detail panel shows the (seed-stable) priority chip + actions.
     const detailPanel = page.locator('.case-layout')
-    await expect(detailPanel.locator('.ui-chip').filter({ hasText: 'high' })).toBeVisible()
+    await expect(
+      detailPanel
+        .locator('.status-pill:not(.status-pill--compact)')
+        .and(page.getByLabel('Case priority: high')),
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Mark in review' })).toBeVisible()
   })
 })

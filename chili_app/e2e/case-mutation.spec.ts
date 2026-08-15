@@ -11,11 +11,13 @@ test.describe('Case status mutation', () => {
     const kb = seeded().knowledge_base_id
     await page.goto(`/cases?kb=${kb}`)
 
-    const detailPanel = page.locator('.case-layout')
-    await expect(detailPanel.locator('.ui-chip').filter({ hasText: 'open' })).toBeVisible()
+    // The queue rows carry compact pills for the same case; the detail card's
+    // are full size, so the detail assertion scopes to those.
+    const detailPanel = page.locator('.case-layout .status-pill:not(.status-pill--compact)')
+    await expect(detailPanel.and(page.getByLabel('Case status: open'))).toBeVisible()
 
     await page.getByRole('button', { name: 'Mark in review' }).click()
 
-    await expect(detailPanel.locator('.ui-chip').filter({ hasText: 'in_review' })).toBeVisible()
+    await expect(detailPanel.and(page.getByLabel('Case status: in_review'))).toBeVisible()
   })
 })

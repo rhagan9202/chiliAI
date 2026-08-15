@@ -21,11 +21,14 @@ test.describe('Alert Feed evidence viewer', () => {
 
     // The reshaped viewer leads with the AI narrative band; the pack's
     // reasoning renders inside it.
-    await expect(page.getByTestId('evidence-narrative')).toBeVisible()
+    const narrative = page.getByTestId('evidence-narrative')
+    await expect(narrative).toBeVisible()
     await expect(page.getByText('◆ AI NARRATIVE')).toBeVisible()
     await expect(
       page.getByText('Provider billing concentration and upcoding indicate elevated fraud risk.'),
     ).toBeVisible()
-    await expect(page.getByText('confidence 82%')).toBeVisible()
+    // The pack's own confidence is named as such (UXA-303) so it cannot be
+    // read as the alert's detection confidence.
+    await expect(page.getByText('Evidence confidence 82%').first()).toBeVisible()
   })
 })

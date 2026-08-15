@@ -89,24 +89,72 @@ test.describe('Investigation workbench', () => {
     await expect(page.getByTestId('investigation-graph-canvas')).toBeVisible()
   })
 
-  test('labels dossier properties from the live domain configuration (UXA-302)', async ({ page }) => {
+  test('labels dossier properties from the live domain configuration (UXA-302)', async ({
+    page,
+    request,
+  }) => {
     const { knowledge_base_id: kb, entity_id: entity } = seeded()
+
+    // The expectations come from the pack the stack is actually running, not
+    // from one pack's property names: two medicare packs share the domain name
+    // and declare different provider properties, and hardcoding either made
+    // this spec assert the stack's configuration rather than read it.
+    const configRes = await request.get(`${API}/config/domain`)
+    expect(configRes.ok(), 'GET /config/domain must succeed').toBeTruthy()
+    const config = (await configRes.json()) as {
+      entities: {
+        name: string
+        display_label: string
+        properties: Record<string, { display?: string | null }>
+      }[]
+    }
+    const entityRes = await request.get(
+      `${API}/investigation/entities/${entity}?knowledge_base_id=${kb}`,
+    )
+    expect(entityRes.ok(), 'the seeded entity must be readable').toBeTruthy()
+    const { entity: runtimeEntity } = (await entityRes.json()) as {
+      entity: { type: string; properties: Record<string, unknown> }
+    }
+    const typeConfig = config.entities.find((item) => item.name === runtimeEntity.type)
+    expect(typeConfig, `the active pack must declare '${runtimeEntity.type}'`).toBeTruthy()
+    const declaredLabels = Object.entries(typeConfig!.properties)
+      .filter(([key]) => key in runtimeEntity.properties)
+      .map(([, definition]) => definition.display)
+      .filter((label): label is string => Boolean(label))
+    expect(
+      declaredLabels.length,
+      'the seeded entity must carry at least one pack-declared property',
+    ).toBeGreaterThan(0)
+
     await page.goto(`/investigation/${entity}?kb=${kb}`)
 
     const dossier = page.getByTestId('entity-dossier-header')
     await expect(dossier).toBeVisible()
-
-    // `state: { display: "State" }` in the active pack. `name` and `specialty`
-    // are deliberately absent from the property list because they render as
-    // the configured title/subtitle in the header.
-    await expect(dossier.getByText('State', { exact: true })).toBeVisible()
-    await expect(dossier.getByText('Redwood DME Group', { exact: true })).toBeVisible()
-    await expect(dossier.getByText('Provider · specialty-1', { exact: true })).toBeVisible()
+    await expect(dossier.getByText(typeConfig!.display_label, { exact: false })).toBeVisible()
 
     // Everything past the leading fields waits behind one control, rather than
     // being silently truncated to four alphabetical keys.
-    await page.getByRole('button', { name: /^Show all \d+ properties$/ }).click()
-    await expect(dossier.getByText('NPI', { exact: true })).toBeVisible()
+    const showAll = page.getByRole('button', { name: /^Show all \d+ properties$/ })
+    if (await showAll.count()) {
+      await showAll.click()
+    }
+
+    // Every label the dossier renders is the pack's `display` string for that
+    // property — the configuration-driven rendering UXA-302 asked for. A raw
+    // key or an invented label fails here. (Properties promoted to the title
+    // or subtitle are deliberately absent from the list, so this is a subset
+    // check, paired with the "at least one declared label" assertion below.)
+    // Labels are uppercased in CSS, so `innerText` reports them that way;
+    // compare on case-folded strings rather than asserting the presentation.
+    const renderedLabels = (
+      await dossier.locator('.dossier-properties__label').allInnerTexts()
+    ).map((label) => label.trim().toLowerCase())
+    expect(renderedLabels.length).toBeGreaterThan(0)
+    const declared = new Set(declaredLabels.map((label) => label.toLowerCase()))
+    expect(
+      renderedLabels.filter((label) => !declared.has(label)),
+      'every dossier property label must come from the active pack',
+    ).toEqual([])
 
     // No raw key survives anywhere in the dossier, and `date` properties are
     // formatted rather than echoed as ISO strings.
