@@ -1,9 +1,9 @@
 import type { FormEvent } from 'react'
 
-import type { KnowledgeBaseStatus, KnowledgeBaseSummaryResponse } from '../../api/contracts'
+import type { KnowledgeBaseSummaryResponse } from '../../api/contracts'
 import { countLabel } from '../../utils/countLabel'
-import { knowledgeBaseStatusLabel } from '../../utils/knowledgeBaseStatus'
 import { KbDomainBadge } from '../knowledgebase/KbDomainBadge'
+import { StatusChip } from '../status/StatusChip'
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import './ingestion.css'
@@ -30,20 +30,6 @@ type KnowledgeBaseSelectorProps = {
   onToggleShowAllDomains?: () => void
   /** Whether the list currently includes knowledge bases from all domains. */
   showAllDomains?: boolean
-}
-
-function toneForKnowledgeBaseStatus(status: KnowledgeBaseStatus) {
-  switch (status) {
-    case 'ready':
-      return 'success' as const
-    case 'active':
-    case 'building':
-      return 'warning' as const
-    case 'error':
-      return 'danger' as const
-    case 'archived':
-      return 'default' as const
-  }
 }
 
 export function KnowledgeBaseSelector({
@@ -123,10 +109,7 @@ export function KnowledgeBaseSelector({
                   {knowledgeBase.description}
                 </span>
                 <span className="ingestion-kb-list__meta">
-                  <Chip
-                    label={knowledgeBaseStatusLabel(knowledgeBase.status)}
-                    tone={toneForKnowledgeBaseStatus(knowledgeBase.status)}
-                  />
+                  <StatusChip kind="knowledge-base" status={knowledgeBase.status} />
                   <Chip label={countLabel(knowledgeBase.document_count, 'document')} tone="default" />
                   <Chip label={countLabel(knowledgeBase.entity_count, 'entity', 'entities')} tone="network" />
                   <KbDomainBadge

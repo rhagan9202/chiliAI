@@ -2,6 +2,8 @@ import { useState } from 'react'
 
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
+import { StatusChip } from '../status/StatusChip'
+import { formatRelativeTime } from '../status/formatters'
 import {
   useApproveWorkflowStep,
   useCancelWorkflow,
@@ -92,18 +94,6 @@ type TimelineItem =
       receipt: IngestionReceiptEntry
     }
 
-function workflowTone(status: WorkflowRunResponse['status']) {
-  if (status === 'completed') {
-    return 'success'
-  }
-
-  if (status === 'failed' || status === 'cancelled') {
-    return 'danger'
-  }
-
-  return 'info'
-}
-
 function receiptTone(status: IngestionReceiptEntry['status']) {
   return status === 'accepted' ? 'success' : 'danger'
 }
@@ -180,7 +170,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                 <div className="ingestion-run-timeline__body">
                   <div className="ingestion-run-timeline__header">
                     <span className="ingestion-run-timeline__title">{workflow.workflow_type}</span>
-                    <Chip tone={workflowTone(workflow.status)} label={statusCopy.label} />
+                    <StatusChip kind="workflow" status={workflow.status} />
                     {isAwaitingApproval(workflow.status) ? (
                       <>
                         <button
@@ -254,7 +244,9 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                     </div>
                     <div>
                       <dt>Updated</dt>
-                      <dd>{workflow.updated_at}</dd>
+                      {/* Timelines read in relative time; the exact instant stays
+                          recoverable on hover rather than shouting a raw ISO string. */}
+                      <dd title={workflow.updated_at}>{formatRelativeTime(workflow.updated_at)}</dd>
                     </div>
                   </dl>
                   {workflow.status === 'failed' ? (

@@ -40,6 +40,8 @@ import { UploadProgress } from '../components/ingestion/UploadProgress'
 import type { UploadStatus } from '../components/ingestion/UploadProgress'
 import { ValidationPanel } from '../components/ingestion/ValidationPanel'
 import { showToast } from '../components/common/toastStore'
+import { StatusChip } from '../components/status/StatusChip'
+import { formatFileSize, formatTimestamp } from '../components/status/formatters'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -55,10 +57,6 @@ import {
 import { apiErrorMessage } from '../lib/apiClient'
 import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
 import { countLabel } from '../utils/countLabel'
-import {
-  knowledgeBaseStatusHint,
-  knowledgeBaseStatusLabel,
-} from '../utils/knowledgeBaseStatus'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
@@ -794,11 +792,7 @@ function SelectedKnowledgeBaseSummary({
           <strong id="selected-kb-title">{knowledgeBase.name}</strong>
           <p className="page-copy-block">{knowledgeBase.description}</p>
         </div>
-        <Chip
-          label={knowledgeBaseStatusLabel(knowledgeBase.status)}
-          title={knowledgeBaseStatusHint(knowledgeBase.status)}
-          tone={toneForKnowledgeBaseStatus(knowledgeBase.status)}
-        />
+        <StatusChip kind="knowledge-base" status={knowledgeBase.status} />
         <KbDomainBadge activeDomainName={activeDomainName} kbDomain={kbDomain} />
       </div>
 
@@ -888,7 +882,7 @@ function DocumentInventory({
                 {formatFileSize(document.size_bytes)} | {formatTimestamp(document.created_at)}
               </span>
               <span className="alert-row-card__meta">
-                <Chip label={document.status} tone={toneForDocumentStatus(document.status)} />
+                <StatusChip kind="document" status={document.status} />
                 {(document.warning_count ?? 0) > 0 ? (
                   <span title={(document.warning_reasons ?? []).join('\n')}>
                     <Chip
@@ -990,55 +984,4 @@ function receiptToastMessage(receipt: RecordIngestReceipt): string {
     parts.push(`${receipt.rejected_count} rejected`)
   }
   return `${parts.join(', ')} for ${receipt.feed_name}.`
-}
-
-function formatTimestamp(value: string | null) {
-  if (!value) {
-    return 'Not yet recorded'
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function formatFileSize(sizeBytes: number | null) {
-  if (!sizeBytes) {
-    return 'Unknown size'
-  }
-
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${(sizeBytes / 1024).toFixed(1)} KB`
-  }
-
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function toneForKnowledgeBaseStatus(status: 'active' | 'building' | 'ready' | 'error' | 'archived') {
-  switch (status) {
-    case 'ready':
-      return 'success' as const
-    case 'active':
-    case 'building':
-      return 'warning' as const
-    case 'error':
-      return 'danger' as const
-    case 'archived':
-      return 'default' as const
-  }
-}
-
-function toneForDocumentStatus(status: string) {
-  if (status === 'ready' || status === 'validated') {
-    return 'success' as const
-  }
-  if (status === 'failed' || status === 'error') {
-    return 'danger' as const
-  }
-  return 'warning' as const
 }

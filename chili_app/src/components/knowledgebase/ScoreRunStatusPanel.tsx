@@ -1,5 +1,6 @@
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
+import { formatRelativeTime } from '../status/formatters'
 import type { ScoreRunDetailResponse, ScoreRunStatus } from '../../api/contracts'
 
 type ScoreRunStatusPanelProps = {
@@ -96,7 +97,7 @@ export function ScoreRunStatusPanel({
             </div>
             <div>
               <dt>Updated</dt>
-              <dd>{run.updated_at}</dd>
+              <dd title={run.updated_at}>{formatRelativeTime(run.updated_at)}</dd>
             </div>
             {run.replay_of_run_id ? (
               <div>
