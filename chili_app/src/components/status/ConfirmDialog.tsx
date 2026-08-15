@@ -24,8 +24,13 @@ type ConfirmDialogProps = {
  * the plain variant, because a confirmation the user learns to click through
  * protects nothing.
  */
-export function ConfirmDialog({
-  open,
+export function ConfirmDialog({ open, ...rest }: ConfirmDialogProps) {
+  // The body mounts only while open, so a reopened dialog starts from a fresh
+  // typed-confirmation state without an effect reaching in to clear it.
+  return open ? <ConfirmDialogBody {...rest} /> : null
+}
+
+function ConfirmDialogBody({
   title,
   body,
   confirmLabel,
@@ -33,25 +38,19 @@ export function ConfirmDialog({
   destructive = false,
   onConfirm,
   onCancel,
-}: ConfirmDialogProps) {
+}: Omit<ConfirmDialogProps, 'open'>) {
   const [typed, setTyped] = useState('')
   const cancelRef = useRef<HTMLButtonElement | null>(null)
   const titleId = useId()
   const bodyId = useId()
   const inputId = useId()
 
-  // Reopening must not inherit the previous attempt's typing.
+  // Focus lands on Cancel: the destructive action is never the default.
   useEffect(() => {
-    if (open) {
-      setTyped('')
-      cancelRef.current?.focus()
-    }
-  }, [open])
+    cancelRef.current?.focus()
+  }, [])
 
   useEffect(() => {
-    if (!open) {
-      return
-    }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onCancel()
@@ -59,11 +58,7 @@ export function ConfirmDialog({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onCancel])
-
-  if (!open) {
-    return null
-  }
+  }, [onCancel])
 
   const requiresTyping = Boolean(confirmTypedText)
   const confirmEnabled = !requiresTyping || typed.trim() === confirmTypedText?.trim()
