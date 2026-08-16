@@ -18,7 +18,12 @@ export const KNOWLEDGE_BASE_SEARCH_PARAM = 'kb'
 export interface UseActiveKnowledgeBaseResult {
   /** The knowledge base every KB-scoped page on screen should read. */
   activeKnowledgeBaseId: string | null
-  /** In-domain knowledge bases, for selector UIs. */
+  /**
+   * In-domain knowledge bases, for selector UIs — plus, when the active
+   * knowledge base is a cross-domain workspace named by the route, that one
+   * knowledge base too (see below), so the picker can always name what is on
+   * screen.
+   */
   knowledgeBases: KnowledgeBaseSummaryResponse[]
   isLoading: boolean
   isError: boolean

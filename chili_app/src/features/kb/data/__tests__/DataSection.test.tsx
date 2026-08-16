@@ -326,7 +326,6 @@ describe('DataSection', () => {
     const { onStageSource } = renderSection('/knowledge-bases/kb-1/data')
 
     expect(await screen.findByText('No documents yet')).toBeInTheDocument()
-    expect(screen.queryByText('No document selected')).not.toBeInTheDocument()
     expect(screen.queryByText('Document preview')).not.toBeInTheDocument()
 
     // The action used to scroll the staging form into view on the one-page

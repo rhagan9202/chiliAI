@@ -6,7 +6,6 @@ import { LoadingState } from '../../../components/ui/LoadingState'
 import { countLabel } from '../../../utils/countLabel'
 
 type DocumentPreviewProps = {
-  documentSelected: boolean
   /** With no documents at all, the inventory has already said so. */
   hasDocuments: boolean
   preview: KnowledgeBaseDocumentPreviewResponse | null
@@ -15,7 +14,6 @@ type DocumentPreviewProps = {
 }
 
 export function DocumentPreview({
-  documentSelected,
   hasDocuments,
   preview,
   loading,
@@ -26,9 +24,11 @@ export function DocumentPreview({
   }
 
   // With no documents at all, the inventory's empty state has already said so;
-  // a second "no document selected" and a third "no runs yet" made one screen
-  // state the same fact three times (UXA-305). There is nothing to preview
-  // until something has been ingested.
+  // a second "no runs yet" made one screen state the same fact three times
+  // (UXA-305). There is nothing to preview until something has been ingested.
+  // `hasDocuments` also means a document is always selected here — the caller
+  // (DataSection) falls back to the first row whenever the URL doesn't name
+  // one, so there is no "no document selected" state to render.
   return (
     <section className="ingestion-document-preview" aria-labelledby="document-preview-title">
       <div className="metric-row">
@@ -36,12 +36,7 @@ export function DocumentPreview({
         {preview?.truncated ? <Chip label="Truncated" tone="warning" /> : null}
       </div>
 
-      {!documentSelected ? (
-        <EmptyState
-          title="No document selected"
-          description="Select a document in inventory to review its preview."
-        />
-      ) : loading ? (
+      {loading ? (
         <LoadingState label="Loading document preview" />
       ) : error ? (
         <ErrorState description="Document preview could not be loaded from the API." />

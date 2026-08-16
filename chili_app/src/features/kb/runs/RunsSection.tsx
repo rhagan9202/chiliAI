@@ -63,7 +63,6 @@ export function RunsSection({ knowledgeBaseId, entityCount }: RunsSectionProps) 
       <Card>
         <ScoreRunStatusPanel
           detail={scoreRunQuery.data ?? null}
-          disabled={false}
           error={scoreRunQuery.isError ? 'Score run status could not be loaded.' : null}
           loading={scoreRunQuery.isLoading}
           onCancel={() => {

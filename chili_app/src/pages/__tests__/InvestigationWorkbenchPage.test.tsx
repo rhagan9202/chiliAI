@@ -747,9 +747,11 @@ describe('InvestigationWorkbenchPage', () => {
     // The panel offers what to do about it; the reason (when there is one)
     // lives once in the dossier header (UXA-305).
     expect(screen.getByText(/Risk factors appear once analytics have scored this entity/i)).toBeInTheDocument()
+    // The label promises the add-data flow, not the workspace overview — it
+    // must land on the `add` section, not fall through to Overview.
     expect(
       screen.getByRole('link', { name: 'Add data to this knowledge base' }),
-    ).toBeInTheDocument()
+    ).toHaveAttribute('href', '/knowledge-bases/kb-live/add')
     // "Composite risk" was the old metric-row label for the RiskBadge in the
     // pre-restructure entity Card; it no longer exists anywhere on the page
     // (the dossier header shows a risk numeral instead) so this assertion is

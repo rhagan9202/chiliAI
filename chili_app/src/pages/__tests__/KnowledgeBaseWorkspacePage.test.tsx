@@ -62,7 +62,7 @@ beforeEach(() => {
       })
 
     if (url.endsWith('/config/domain')) return json(domainConfig)
-    if (url.endsWith('/knowledgebases')) return json({ items: [medicareKb, housingKb], total: 2 })
+    if (url.split('?')[0].endsWith('/knowledgebases')) return json({ items: [medicareKb, housingKb], total: 2 })
     if (url.endsWith('/knowledgebases/kb-1')) return json(medicareKb)
     if (url.endsWith('/knowledgebases/kb-2')) return json(housingKb)
     if (url.endsWith('/knowledgebases/kb-missing')) {

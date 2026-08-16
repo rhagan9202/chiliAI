@@ -91,6 +91,22 @@ describe('CreateKnowledgeBasePanel', () => {
     expect(lastRequestBody).toEqual({ name: 'New corpus', description: 'New source material' })
   })
 
+  it('trims padded whitespace from the name and description before submitting', async () => {
+    const { onCreated } = renderPanel()
+
+    fireEvent.click(screen.getByText('New knowledge base'))
+    fireEvent.change(screen.getByLabelText(/knowledge base name/i), {
+      target: { value: '  New corpus  ' },
+    })
+    fireEvent.change(screen.getByLabelText(/description/i), {
+      target: { value: '  New source material  ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create knowledge base' }))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('kb-new'))
+    expect(lastRequestBody).toEqual({ name: 'New corpus', description: 'New source material' })
+  })
+
   it('clears the fields after a successful create', async () => {
     renderPanel()
 

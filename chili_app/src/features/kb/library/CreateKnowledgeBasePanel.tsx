@@ -27,7 +27,7 @@ export function CreateKnowledgeBasePanel({ onCreated }: CreateKnowledgeBasePanel
     }
 
     createKnowledgeBase.mutate(
-      { name, description },
+      { name: name.trim(), description: description.trim() },
       {
         onSuccess: (created) => {
           setName('')

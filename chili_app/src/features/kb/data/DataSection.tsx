@@ -81,7 +81,6 @@ export function DataSection({ knowledgeBaseId, onStageSource }: DataSectionProps
         statusFilter={statusFilter}
       />
       <DocumentPreview
-        documentSelected={activeDocumentId !== null}
         error={previewQuery.isError}
         hasDocuments={documents.length > 0}
         loading={previewQuery.isLoading}

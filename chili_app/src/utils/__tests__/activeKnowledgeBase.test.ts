@@ -211,7 +211,7 @@ describe('resolveActiveKnowledgeBaseId', () => {
     ).toBe(housingKb.id)
   })
 
-  it('falls through when the path names a knowledge base that does not exist', () => {
+  it('falls through when the path names a knowledge base absent from the fetched page', () => {
     expect(
       resolveActiveKnowledgeBaseId({
         knowledgeBases: [medicareKb],

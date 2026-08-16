@@ -288,7 +288,7 @@ beforeEach(() => {
         return Promise.resolve(domainSchema)
       case '/config/packs':
         return Promise.resolve(packList)
-      case '/knowledgebases':
+      case '/knowledgebases?limit=500':
         return Promise.resolve(knowledgeBases)
       case '/knowledgebases/kb-1/capabilities?limit=100&offset=0':
         return Promise.resolve(capabilityRegistry)

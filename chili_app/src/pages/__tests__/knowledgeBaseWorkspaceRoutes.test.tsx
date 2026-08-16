@@ -80,7 +80,7 @@ beforeEach(() => {
 
     if (init?.method === 'DELETE') return new Response(null, { status: 204 })
     if (url.endsWith('/config/domain')) return json(domainConfig)
-    if (url.endsWith('/knowledgebases')) return json({ items: [medicareKb], total: 1 })
+    if (url.split('?')[0].endsWith('/knowledgebases')) return json({ items: [medicareKb], total: 1 })
     if (url.endsWith('/knowledgebases/kb-1')) return json(medicareKb)
     if (url.includes('/documents')) return json({ items: [], total: 0 })
     if (url.includes('/workflows')) return json({ items: [], total: 0 })

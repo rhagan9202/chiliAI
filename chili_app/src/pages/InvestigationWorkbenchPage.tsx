@@ -925,7 +925,7 @@ export function InvestigationWorkbenchPage() {
                                 className="page-button page-button--sm"
                                 to={
                                   activeKnowledgeBaseId
-                                    ? knowledgeBaseWorkspacePath(activeKnowledgeBaseId)
+                                    ? knowledgeBaseWorkspacePath(activeKnowledgeBaseId, 'add')
                                     : KNOWLEDGE_BASES_ROUTE
                                 }
                               >

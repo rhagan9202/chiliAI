@@ -31,7 +31,6 @@ export type DocumentsFlowResult = {
   canRunIngestion: boolean
   runPending: boolean
   error: unknown
-  isSuccess: boolean
   submit: () => void
 }
 
@@ -118,7 +117,6 @@ export function useDocumentsFlow({
     canRunIngestion,
     runPending: uploadMutation.isPending,
     error: uploadMutation.error,
-    isSuccess: uploadMutation.isSuccess,
     submit: submitDocuments,
   }
 }

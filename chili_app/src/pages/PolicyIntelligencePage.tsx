@@ -234,7 +234,7 @@ export function PolicyIntelligencePage() {
                   action={
                     <Link
                       className="page-button page-button--sm page-button--primary"
-                      to={knowledgeBaseWorkspacePath(knowledgeBaseId)}
+                      to={knowledgeBaseWorkspacePath(knowledgeBaseId, 'add')}
                     >
                       Add data to this knowledge base
                     </Link>

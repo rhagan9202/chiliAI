@@ -61,6 +61,21 @@
   font-weight: 700;
 }
 
+/* Carried over from `.ingestion-kb-selector` / `.ingestion-kb-selector__form`
+   (dropped in the 9554e828 rename): the create panel and its form each lay
+   out their children in a gapped grid rather than the default block flow. */
+.kb-library__create,
+.kb-library__create form {
+  display: grid;
+  gap: 12px;
+}
+
+/* Carried over from `.ingestion-kb-selector__delete`: keeps the toggle from
+   stretching to the grid track's full width. */
+.kb-library__domain-toggle {
+  justify-self: flex-start;
+}
+
 .kb-library__field {
   display: grid;
   gap: 12px;

@@ -13,7 +13,7 @@ function makeFetch(): typeof globalThis.fetch {
         : input instanceof URL
           ? input.toString()
           : input.url
-    if (url.endsWith('/knowledgebases')) {
+    if (url.split('?')[0].endsWith('/knowledgebases')) {
       return new Response(
         JSON.stringify({
           items: [
