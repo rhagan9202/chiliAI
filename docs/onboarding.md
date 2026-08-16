@@ -41,7 +41,7 @@ The starting exemplar domain is **Medicare fraud detection**, but the platform i
 
 ### Current state
 
-The codebase is an **active local-development prototype** with substantial backend and frontend implementation. The backend includes the FastAPI gateway, worker/coordinator, Redis event pipeline, ingestion, graph/vector/embedding/LLM/RAG services, analytics, monitoring, storage adapters, auth/RBAC middleware, CI, and Kubernetes/Helm manifests. The frontend is a routed analyst workbench with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Most `TODO(production)` annotations now mark hardening or deeper production features rather than blank-module scaffolding.
+The codebase is an **active local-development prototype** with substantial backend and frontend implementation. The backend includes the FastAPI gateway, worker/coordinator, Redis event pipeline, ingestion, graph/vector/embedding/LLM/RAG services, analytics, monitoring, storage adapters, auth/RBAC middleware, CI, and Kubernetes/Helm manifests. The frontend is a routed analyst workbench with Dashboard, a Knowledge Bases library + per-KB workspace, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Most `TODO(production)` annotations now mark hardening or deeper production features rather than blank-module scaffolding.
 
 ---
 

@@ -146,7 +146,7 @@ base" below).
 - The KB domain-mismatch badge (`KbDomainBadge`) renders on the library card list and the workspace header; other KB pickers (Investigation Workbench, RAG chat) do not badge mismatched KBs yet — follow-up work.
 - Some non-Investigation graph/entity discovery flows are still incomplete.
 - RAG chat uses the configured backend RAG service in the app factory; direct test construction can still use deterministic in-memory fallbacks.
-- There is no standalone `/workflows` page yet; workflow monitoring currently appears in Dashboard counters and the KB Manager run timeline.
+- There is no standalone `/workflows` page yet; workflow monitoring currently appears in Dashboard counters and the workspace's Runs section (`/knowledge-bases/:kbId/runs`).
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 
 For the live, dependency-ordered list of production-readiness work for the SPA, see [`../docs/backlog/frontend.md`](../docs/backlog/frontend.md) (rolled up in [`../docs/backlog/README.md`](../docs/backlog/README.md)).
@@ -416,7 +416,7 @@ Page routes are wrapped with `ErrorBoundary` so a rendering failure in one
 workbench page does not collapse the authenticated app shell. The Investigation
 Workbench keeps selected entity, knowledge base, and graph depth in the URL via
 `/investigation/:entityId?kb=<id>&depth=<1-5>` for refresh/share continuity.
-The KB Manager run timeline renders `WorkflowRunResponse.last_error` for failed
+The workspace's Runs section renders `WorkflowRunResponse.last_error` for failed
 workflow runs when the backend exposes retry-exhaustion details.
 
 ### Active knowledge base (workspace state)

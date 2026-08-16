@@ -132,7 +132,7 @@
 
 **As a** records-ingestion operator,
 **I need** CSV/XLSX parsers to emit typed per-row warnings (malformed rows, charset fallback, blank columns, type-coercion failures) instead of either silently dropping rows or hard-failing the whole file,
-**so that** the Ingestion Studio can surface a "12 rows had warnings / 3 rows skipped" summary instead of "file failed."
+**so that** the knowledge-bases workspace can surface a "12 rows had warnings / 3 rows skipped" summary instead of "file failed."
 
 ### Current State
 - `backend/ingestion/parsers/csv.py` and `backend/ingestion/parsers/xlsx.py` are basic parsers that produce `StructuredRecord` rows; per-row diagnostics flow only via free-form `parser_metadata`.
@@ -169,7 +169,7 @@
 
 **As a** worker operating the documents flow,
 **I need** the storage-write + event-publish path to be atomic via an outbox so that a publish failure after a successful storage write does not strand the document,
-**so that** the worker can replay missed events and the Ingestion Studio's per-document status never disagrees with the durable record.
+**so that** the worker can replay missed events and the knowledge-bases workspace's per-document status never disagrees with the durable record.
 
 ### Current State
 - `IngestionService.register_documents` writes source bytes then publishes `DocumentsUploadedEvent`. When configured with an `IngestionRecoveryStore`, a publish failure creates an `IngestionRecoveryMarker`; `replay_recovery_markers()` republishes from stored object metadata and removes the marker only after publish succeeds.
@@ -1224,7 +1224,7 @@ This story's original scope covered the **parse stage** (`ingestion/orchestrator
 
 ### Known gap: batch-level DLQ failures still leave no FAILED projection (2026-07-14, final-review follow-up)
 
-The per-document isolation closed above stops at `handle_documents_chunked` (chunk → extract handoff). One stage further downstream, `handle_entities_extracted` (extract → validate) still wraps its per-document work in a bare `except Exception: ... raise` — e.g. a missing `extraction_storage_key` or an unreadable/corrupt extraction artifact re-raises, poisons the whole event batch, and routes it to the DLQ via `run_handler_with_retry` instead of failing just that document. Every document in that batch keeps whatever status `SourceDocumentStatusStore` last recorded (typically `PARSED`): no `DocumentsFailedEvent` is published for the batch-DLQ path, so the projection never transitions those documents to `FAILED` and Ingestion Studio reports them as stuck mid-pipeline rather than failed. This is a tracked visibility gap, not a regression introduced by this story; extending the BL-041 per-document isolation pattern to `handle_entities_extracted` (and auditing `handle_entities_validated` for the same shape) is out of scope here and left for a follow-on story.
+The per-document isolation closed above stops at `handle_documents_chunked` (chunk → extract handoff). One stage further downstream, `handle_entities_extracted` (extract → validate) still wraps its per-document work in a bare `except Exception: ... raise` — e.g. a missing `extraction_storage_key` or an unreadable/corrupt extraction artifact re-raises, poisons the whole event batch, and routes it to the DLQ via `run_handler_with_retry` instead of failing just that document. Every document in that batch keeps whatever status `SourceDocumentStatusStore` last recorded (typically `PARSED`): no `DocumentsFailedEvent` is published for the batch-DLQ path, so the projection never transitions those documents to `FAILED` and the knowledge-bases workspace's document inventory reports them as stuck mid-pipeline rather than failed. This is a tracked visibility gap, not a regression introduced by this story; extending the BL-041 per-document isolation pattern to `handle_entities_extracted` (and auditing `handle_entities_validated` for the same shape) is out of scope here and left for a follow-on story.
 
 ---
 

@@ -365,18 +365,18 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 **Estimated size:** M
 
 **As a** keyboard-only user,
-**I need** the shared `Tabs`, `FilterBar`, `KbTable`, and ingestion stepper to support arrow keys, Home/End, and roving tabindex,
+**I need** the shared `Tabs`, `FilterBar`, and the knowledge-bases workspace's document inventory list to support arrow keys, Home/End, and roving tabindex,
 **so that** I can navigate the workbench without a mouse and meet WCAG 2.1 AA keyboard requirements.
 
 ### Current State
 - `chili_app/src/components/ui/Tabs.tsx:14-33` declares `role="tablist"` + `aria-selected` but every tab button has `tabindex=0` and there is no arrow-key handler or focus management.
-- `FilterBar`, `KbTable`, and ingestion stepper share the same pattern (per auditor notes).
+- `FilterBar` and the knowledge-bases workspace's document inventory (`chili_app/src/features/kb/data/DocumentInventory.tsx`) share the same pattern (per auditor notes). This story originally also named `KbTable` and an "ingestion stepper" — both are gone (the phase-2 knowledge-bases IA split deleted `KbTable.tsx` outright and replaced the stepper with routed sections navigated by `WorkspaceTabs.tsx`, a plain `<nav>` of `NavLink`s rather than an ARIA-tablist widget, so it does not need roving-tabindex treatment the way `Tabs.tsx` does).
 - No focus-trap utility exists for modals; `ConfirmDialog` relies on default tab order.
 
 ### Acceptance Criteria
 - [ ] `Tabs.tsx` implements roving tabindex with Left/Right arrows, Home, End, and Enter/Space activation per WAI-ARIA APG tabs pattern.
-- [ ] A reusable `useRovingTabindex` hook is added under `chili_app/src/hooks/` and consumed by `Tabs`, `FilterBar`, and the ingestion stepper.
-- [ ] `KbTable` rows support arrow-up/down navigation and Enter to activate.
+- [ ] A reusable `useRovingTabindex` hook is added under `chili_app/src/hooks/` and consumed by `Tabs` and `FilterBar`.
+- [ ] `DocumentInventory` rows support arrow-up/down navigation and Enter to activate.
 - [ ] A `useFocusTrap` hook is added and applied to `ConfirmDialog`.
 - [ ] Vitest + Testing Library covers keyboard interactions for each.
 - [ ] Documented in `chili_app/README.md` under a new Accessibility section.
@@ -389,7 +389,7 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 ### Code touch points
 - `chili_app/src/components/ui/Tabs.tsx` (modify)
 - `chili_app/src/components/ui/FilterBar.tsx` (modify)
-- `chili_app/src/components/knowledgebase/KbTable.tsx` (modify)
+- `chili_app/src/features/kb/data/DocumentInventory.tsx` (modify)
 - `chili_app/src/components/common/ConfirmDialog.tsx` (modify)
 - `chili_app/src/hooks/useRovingTabindex.ts` (new)
 - `chili_app/src/hooks/useFocusTrap.ts` (new)
