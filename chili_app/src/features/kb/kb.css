@@ -1,0 +1,31 @@
+.kb-workspace__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kb-workspace__digest,
+.kb-workspace__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kb-library {
+  display: grid;
+  gap: 12px;
+}
+
+@container workspace (min-width: 720px) {
+  .kb-library {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+.kb-library__card {
+  display: grid;
+  gap: 6px;
+  text-decoration: none;
+}
