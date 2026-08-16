@@ -74,6 +74,15 @@ vi.mock('react-router', () => ({
   },
   useNavigate: () => mocks.navigate,
   useSearchParams: () => [mocks.searchParams, mocks.setSearchParams],
+  // Not a workspace route, so useActiveKnowledgeBase's path-based resolution
+  // stays out of the way and ?kb= keeps deciding the selection in these tests.
+  useLocation: () => ({
+    pathname: '/rag-chat',
+    search: '',
+    hash: '',
+    state: null,
+    key: 'test',
+  }),
 }))
 
 vi.mock('../../api/config', () => ({
