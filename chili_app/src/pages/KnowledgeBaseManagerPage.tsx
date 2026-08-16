@@ -8,19 +8,9 @@ import {
   useKnowledgeBase,
   useKnowledgeBases,
 } from '../api/knowledgebases'
-import {
-  useCancelScoreRun,
-  useReplayScoreRun,
-  useScoreRun,
-  useScoreRuns,
-  useStartScoreRun,
-} from '../api/scoreRuns'
-import { useWorkflows } from '../api/workflows'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
 import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
-import { ScoreRunStatusPanel } from '../components/knowledgebase/ScoreRunStatusPanel'
-import { RunTimeline } from '../components/ingestion/RunTimeline'
 import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
 import { formatTimestamp } from '../components/status/formatters'
@@ -32,6 +22,7 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { AddDataSection } from '../features/kb/add-data/AddDataSection'
 import { DataSection } from '../features/kb/data/DataSection'
+import { RunsSection } from '../features/kb/runs/RunsSection'
 import { useIngestionDraftStore } from '../stores/ingestionDraftStore'
 import { countLabel } from '../utils/countLabel'
 import './pages.css'
@@ -54,7 +45,6 @@ export function KnowledgeBaseManagerPage() {
   )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
-  const [selectedScoreRunId, setActiveScoreRunId] = useState<string | null>(null)
   // This tab just handed a submission to the server (AddDataSection's
   // onSubmitted). It says nothing about history — the run timeline is the
   // record of what happened — only that the handoff succeeded and the run
@@ -86,27 +76,11 @@ export function KnowledgeBaseManagerPage() {
   )
     ? selectedKnowledgeBaseId
     : scopedKnowledgeBases[0]?.id ?? visibleKnowledgeBases[0]?.id ?? null
-  const workflowsQuery = useWorkflows(
-    { knowledgeBaseId: activeKnowledgeBaseId ?? undefined },
-    { enabled: Boolean(activeKnowledgeBaseId) },
-  )
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
-  const scoreRunsQuery = useScoreRuns(activeKnowledgeBaseId, { limit: 1 })
-  const scoreRuns = scoreRunsQuery.data?.items ?? []
-  const activeScoreRunId = selectedScoreRunId ?? scoreRuns[0]?.id ?? null
-  const scoreRunQuery = useScoreRun(activeKnowledgeBaseId, activeScoreRunId)
-  const workflows = workflowsQuery.data?.items ?? []
   const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
-  // The timeline earns its card once there is something to time. Documents are
-  // owned by the data section now, so ask the workflow list alone; a knowledge
-  // base with documents always has the runs that produced them.
-  const runTimelineVisible = workflows.length > 0
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
-  const startScoreRunMutation = useStartScoreRun(activeKnowledgeBaseId)
-  const cancelScoreRunMutation = useCancelScoreRun(activeKnowledgeBaseId, activeScoreRunId)
-  const replayScoreRunMutation = useReplayScoreRun(activeKnowledgeBaseId, activeScoreRunId)
 
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
     return <LoadingState label="Loading knowledge bases" />
@@ -129,22 +103,6 @@ export function KnowledgeBaseManagerPage() {
   }
 
   const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
-  const scoreRunStartDisabled = !knowledgeBase || knowledgeBase.entity_count === 0
-  // A disabled control explains itself in adjacent text, and the explanation
-  // has to match the actual blocker — "requires ingested entities" is a lie
-  // when the real problem is that no knowledge base is selected.
-  const scoreRunStartReason = !activeKnowledgeBaseId
-    ? 'Select a knowledge base first.'
-    : scoreRunStartDisabled
-      ? 'Start requires ingested entities in this knowledge base.'
-      : null
-  const scoreRunPendingAction = startScoreRunMutation.isPending
-    ? 'start'
-    : cancelScoreRunMutation.isPending
-      ? 'cancel'
-      : replayScoreRunMutation.isPending
-        ? 'replay'
-        : null
 
   return (
     <section className="page-grid">
@@ -178,7 +136,6 @@ export function KnowledgeBaseManagerPage() {
                   {
                     onSuccess: (created) => {
                       setSelectedKnowledgeBaseId(created.id)
-                      setActiveScoreRunId(null)
                       setKnowledgeBaseName('')
                       setKnowledgeBaseDescription('')
                     },
@@ -188,7 +145,6 @@ export function KnowledgeBaseManagerPage() {
               onDelete={() => setConfirmingKnowledgeBaseDelete(true)}
               onSelect={(knowledgeBaseId) => {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
-                setActiveScoreRunId(null)
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
               showAllDomains={showAllDomains}
@@ -221,7 +177,6 @@ export function KnowledgeBaseManagerPage() {
                     // Its draft has nowhere to submit to now.
                     clearDraft(deletedId)
                     setSelectedKnowledgeBaseId(null)
-                    setActiveScoreRunId(null)
                   },
                 })
               }}
@@ -256,7 +211,6 @@ export function KnowledgeBaseManagerPage() {
             <NextActionsPanel
               activeKnowledgeBaseId={activeKnowledgeBaseId}
               submissionAccepted={submissionAccepted}
-              hasWorkflows={workflows.length > 0}
               onInvestigateEntities={() => {
                 if (!activeKnowledgeBaseSearch) {
                   return
@@ -272,48 +226,12 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
 
-          {runTimelineVisible ? (
-            <Card>
-              <RunTimeline workflows={workflows} />
-            </Card>
-          ) : null}
-
-          <Card>
-            <ScoreRunStatusPanel
-              detail={scoreRunQuery.data ?? null}
-              disabled={!activeKnowledgeBaseId}
-              error={scoreRunQuery.isError ? 'Score run status could not be loaded.' : null}
-              loading={scoreRunQuery.isLoading}
-              onCancel={() => {
-                cancelScoreRunMutation.mutate(undefined, {
-                  onSuccess: (detail) => setActiveScoreRunId(detail.run.id),
-                })
-              }}
-              onReplay={() => {
-                replayScoreRunMutation.mutate(
-                  { idempotency_key: `score-replay:${activeScoreRunId ?? 'missing'}` },
-                  { onSuccess: (detail) => setActiveScoreRunId(detail.run.id) },
-                )
-              }}
-              onStart={() => {
-                if (!activeKnowledgeBaseId || scoreRunStartDisabled) {
-                  return
-                }
-                const currentRun = scoreRunQuery.data?.run
-                startScoreRunMutation.mutate(
-                  {
-                    batch_size: 100,
-                    catalog_version: currentRun?.catalog_version ?? 'cms-fraud-features-v1',
-                    model_version: currentRun?.model_version ?? 'risk-linear-v1',
-                  },
-                  { onSuccess: (detail) => setActiveScoreRunId(detail.run.id) },
-                )
-              }}
-              pendingAction={scoreRunPendingAction}
-              startDisabled={scoreRunStartDisabled}
-              startReason={scoreRunStartReason}
+          {activeKnowledgeBaseId ? (
+            <RunsSection
+              entityCount={knowledgeBase?.entity_count ?? 0}
+              knowledgeBaseId={activeKnowledgeBaseId}
             />
-          </Card>
+          ) : null}
 
           {activeKnowledgeBaseId ? (
             <DataSection
@@ -338,24 +256,23 @@ function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
 
 function NextActionsPanel({
   activeKnowledgeBaseId,
-  hasWorkflows,
   submissionAccepted,
   onInvestigateEntities,
   onReviewAlerts,
 }: {
   activeKnowledgeBaseId: string | null
-  hasWorkflows: boolean
   /** This tab's submission was accepted and its run has yet to appear. */
   submissionAccepted: boolean
   onInvestigateEntities: () => void
   onReviewAlerts: () => void
 }) {
   const disabled = !activeKnowledgeBaseId
-  const message = hasWorkflows
-    ? 'Runs are updating for this knowledge base.'
-    : submissionAccepted
-      ? 'Submission accepted. Watch for queued or running workflow updates.'
-      : 'Submit documents or records to unlock the handoff path.'
+  // Runs are the Runs section's business now (Task 6); this panel no longer
+  // watches the workflow list, so it only distinguishes "nothing submitted
+  // yet" from "a submission was just accepted."
+  const message = submissionAccepted
+    ? 'Submission accepted. Watch for queued or running workflow updates.'
+    : 'Submit documents or records to unlock the handoff path.'
 
   return (
     <section className="ingestion-next-actions" aria-labelledby="ingestion-next-actions-title">

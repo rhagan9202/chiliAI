@@ -907,12 +907,16 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
   it('states an empty knowledge base once, with an action (UXA-305)', async () => {
     // A brand-new KB used to stack three cards that all said the same thing:
-    // "No runs yet", "No documents yet", "No document selected".
+    // "No runs yet", "No documents yet", "No document selected". The document
+    // dedup still holds. "No runs yet" is no longer part of that dedup: the
+    // runs timeline now lives in its own always-mounted RunsSection (Task 6),
+    // which owns its own empty state independent of the document inventory —
+    // it is expected here, not a stray repeat of "nothing in this KB yet."
     installFetchMock({ emptyInventory: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     expect(await screen.findByText('No documents yet')).toBeInTheDocument()
-    expect(screen.queryByText('No runs yet')).not.toBeInTheDocument()
+    expect(screen.getByText('No runs yet')).toBeInTheDocument()
     expect(screen.queryByText('No document selected')).not.toBeInTheDocument()
     expect(screen.queryByText('Document preview')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stage a source' })).toBeInTheDocument()
@@ -935,16 +939,19 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     delete (HTMLElement.prototype as { scrollIntoView?: () => void }).scrollIntoView
   })
 
-  it('hides the run timeline card when a knowledge base has documents but no workflows (UXA-305)', async () => {
+  it('renders the runs section empty state when a knowledge base has documents but no workflows (UXA-305)', async () => {
     // Documents are the data section's business now; a knowledge base can
-    // have documents with no run submitted in this session. The timeline no
-    // longer earns a card just because documents exist — showing its own
-    // "No runs yet" here would be a second card saying nothing happened yet,
-    // when the data section already covers what has landed.
+    // have documents with no run submitted in this session. The page used to
+    // hide the timeline card entirely in this case, to avoid stacking two
+    // "nothing here" messages in the same aside. Now that the timeline lives
+    // in its own always-mounted RunsSection (Task 6), the section owns its
+    // own empty state instead — full coverage of that state lives in
+    // RunsSection.test.tsx; this only checks the page renders it alongside
+    // the document data rather than suppressing it.
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     expect(await screen.findByText('existing-policy.txt')).toBeInTheDocument()
-    expect(screen.queryByText('No runs yet')).not.toBeInTheDocument()
+    expect(screen.getByText('No runs yet')).toBeInTheDocument()
     expect(screen.queryByText('Run timeline')).not.toBeInTheDocument()
     expect(screen.getByText('Document preview')).toBeInTheDocument()
   })
