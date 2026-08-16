@@ -210,6 +210,9 @@ export function KnowledgeBaseManagerPage() {
           <Card>
             <NextActionsPanel
               activeKnowledgeBaseId={activeKnowledgeBaseId}
+              hasExistingActivity={Boolean(
+                knowledgeBase && (knowledgeBase.document_count > 0 || knowledgeBase.entity_count > 0),
+              )}
               submissionAccepted={submissionAccepted}
               onInvestigateEntities={() => {
                 if (!activeKnowledgeBaseSearch) {
@@ -256,23 +259,36 @@ function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
 
 function NextActionsPanel({
   activeKnowledgeBaseId,
+  hasExistingActivity,
   submissionAccepted,
   onInvestigateEntities,
   onReviewAlerts,
 }: {
   activeKnowledgeBaseId: string | null
+  /**
+   * The knowledge base already carries documents or entities from a prior
+   * session. Reopening it fresh (no submission this session) must not claim
+   * nothing has happened yet — that claim is false the moment either count
+   * is non-zero.
+   */
+  hasExistingActivity: boolean
   /** This tab's submission was accepted and its run has yet to appear. */
   submissionAccepted: boolean
   onInvestigateEntities: () => void
   onReviewAlerts: () => void
 }) {
   const disabled = !activeKnowledgeBaseId
-  // Runs are the Runs section's business now (Task 6); this panel no longer
-  // watches the workflow list, so it only distinguishes "nothing submitted
-  // yet" from "a submission was just accepted."
+  // Runs themselves are the Runs section's business now (Task 6); this panel
+  // no longer watches the workflow list to decide whether runs are updating.
+  // It still has to avoid telling an analyst who opens an already-ingested
+  // knowledge base to "submit documents" as if it were empty — document_count
+  // and entity_count are static counts the page already has loaded, so
+  // reusing them costs no extra query and no polling.
   const message = submissionAccepted
     ? 'Submission accepted. Watch for queued or running workflow updates.'
-    : 'Submit documents or records to unlock the handoff path.'
+    : hasExistingActivity
+      ? 'This knowledge base already has ingested content. Investigate entities or review alerts.'
+      : 'Submit documents or records to unlock the handoff path.'
 
   return (
     <section className="ingestion-next-actions" aria-labelledby="ingestion-next-actions-title">

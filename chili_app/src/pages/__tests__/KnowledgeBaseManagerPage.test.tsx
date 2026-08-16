@@ -905,7 +905,7 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     })
   })
 
-  it('states an empty knowledge base once, with an action (UXA-305)', async () => {
+  it('states an empty document inventory once, with an action, alongside the runs section empty state (UXA-305)', async () => {
     // A brand-new KB used to stack three cards that all said the same thing:
     // "No runs yet", "No documents yet", "No document selected". The document
     // dedup still holds. "No runs yet" is no longer part of that dedup: the
@@ -1098,6 +1098,28 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
     expect(await screen.findByText('Loading document preview')).toBeInTheDocument()
     expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
+  })
+
+  it('tells the analyst about existing content instead of asking them to submit, for a knowledge base with a non-zero document count and no submission this session', async () => {
+    // Reopening an already-ingested knowledge base used to fall through to
+    // "Submit documents or records to unlock the handoff path" — literally
+    // false once ingestion has already happened. The message now derives
+    // from the knowledge base's own document/entity counts (already loaded
+    // on this page) instead of the workflow list this section no longer
+    // queries.
+    installFetchMock({
+      kbItems: [{ ...medicareKb, document_count: 5, entity_count: 0 }],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(
+      await screen.findByText(
+        'This knowledge base already has ingested content. Investigate entities or review alerts.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Submit documents or records to unlock the handoff path.'),
+    ).not.toBeInTheDocument()
   })
 
   it('clears the staged draft once a document submission is accepted', async () => {
