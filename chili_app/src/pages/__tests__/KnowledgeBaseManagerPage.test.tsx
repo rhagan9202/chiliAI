@@ -678,9 +678,8 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
     // Warn only — the KB stays selectable and deletable.
     expect(screen.getByRole('button', { name: /fraud kb/i })).toBeEnabled()
-    expect(
-      screen.getByRole('button', { name: /delete selected knowledge base/i }),
-    ).toBeEnabled()
+    // The delete affordance now lives in the settings section, not the selector.
+    expect(screen.getByRole('button', { name: 'Delete knowledge base' })).toBeEnabled()
   })
 
   it('shows no domain badge when the knowledge base matches the active domain', async () => {
@@ -1344,10 +1343,11 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
   })
 
   it('gates knowledge base deletion behind a typed-name confirmation', async () => {
+    // The delete affordance now lives in the settings section, not the selector.
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('button', { name: 'Delete selected knowledge base' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete knowledge base' }))
 
     const dialog = screen.getByRole('dialog')
     // The blast radius is stated in counts, not "this action cannot be undone".

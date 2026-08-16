@@ -1819,3 +1819,21 @@ a.housing-run-link:hover {
   color: var(--c-dim);
   font-size: 13px;
 }
+
+/* Settings section identity details (Task 7). Moves to kb.css in Task 9. */
+.kb-settings__details {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.kb-settings__details dt {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+.kb-settings__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

@@ -15,7 +15,6 @@ type KnowledgeBaseSelectorProps = {
   createDescription: string
   createDisabled: boolean
   createName: string
-  deleteDisabled: boolean
   /**
    * Number of knowledge bases from other domains excluded from `knowledgeBases`
    * when domain scoping is active. When > 0 a show-all-domains toggle renders.
@@ -25,7 +24,6 @@ type KnowledgeBaseSelectorProps = {
   onCreateDescriptionChange: (value: string) => void
   onCreateNameChange: (value: string) => void
   onCreateSubmit: () => void
-  onDelete: (knowledgeBaseId: string) => void
   onSelect: (knowledgeBaseId: string) => void
   onToggleShowAllDomains?: () => void
   /** Whether the list currently includes knowledge bases from all domains. */
@@ -38,13 +36,11 @@ export function KnowledgeBaseSelector({
   createDescription,
   createDisabled,
   createName,
-  deleteDisabled,
   hiddenDomainCount = 0,
   knowledgeBases,
   onCreateDescriptionChange,
   onCreateNameChange,
   onCreateSubmit,
-  onDelete,
   onSelect,
   onToggleShowAllDomains,
   showAllDomains = false,
@@ -132,17 +128,6 @@ export function KnowledgeBaseSelector({
           description="Create a corpus before selecting sources for ingestion."
         />
       )}
-
-      {activeKnowledgeBaseId ? (
-        <button
-          className="page-button page-button--secondary ingestion-kb-selector__delete"
-          disabled={deleteDisabled}
-          onClick={() => onDelete(activeKnowledgeBaseId)}
-          type="button"
-        >
-          Delete selected knowledge base
-        </button>
-      ) : null}
 
       <form className="ingestion-kb-selector__form" onSubmit={handleCreateSubmit}>
         <strong>Create knowledge base</strong>

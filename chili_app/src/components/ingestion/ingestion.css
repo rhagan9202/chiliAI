@@ -214,10 +214,6 @@
   gap: 8px;
 }
 
-.ingestion-kb-selector__delete {
-  justify-self: flex-start;
-}
-
 .ingestion-kb-selector__label {
   color: var(--c-muted);
   font-family: var(--font-mono);

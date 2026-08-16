@@ -2,16 +2,10 @@ import { useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useDomainConfig } from '../api/config'
-import {
-  useCreateKnowledgeBase,
-  useDeleteKnowledgeBase,
-  useKnowledgeBase,
-  useKnowledgeBases,
-} from '../api/knowledgebases'
+import { useCreateKnowledgeBase, useKnowledgeBase, useKnowledgeBases } from '../api/knowledgebases'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
 import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
-import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
 import { formatTimestamp } from '../components/status/formatters'
 import { Card } from '../components/ui/Card'
@@ -23,16 +17,11 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { AddDataSection } from '../features/kb/add-data/AddDataSection'
 import { DataSection } from '../features/kb/data/DataSection'
 import { RunsSection } from '../features/kb/runs/RunsSection'
-import { useIngestionDraftStore } from '../stores/ingestionDraftStore'
-import { countLabel } from '../utils/countLabel'
+import { SettingsSection } from '../features/kb/settings/SettingsSection'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
   const navigate = useNavigate()
-  // Selector subscription only, not a bare `useIngestionDraftStore()`: staging
-  // state itself belongs to AddDataSection now, but a deleted knowledge base's
-  // draft has nowhere left to submit to, so this page still clears it.
-  const clearDraft = useIngestionDraftStore((state) => state.clearDraft)
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
@@ -51,9 +40,6 @@ export function KnowledgeBaseManagerPage() {
   // has yet to surface in the poll.
   const [submissionAccepted, setSubmissionAccepted] = useState(false)
   const [showAllDomains, setShowAllDomains] = useState(false)
-  // Destructive actions are staged in state and executed from a confirmation
-  // dialog: both deletions used to fire on the first click.
-  const [confirmingKnowledgeBaseDelete, setConfirmingKnowledgeBaseDelete] = useState(false)
   // The staging form lives in the main column while the inventory that reports
   // "no documents yet" sits in the aside; the empty state's action has to take
   // the analyst back across the page to it (UXA-305).
@@ -80,7 +66,6 @@ export function KnowledgeBaseManagerPage() {
   const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
-  const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
 
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
     return <LoadingState label="Loading knowledge bases" />
@@ -122,7 +107,6 @@ export function KnowledgeBaseManagerPage() {
               createDescription={knowledgeBaseDescription}
               createDisabled={createKnowledgeBaseMutation.isPending}
               createName={knowledgeBaseName}
-              deleteDisabled={deleteKnowledgeBaseMutation.isPending}
               hiddenDomainCount={hiddenDomainCount}
               knowledgeBases={visibleKnowledgeBases}
               onCreateDescriptionChange={setKnowledgeBaseDescription}
@@ -142,46 +126,11 @@ export function KnowledgeBaseManagerPage() {
                   },
                 )
               }}
-              onDelete={() => setConfirmingKnowledgeBaseDelete(true)}
               onSelect={(knowledgeBaseId) => {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
               showAllDomains={showAllDomains}
-            />
-            <ConfirmDialog
-              body={
-                knowledgeBase
-                  ? `Deletes ${countLabel(knowledgeBase.document_count, 'document')}, ${countLabel(
-                      knowledgeBase.entity_count,
-                      'entity',
-                      'entities',
-                    )}, ${countLabel(
-                      knowledgeBase.relationship_count,
-                      'relationship',
-                    )}, and every run recorded against it. This cannot be undone.`
-                  : 'This cannot be undone.'
-              }
-              confirmLabel="Delete knowledge base"
-              confirmTypedText={knowledgeBase?.name ?? null}
-              destructive
-              onCancel={() => setConfirmingKnowledgeBaseDelete(false)}
-              onConfirm={() => {
-                setConfirmingKnowledgeBaseDelete(false)
-                if (!activeKnowledgeBaseId) {
-                  return
-                }
-                const deletedId = activeKnowledgeBaseId
-                deleteKnowledgeBaseMutation.mutate(deletedId, {
-                  onSuccess: () => {
-                    // Its draft has nowhere to submit to now.
-                    clearDraft(deletedId)
-                    setSelectedKnowledgeBaseId(null)
-                  },
-                })
-              }}
-              open={confirmingKnowledgeBaseDelete}
-              title="Delete knowledge base"
             />
           </Card>
 
@@ -245,6 +194,13 @@ export function KnowledgeBaseManagerPage() {
                   section.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }
               }}
+            />
+          ) : null}
+
+          {knowledgeBase ? (
+            <SettingsSection
+              knowledgeBase={knowledgeBase}
+              onDeleted={() => setSelectedKnowledgeBaseId(null)}
             />
           ) : null}
         </aside>

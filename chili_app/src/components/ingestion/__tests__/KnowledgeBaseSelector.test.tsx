@@ -36,12 +36,10 @@ function renderSelector(
     createDescription: '',
     createDisabled: false,
     createName: '',
-    deleteDisabled: false,
     knowledgeBases,
     onCreateDescriptionChange: vi.fn(),
     onCreateNameChange: vi.fn(),
     onCreateSubmit: vi.fn(),
-    onDelete: vi.fn(),
     onSelect: vi.fn(),
     ...overrides,
   }
@@ -87,14 +85,6 @@ describe('KnowledgeBaseSelector', () => {
       'Updated source material',
     )
     expect(props.onCreateSubmit).toHaveBeenCalledTimes(1)
-  })
-
-  it('deletes the active knowledge base when delete is available', () => {
-    const props = renderSelector()
-
-    fireEvent.click(screen.getByRole('button', { name: /delete selected knowledge base/i }))
-
-    expect(props.onDelete).toHaveBeenCalledWith('kb-policy')
   })
 
   it('flags domain provenance per knowledge base without blocking selection', () => {
@@ -182,8 +172,5 @@ describe('KnowledgeBaseSelector', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /create knowledge base/i })).toBeDisabled()
-    expect(
-      screen.queryByRole('button', { name: /delete selected knowledge base/i }),
-    ).not.toBeInTheDocument()
   })
 })
