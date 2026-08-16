@@ -31,18 +31,12 @@ test.describe('Knowledge Bases records flow', () => {
     page,
   }) => {
     const kb = seeded().knowledge_base_id
-    await page.goto(`/knowledge-bases?kb=${kb}`)
+    // Navigate straight to the seeded KB's Add data workspace: the workspace
+    // route names the knowledge base directly, so there is no selection step
+    // (and no risk of uploading into whatever KB sorts first).
+    await page.goto(`/knowledge-bases/${kb}/add`)
 
-    await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
-
-    // The ?kb= deep-link must actually bind the selection: uploading into
-    // whatever KB happens to sort first would pollute real data (e.g. the TN
-    // demo KB) and hit its workflow-in-progress guard. Fail fast instead.
-    await expect(
-      page
-        .getByRole('region', { name: 'Choose a knowledge base' })
-        .getByRole('button', { name: /E2E Seed KB/, pressed: true }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'E2E Seed KB' })).toBeVisible()
 
     // Choose the structured records source by clicking its option label (the
     // radio input is visually hidden inside the label; clicking the label

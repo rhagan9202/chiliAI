@@ -15,6 +15,7 @@ import { apiErrorMessage } from '../../../lib/apiClient'
 import type { ValidationIssue } from '../../../lib/ingestion/types'
 import { validateIngestionPrerequisites } from '../../../lib/ingestion/validateIngestion'
 import {
+  emptyDraft,
   hasStagedWork,
   useIngestionDraft,
   useIngestionDraftStore,
@@ -125,16 +126,26 @@ export function AddDataSection({ knowledgeBaseId, onSubmitted }: AddDataSectionP
     (draft.sourceType === 'records' && recordsFlow.canRunIngestion)
   const runPending = documentsFlow.runPending || recordsFlow.runPending
 
-  const staged = hasStagedWork(draft)
   // The only place in this flow where leaving loses work. A submitted draft is
-  // cleared before this can fire, so the prompt never appears after a success.
+  // cleared before the redirect to Runs fires, so the prompt must not appear
+  // after a success.
+  //
+  // The predicate reads the store directly at block-time (react-router calls
+  // it against whatever navigation is actually being attempted) instead of
+  // closing over this render's `draft`. A submission's onSuccess calls
+  // clearDraft() and navigate() back to back, synchronously, before React has
+  // committed the re-render that would give a closed-over value the cleared
+  // draft — a closure would still see the pre-clear staged files and block
+  // the very navigation the submission just triggered.
+  //
   // useBlocker only intercepts in-app navigation: a hard reload or a closed
   // tab still discards staging, and deliberately so — no beforeunload handler
   // is added, because a browser-chrome confirmation the app cannot word is
   // worse than none.
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      staged && currentLocation.pathname !== nextLocation.pathname,
+      hasStagedWork(useIngestionDraftStore.getState().draftsByKb[knowledgeBaseId] ?? emptyDraft()) &&
+      currentLocation.pathname !== nextLocation.pathname,
   )
 
   function runIngestion() {

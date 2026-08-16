@@ -96,34 +96,29 @@ test.describe('KB domain mismatch warning', () => {
       await page.goto('/knowledge-bases')
       await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
+      await page.locator('details.kb-library__create summary').click()
       await page.getByLabel(/knowledge base name/i).fill(kbName)
       await page.getByLabel(/^description$/i).fill('Created before a domain swap (e2e).')
       await page.getByRole('button', { name: /create knowledge base/i }).click()
 
-      const kbCard = page.getByRole('button', { name: new RegExp(kbName) })
-      await expect(kbCard).toBeVisible()
-
-      // Resolve the created KB id for cleanup.
-      const listRes = await request.get(`${API}/knowledgebases`)
-      expect(listRes.ok()).toBeTruthy()
-      const listBody = (await listRes.json()) as { items: Array<{ id: string; name: string }> }
-      kbId = listBody.items.find((item) => item.name === kbName)?.id ?? null
-      expect(kbId, 'the created KB must appear in GET /knowledgebases').toBeTruthy()
-
-      // Under its creating domain the KB carries no warning badge.
-      await expect(kbCard.getByTestId('kb-domain-mismatch')).toHaveCount(0)
+      // Creation lands directly in the new KB's Add data workspace.
+      await expect(page).toHaveURL(/\/knowledge-bases\/[^/]+\/add$/)
+      kbId = /\/knowledge-bases\/([^/]+)\/add$/.exec(page.url())?.[1] ?? null
+      expect(kbId, 'the created KB id must be resolvable from the post-create URL').toBeTruthy()
 
       // --- Swap the active domain pack (real admin endpoint). ---
       await switchPack(request, otherPack!.path)
       swapped = true
       expect(await activeDomainName(request)).toBe(otherPack!.domain_name)
 
-      // --- The KB now warns, and nothing is blocked. ---
-      await page.reload()
+      // --- The KB now warns in the library, and nothing is blocked. ---
+      await page.goto('/knowledge-bases')
       await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
-      // The studio scopes the KB list to the active domain by default, so the
-      // mismatched KB is hidden until the show-all-domains toggle reveals it.
+      const kbCard = page.getByRole('link', { name: new RegExp(kbName) })
+
+      // The library scopes its card list to the active domain by default, so
+      // the mismatched KB is hidden until the show-all-domains toggle reveals it.
       await expect(kbCard).toHaveCount(0)
       await page.getByTestId('kb-show-all-domains-toggle').click()
 
@@ -131,16 +126,16 @@ test.describe('KB domain mismatch warning', () => {
       await expect(kbCard.getByTestId('kb-domain-mismatch')).toBeVisible()
       await expect(kbCard.getByText(`Created under ${originalDomain}`)).toBeVisible()
 
-      // Warn only: the mismatched KB is still selectable, and the summary
-      // card explains the mismatch without disabling anything.
+      // Warn only: the mismatched KB is still openable, and its workspace
+      // overview explains the mismatch without disabling anything.
       await kbCard.click()
-      await expect(kbCard).toHaveAttribute('aria-pressed', 'true')
+      await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${kbId}$`))
       const note = page.getByTestId('kb-domain-mismatch-note')
       await expect(note).toBeVisible()
       await expect(note).toContainText(`created under the "${originalDomain}" domain`)
-      await expect(
-        page.getByRole('button', { name: /delete selected knowledge base/i }),
-      ).toBeEnabled()
+
+      await page.goto(`/knowledge-bases/${kbId}/settings`)
+      await expect(page.getByRole('button', { name: 'Delete knowledge base' })).toBeEnabled()
     } finally {
       // Restore the original pack first so the rest of the suite (and the
       // seeded scenario) keeps running under the expected domain.
