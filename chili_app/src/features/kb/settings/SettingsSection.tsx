@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useNavigate, useOutletContext } from 'react-router'
 
+import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
+import { KNOWLEDGE_BASES_ROUTE } from '../../../utils/knowledgeBaseRoutes'
 import type { KnowledgeBaseSummaryResponse } from '../../../api/contracts'
 import { useDeleteKnowledgeBase } from '../../../api/knowledgebases'
 import { ConfirmDialog } from '../../../components/status/ConfirmDialog'
@@ -7,6 +10,7 @@ import { formatTimestamp } from '../../../components/status/formatters'
 import { Card } from '../../../components/ui/Card'
 import { useIngestionDraftStore } from '../../../stores/ingestionDraftStore'
 import { countLabel } from '../../../utils/countLabel'
+import '../kb.css'
 
 type SettingsSectionProps = {
   knowledgeBase: KnowledgeBaseSummaryResponse
@@ -84,5 +88,23 @@ export function SettingsSection({ knowledgeBase, onDeleted }: SettingsSectionPro
         title="Delete knowledge base"
       />
     </>
+  )
+}
+
+/**
+ * Route binding for `/knowledge-bases/:kbId/settings`. Deleting the knowledge
+ * base deletes the address it was read at, so the library is the only place
+ * left to be.
+ */
+export function SettingsRoute() {
+  const navigate = useNavigate()
+  const { knowledgeBase } = useOutletContext<WorkspaceOutletContext>()
+  return (
+    <SettingsSection
+      knowledgeBase={knowledgeBase}
+      onDeleted={() => {
+        navigate(KNOWLEDGE_BASES_ROUTE, { replace: true })
+      }}
+    />
   )
 }

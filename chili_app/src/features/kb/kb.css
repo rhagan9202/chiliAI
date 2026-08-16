@@ -13,6 +13,16 @@
   gap: 8px;
 }
 
+/* The name and description are the half that must be allowed to shrink; the
+   digest chips wrap on their own. */
+.kb-workspace__identity {
+  min-width: 0;
+}
+
+.kb-workspace__identity p {
+  margin: 4px 0 0;
+}
+
 .kb-library {
   display: grid;
   gap: 12px;
@@ -62,4 +72,54 @@
   font-size: 10px;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+/* Card interior, carried over from the selector list rows it replaced. */
+.kb-library__name {
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.kb-library__description {
+  min-width: 0;
+  color: var(--c-dim);
+  overflow-wrap: anywhere;
+}
+
+.kb-library__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Settings section identity details (Task 7), moved out of pages.css. */
+.kb-settings__details {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.kb-settings__details dt {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+.kb-settings__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Overview section situation + handoffs (Task 8), moved out of pages.css. */
+.kb-overview,
+.kb-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kb-overview {
+  flex-direction: column;
+  gap: 12px;
 }

@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useNavigate, useOutletContext } from 'react-router'
 
+import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
+import { knowledgeBaseWorkspacePath } from '../../../utils/knowledgeBaseRoutes'
 import { useDomainConfig } from '../../../api/config'
 import { SourceTypeStep } from '../../../components/ingestion/SourceTypeStep'
 import { SubmitPanel } from '../../../components/ingestion/SubmitPanel'
@@ -180,5 +183,22 @@ export function AddDataSection({ knowledgeBaseId, onSubmitted }: AddDataSectionP
         </section>
       </Card>
     </>
+  )
+}
+
+/**
+ * Route binding for `/knowledge-bases/:kbId/add`. An accepted submission has a
+ * consequence to watch, and Runs is where it is watched.
+ */
+export function AddDataRoute() {
+  const navigate = useNavigate()
+  const { knowledgeBase } = useOutletContext<WorkspaceOutletContext>()
+  return (
+    <AddDataSection
+      knowledgeBaseId={knowledgeBase.id}
+      onSubmitted={() => {
+        navigate(knowledgeBaseWorkspacePath(knowledgeBase.id, 'runs'))
+      }}
+    />
   )
 }

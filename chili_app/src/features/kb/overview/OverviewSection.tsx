@@ -1,10 +1,12 @@
-import { Link } from 'react-router'
+import { Link, useOutletContext } from 'react-router'
 
 import type { KnowledgeBaseSummaryResponse } from '../../../api/contracts'
+import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
 import { isDomainMismatch } from '../../../components/knowledgebase/domainMismatch'
 import { Card } from '../../../components/ui/Card'
 import { knowledgeBaseWorkspacePath } from '../../../utils/knowledgeBaseRoutes'
 import { knowledgeBaseSituation } from './knowledgeBaseSituation'
+import '../kb.css'
 
 type OverviewSectionProps = {
   knowledgeBase: KnowledgeBaseSummaryResponse
@@ -77,4 +79,14 @@ export function OverviewSection({ activeDomainName, knowledgeBase }: OverviewSec
       </section>
     </Card>
   )
+}
+
+/**
+ * Route binding for the workspace root. The workspace above has already loaded
+ * the knowledge base; re-fetching it here would let the header and the section
+ * disagree about the same corpus mid-flight.
+ */
+export function OverviewRoute() {
+  const { activeDomainName, knowledgeBase } = useOutletContext<WorkspaceOutletContext>()
+  return <OverviewSection activeDomainName={activeDomainName} knowledgeBase={knowledgeBase} />
 }

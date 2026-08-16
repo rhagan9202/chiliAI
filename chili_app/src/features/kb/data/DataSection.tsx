@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router'
 
+import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
+import { knowledgeBaseWorkspacePath } from '../../../utils/knowledgeBaseRoutes'
 import {
   useDeleteKnowledgeBaseDocument,
   useKnowledgeBaseDocumentPreview,
@@ -106,5 +108,23 @@ export function DataSection({ knowledgeBaseId, onStageSource }: DataSectionProps
         title="Remove document"
       />
     </Card>
+  )
+}
+
+/**
+ * Route binding for `/knowledge-bases/:kbId/data`. An analyst with nothing
+ * ingested yet is sent to Add data — a real address now, rather than a scroll
+ * across the old single-page layout.
+ */
+export function DataRoute() {
+  const navigate = useNavigate()
+  const { knowledgeBase } = useOutletContext<WorkspaceOutletContext>()
+  return (
+    <DataSection
+      knowledgeBaseId={knowledgeBase.id}
+      onStageSource={() => {
+        navigate(knowledgeBaseWorkspacePath(knowledgeBase.id, 'add'))
+      }}
+    />
   )
 }

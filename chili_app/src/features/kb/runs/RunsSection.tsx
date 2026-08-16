@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useOutletContext } from 'react-router'
 
+import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
 import { useWorkflows } from '../../../api/workflows'
 import {
   useCancelScoreRun,
@@ -95,5 +97,13 @@ export function RunsSection({ knowledgeBaseId, entityCount }: RunsSectionProps) 
         />
       </Card>
     </>
+  )
+}
+
+/** Route binding for `/knowledge-bases/:kbId/runs`. */
+export function RunsRoute() {
+  const { knowledgeBase } = useOutletContext<WorkspaceOutletContext>()
+  return (
+    <RunsSection entityCount={knowledgeBase.entity_count} knowledgeBaseId={knowledgeBase.id} />
   )
 }
