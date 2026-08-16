@@ -295,12 +295,12 @@ export function DashboardPage() {
                   <div className="metric-row metric-row--stacked">
                     <strong>{leadAlert.entity_label}</strong>
                     <span className="flag-label">
-                      {flagLabelFor({ tags: leadAlert.tags, severity: leadAlert.severity })}
+                      {flagLabelFor({ tags: leadAlert.tags ?? [], severity: leadAlert.severity })}
                     </span>
                     <span className="metric-row__label">{leadAlert.reasoning}</span>
                   </div>
                   <div className="alert-row-card__meta">
-                    {leadAlert.tags.map((tag) => (
+                    {(leadAlert.tags ?? []).map((tag) => (
                       <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="info" />
                     ))}
                   </div>

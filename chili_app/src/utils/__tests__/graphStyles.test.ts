@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Relationship } from '../../types/api'
+import type { Entity, Relationship } from '../../types/api'
 import {
   CLUSTER_COLOR_PALETTE,
   GRAPH_LABEL_MAX_CHARS,
@@ -10,11 +10,13 @@ import {
   PREDICTED_LINK_DASH,
   clampFitZoom,
   clusterColorFor,
+  communityIdFor,
   graphNodeLabel,
   isPredictedRelationship,
   linkDistanceFor,
   nodeRadiusFor,
   predictedConfidenceFor,
+  riskScoreFor,
 } from '../graphStyles'
 
 function rel(metadata: Record<string, unknown>): Relationship {
@@ -124,5 +126,30 @@ describe('graphNodeLabel', () => {
 
   it('returns an empty label for a blank id rather than drawing nothing useful', () => {
     expect(graphNodeLabel('')).toBe('')
+  })
+})
+
+describe('entities without a metadata block', () => {
+  // `metadata` is optional on Entity — only `id` and `type` are required — so
+  // both readers have to treat an absent block as "no value recorded" rather
+  // than reaching into it.
+  function bareEntity(properties: Record<string, unknown> = {}): Entity {
+    return { id: 'e-1', type: 'provider', properties } as Entity
+  }
+
+  it('scores an entity with no metadata as zero risk instead of throwing', () => {
+    expect(riskScoreFor(bareEntity())).toBe(0)
+  })
+
+  it('still prefers a top-level risk_score when metadata is absent', () => {
+    expect(riskScoreFor(bareEntity({ risk_score: 0.5 }))).toBeCloseTo(0.5)
+  })
+
+  it('reports no community for an entity with no metadata', () => {
+    expect(communityIdFor(bareEntity())).toBeNull()
+  })
+
+  it('still reads a top-level community_id when metadata is absent', () => {
+    expect(communityIdFor(bareEntity({ community_id: 'c-7' }))).toBe('c-7')
   })
 })

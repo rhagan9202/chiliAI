@@ -47,6 +47,9 @@ export function ScoreRunStatusPanel({
   startReason = null,
 }: ScoreRunStatusPanelProps) {
   const run = detail?.run ?? null
+  // Read off the same optional `detail` as `run`, so the batch list does not
+  // depend on the compiler inferring that a non-null `run` implies one.
+  const batches = detail?.batches ?? []
   const status = run?.status ?? null
   const busy = loading || pendingAction !== null
 
@@ -114,9 +117,9 @@ export function ScoreRunStatusPanel({
             ) : null}
           </dl>
 
-          {detail.batches.length > 0 ? (
+          {batches.length > 0 ? (
             <ol className="score-run-panel__batches" aria-label="Score run batches">
-              {detail.batches.map((batch) => (
+              {batches.map((batch) => (
                 <li key={batch.id}>
                   <span>Batch {batch.batch_number}</span>
                   <Chip label={statusCopy[batch.status].label} tone={statusCopy[batch.status].tone} />

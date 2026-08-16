@@ -86,7 +86,13 @@ export function getAllowedPageIds(
     return [...enabledPages]
   }
 
-  return role.pages.filter((pageId) => enabledPages.has(pageId))
+  // A role that declares no `pages` list is unrestricted rather than locked
+  // out. `landing_page` is the only required field on a role, so a role must at
+  // minimum be able to reach the page it lands on — returning [] would refuse
+  // that page and leave the role unable to open anything, which no pack author
+  // writing `landing_page` without `pages` can have meant. This is client-side
+  // gating; the backend `require_role` guards remain the real boundary.
+  return (role.pages ?? [...enabledPages]).filter((pageId) => enabledPages.has(pageId))
 }
 
 export function getLandingRoute(

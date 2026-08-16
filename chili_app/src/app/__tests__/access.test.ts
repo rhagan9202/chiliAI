@@ -94,6 +94,27 @@ describe('getAllowedPageIds', () => {
     expect(getAllowedPageIds(features, 'viewer').sort()).toEqual(['alerts', 'dashboard'])
   })
 
+  it('treats a role that declares no pages as unrestricted, not locked out', () => {
+    // `pages` is optional on a role; only `landing_page` is required. A role
+    // that names a landing page it could not open would be incoherent, so an
+    // absent list means "no page restriction" rather than "no pages". Returning
+    // [] here would refuse every route for that role, including its own
+    // landing page.
+    const withPagelessRole: DomainFeatures = {
+      ...features,
+      roles: {
+        ...features.roles,
+        auditor: { landing_page: 'governance', permissions: [] },
+      },
+    }
+
+    expect(getAllowedPageIds(withPagelessRole, 'auditor').sort()).toEqual(
+      ['alerts', 'cases', 'configuration', 'dashboard', 'governance', 'investigation'],
+    )
+    // Still bounded by enabled_pages — unrestricted does not mean unbounded.
+    expect(getAllowedPageIds(withPagelessRole, 'auditor')).not.toContain('housing')
+  })
+
   it('returns intersection for analyst (no configuration)', () => {
     expect(getAllowedPageIds(features, 'analyst').sort()).toEqual(
       ['alerts', 'cases', 'dashboard', 'investigation'],

@@ -87,7 +87,7 @@ export function riskScoreFor(entity: Entity): number {
   if (typeof fromTop === 'number' && Number.isFinite(fromTop)) {
     return clamp01(fromTop)
   }
-  const fromMeta = entity.metadata['risk_score']
+  const fromMeta = entity.metadata?.['risk_score']
   if (typeof fromMeta === 'number' && Number.isFinite(fromMeta)) {
     return clamp01(fromMeta)
   }
@@ -101,7 +101,7 @@ export function sizeForRiskScore(score: number): number {
 
 export function communityIdFor(entity: Entity): string | null {
   const candidate =
-    entity.properties['community_id'] ?? entity.metadata['community_id']
+    entity.properties['community_id'] ?? entity.metadata?.['community_id']
   if (typeof candidate === 'string' && candidate.length > 0) return candidate
   if (typeof candidate === 'number' && Number.isFinite(candidate)) {
     return String(candidate)

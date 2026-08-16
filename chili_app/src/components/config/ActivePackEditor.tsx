@@ -192,14 +192,14 @@ export function ActivePackEditor() {
               // A file-level issue carries no path, and the buffer may have been
               // edited since it was validated — neither gets a dead control.
               const locatable =
-                issue.field !== '' && locateInYaml(editorValue, issue.loc) !== null
+                issue.field !== '' && locateInYaml(editorValue, issue.loc ?? []) !== null
               return (
                 <li className="config-manager__issue" key={`${issue.field}-${index}`}>
                   {issue.field ? (
                     locatable ? (
                       <button
                         className="config-manager__issue-field config-manager__issue-field--link"
-                        onClick={() => revealIssue(issue.loc)}
+                        onClick={() => revealIssue(issue.loc ?? [])}
                         title="Show this field in the editor"
                         type="button"
                       >

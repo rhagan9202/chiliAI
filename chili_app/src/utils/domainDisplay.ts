@@ -31,7 +31,10 @@ export function getEntitySubtitle(entity: RuntimeEntity, config: DomainConfig) {
   return propertyText(entity, fieldName)
 }
 
-export function propertyText(entity: RuntimeEntity, fieldName: string | undefined) {
+// `fieldName` accepts null as well as undefined: a pack's display_fields entry
+// may be present but explicitly null, which means the same thing as absent —
+// no configured field, so fall back to the caller's default.
+export function propertyText(entity: RuntimeEntity, fieldName: string | null | undefined) {
   if (!fieldName) {
     return null
   }

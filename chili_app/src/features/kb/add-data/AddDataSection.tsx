@@ -82,7 +82,9 @@ export function AddDataSection({ knowledgeBaseId, onSubmitted }: AddDataSectionP
     patchDraft,
     clearDraft,
     onSubmitted,
-    validation: domainConfigQuery.data?.validation,
+    // An explicitly null `validation` block means the same as an absent one:
+    // no pack-configured limits, so the flow applies its own defaults.
+    validation: domainConfigQuery.data?.validation ?? undefined,
     upload,
   })
   const recordsFlow = useRecordsFlow({

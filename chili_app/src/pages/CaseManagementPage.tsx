@@ -61,9 +61,12 @@ const appendIfPresent = (params: URLSearchParams, key: string, value: string | n
 
 function buildCaseCockpitUrl(detail: CaseDetailResponse, knowledgeBaseId: string): string | null {
   const alertsById = new Map(detail.alerts.map((alertItem) => [alertItem.id, alertItem]))
-  const expectedPrimaryAlertId = detail.case.originating_alert_id ?? detail.case.alert_ids[0] ?? null
+  // A case can carry no alert ids at all; that simply means there is no primary
+  // alert to build a cockpit link from, which the null returns below handle.
+  const alertIds = detail.case.alert_ids ?? []
+  const expectedPrimaryAlertId = detail.case.originating_alert_id ?? alertIds[0] ?? null
   const primaryAlert =
-    detail.case.alert_ids
+    alertIds
       .map((alertId) => alertsById.get(alertId))
       .find((alertItem) => typeof alertItem?.entity_id === 'string' && alertItem.entity_id.length > 0) ??
     detail.alerts.find((alertItem) => typeof alertItem.entity_id === 'string' && alertItem.entity_id.length > 0)
@@ -109,9 +112,9 @@ function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
             <div className="metric-row metric-row--stacked" key={pack.id}>
               <strong>{pack.id}</strong>
               <span className="metric-row__label">{pack.reasoning}</span>
-              {pack.provenance.length > 0 ? (
+              {(pack.provenance ?? []).length > 0 ? (
                 <ul className="metric-row__label">
-                  {pack.provenance.map((reference) => (
+                  {(pack.provenance ?? []).map((reference) => (
                     <li key={`${reference.reference_type}-${reference.reference_id}`}>
                       {reference.label}
                     </li>
@@ -288,7 +291,12 @@ export function CaseManagementPage() {
   const statusCounts = countBy(casesQuery.data.items, (caseItem) => caseItem.status)
 
   const unpromotedAlerts = alertsQuery.data.items.filter(
-    (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
+    // A case with no alert ids has promoted nothing, so it cannot be what makes
+    // an alert count as promoted.
+    (alert) =>
+      !casesQuery.data.items.some((existingCase) =>
+        (existingCase.alert_ids ?? []).includes(alert.id),
+      ),
   )
   const caseCockpitUrl = caseQuery.data ? buildCaseCockpitUrl(caseQuery.data, knowledgeBaseId) : null
 
@@ -482,7 +490,7 @@ export function CaseManagementPage() {
                       knowledgeBaseId,
                       source: 'case',
                       caseId: activeCaseId,
-                      alertId: caseQuery.data.case.alert_ids[0],
+                      alertId: caseQuery.data.case.alert_ids?.[0],
                       evidencePackId: caseQuery.data.case.evidence_pack_id,
                       question: DEFAULT_RISK_QUESTION,
                     }))
