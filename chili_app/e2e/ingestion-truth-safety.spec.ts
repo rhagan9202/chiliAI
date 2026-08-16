@@ -8,9 +8,11 @@
  * that fired on the first click. No API mocking — the whole spec drives the
  * real API, worker and stores.
  *
- * Serial: the scenarios share one knowledge base created by the first step,
- * and the last one deletes it. A second knowledge base is created for the
- * cross-KB isolation case and cleaned up in `afterAll`.
+ * Serial: the scenarios share one knowledge base created by the first step;
+ * the last test deletes it via the UI, and `afterAll` deletes it too if an
+ * earlier test failed (a serial failure skips the rest, including that last
+ * test). A second knowledge base is created for the cross-KB isolation case
+ * and is always cleaned up in `afterAll`.
  */
 import { readFileSync } from 'node:fs'
 
@@ -18,6 +20,7 @@ import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 import { deleteKnowledgeBase } from './helpers/deleteKb'
+import { waitForDocumentStatus } from './helpers/waitForDocument'
 
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
 
@@ -40,6 +43,9 @@ const otherKbName = `${kbName}-other`
 
 /** Id of the knowledge base created by the first test; every later test reads it. */
 let kbId = ''
+/** Set once the final test's own UI deletion of `kbId` succeeds, so `afterAll`
+ *  does not also try to delete an already-deleted knowledge base. */
+let kbDeleted = false
 /** Id of the second knowledge base created for the cross-KB isolation case. */
 let otherKbId: string | null = null
 
@@ -60,16 +66,27 @@ async function chooseSource(page: Page, label: 'Documents' | 'Structured Records
 test.describe.configure({ mode: 'serial' })
 
 test.describe('Knowledge Bases truth and safety', () => {
+  // The document pipeline runs on a shared worker that may be saturated by
+  // another spec's KB; every test in this file needs headroom, not just its
+  // own inner waits — this used to live on a shared `beforeEach` that every
+  // test inherited, and has to keep covering all of them, not just the ones
+  // that happen to touch a large upload.
+  test.beforeEach(() => {
+    test.setTimeout(300_000)
+  })
+
   test.afterAll(async () => {
+    // A failure earlier in this serial file skips the final (deleting) test,
+    // which is otherwise the only place `kbId` gets cleaned up.
+    if (kbId && !kbDeleted) {
+      await deleteKnowledgeBase(API, kbId)
+    }
     if (otherKbId) {
       await deleteKnowledgeBase(API, otherKbId)
     }
   })
 
   test('a disabled primary action looks disabled and names what is missing', async ({ page }) => {
-    // The document pipeline runs on a shared worker that may be saturated by
-    // another spec's KB; the whole test needs headroom, not just its waits.
-    test.setTimeout(300_000)
     await page.goto('/knowledge-bases')
     await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
@@ -135,8 +152,6 @@ test.describe('Knowledge Bases truth and safety', () => {
     page,
     request,
   }) => {
-    test.setTimeout(300_000)
-
     // Created directly through the API: this case is about draft isolation,
     // not the create flow (already covered above), and creating it up front
     // means kb1's own /add is never mid-stage while we go make a second KB.
@@ -157,25 +172,52 @@ test.describe('Knowledge Bases truth and safety', () => {
     const staged = page.getByRole('list', { name: 'Selected document files' })
     await expect(staged.getByText('01_single_claim_complete.json', { exact: true })).toBeVisible()
 
+    const picker = page.getByLabel('Active knowledge base')
+    const discardDialog = page.getByRole('dialog', { name: /discard staged files/i })
+
     // Switching knowledge bases mid-stage is a real in-app navigation, and the
     // workspace guards it exactly like any other departure from Add data: it
     // asks first rather than silently discarding. Cancelling proves nothing
-    // is lost by the mere attempt to switch.
-    const picker = page.getByLabel('Active knowledge base')
+    // is lost by the mere attempt to switch — kb1's draft is untouched.
     await picker.selectOption(otherKbId as string)
-    const discardDialog = page.getByRole('dialog', { name: /discard staged files/i })
     await expect(discardDialog).toBeVisible()
     await discardDialog.getByRole('button', { name: 'Keep staging' }).click()
     await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${kbId}/add$`))
     await expect(staged.getByText('01_single_claim_complete.json', { exact: true })).toBeVisible()
 
-    // The route itself proves isolation, not just the in-memory draft: a
-    // fresh navigation to the other knowledge base's Add data starts with an
-    // empty stage, because drafts are keyed per knowledge base rather than
-    // living in one shared slot — the leak this regression guards against.
-    await page.goto(`/knowledge-bases/${otherKbId}/add`)
+    // Now actually cross over: confirming the discard is a *soft*, in-app
+    // navigation (the blocker's own `blocker.proceed?.()`), not a hard reload
+    // — the JS session and its Zustand store stay alive the whole time. A
+    // hard `page.goto` would prove nothing here, because it wipes the entire
+    // store (every knowledge base's draft, not just kb1's), so kb2 starting
+    // empty would be true under a reintroduced shared-slot bug just as much
+    // as under correct per-KB keying. Only a live, in-session crossover can
+    // tell those apart.
+    await picker.selectOption(otherKbId as string)
+    await expect(discardDialog).toBeVisible()
+    await discardDialog.getByRole('button', { name: 'Discard' }).click()
     await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${otherKbId}/add$`))
     await expect(staged.getByText('01_single_claim_complete.json', { exact: true })).toHaveCount(0)
+
+    // Stage a distinctly-named file under kb2, in the same live session.
+    await chooseSource(page, 'Documents')
+    await page.getByLabel('Document files', { exact: true }).setInputFiles({
+      name: '06_zero_entity_resume_like.txt',
+      mimeType: 'text/plain',
+      buffer: ZERO_ENTITY,
+    })
+    await expect(staged.getByText('06_zero_entity_resume_like.txt', { exact: true })).toBeVisible()
+
+    // Cross back to kb1 (kb2 is staged now too, so this also prompts).
+    await picker.selectOption(kbId)
+    await expect(discardDialog).toBeVisible()
+    await discardDialog.getByRole('button', { name: 'Discard' }).click()
+    await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${kbId}/add$`))
+
+    // The leak this regression guards against: kb1's stage must never show
+    // kb2's filename. Proven without the store ever being wiped, so this
+    // discriminates correct per-KB keying from a reintroduced shared slot.
+    await expect(staged.getByText('06_zero_entity_resume_like.txt', { exact: true })).toHaveCount(0)
   })
 
   test('a submitted run and its receipt survive a page reload', async ({ page }) => {
@@ -218,12 +260,20 @@ test.describe('Knowledge Bases truth and safety', () => {
   test('the inventory tells the truth about a document that produced no entities', async ({
     page,
   }) => {
+    // Confirm the real condition against the API first, then reload for a
+    // guaranteed-fresh read: the already-mounted Data page's document query
+    // has no polling interval, and the backend reliably reaches
+    // `extracted_empty` within a couple of seconds on the real stack
+    // regardless of whether an already-open page's query happens to reflect
+    // it — see waitForDocument.ts.
+    await waitForDocumentStatus(API, kbId, '06_zero_entity_resume_like.txt', ['extracted_empty'])
+
     await page.goto(`/knowledge-bases/${kbId}/data`)
 
     const zeroEntityRow = page.getByRole('button', { name: /06_zero_entity_resume_like\.txt/ })
-    await expect(zeroEntityRow).toBeVisible({ timeout: 120_000 })
+    await expect(zeroEntityRow).toBeVisible()
     // Used to render a green "ready" chip for a document that contributed nothing.
-    await expect(zeroEntityRow.getByText('No entities')).toBeVisible({ timeout: 120_000 })
+    await expect(zeroEntityRow.getByText('No entities')).toBeVisible()
 
     await page.getByLabel('Filter documents by status').selectOption('extracted_empty')
     const rows = page.locator('.knowledge-base-document-row')
@@ -301,5 +351,6 @@ test.describe('Knowledge Bases truth and safety', () => {
     await expect(kbList(page).getByText(kbName, { exact: true })).toHaveCount(0, {
       timeout: 60_000,
     })
+    kbDeleted = true
   })
 })

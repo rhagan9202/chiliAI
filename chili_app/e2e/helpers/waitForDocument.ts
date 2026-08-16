@@ -1,15 +1,18 @@
 /**
- * Poll a knowledge base's document list for one document's warnings to land,
- * against the real API rather than the DOM.
+ * Poll a knowledge base's document list for a real backend condition on one
+ * document, rather than a bare DOM timeout.
  *
- * `warning_count`/`warning_reasons` land as soon as the parse stage finishes
- * (confirmed against the real stack: a plain CSV upload reaches them in ~2s
- * and they never change afterwards, independent of whatever the document's
- * broader lifecycle status is doing) — waiting for those fields directly is
- * both faster and closer to the actual condition the UI's warning chip
- * depends on than waiting for the document to reach some particular
- * `current_status`. Polling the API also fails immediately when the document
- * reaches `failed`, surfacing `last_error` instead of a bare DOM timeout.
+ * The already-mounted Data page's document query
+ * (`useKnowledgeBaseDocuments`) has no polling interval — it refreshes only
+ * via the realtime SSE stream's coarse, KB-status-level invalidation or a
+ * fresh fetch. Confirmed twice against the real stack (a plain CSV upload,
+ * and a two-file documents submission that includes a zero-entity document):
+ * the backend finishes and the API reflects it correctly within ~2 seconds
+ * on an idle stack, independent of whatever an already-open page's query
+ * happens to be showing. Waiting on the API directly, rather than the DOM,
+ * both fails fast (with `last_error`) if a document genuinely reaches
+ * `failed`, and avoids the open question of exactly when/whether the
+ * realtime stream's invalidation lands for an already-mounted page.
  */
 type DocumentSnapshot = {
   filename: string
@@ -20,11 +23,13 @@ type DocumentSnapshot = {
   last_error?: string | null
 }
 
-export async function waitForDocumentWarnings(
+async function pollDocument(
   api: string,
   knowledgeBaseId: string,
   filename: string,
-  timeoutMs = 120_000,
+  timeoutMs: number,
+  isDone: (doc: DocumentSnapshot) => boolean,
+  describeCondition: string,
 ): Promise<DocumentSnapshot> {
   const deadline = Date.now() + timeoutMs
   let last: DocumentSnapshot | null = null
@@ -45,7 +50,7 @@ export async function waitForDocumentWarnings(
             }`,
           )
         }
-        if ((doc.warning_count ?? 0) > 0) {
+        if (isDone(doc)) {
           return doc
         }
       }
@@ -54,9 +59,50 @@ export async function waitForDocumentWarnings(
   }
 
   throw new Error(
-    `document "${filename}" in knowledge base ${knowledgeBaseId} reported no warnings within ` +
-      `${timeoutMs}ms (last seen: ${JSON.stringify(last)}). The worker is a single shared ` +
+    `document "${filename}" in knowledge base ${knowledgeBaseId} did not reach ${describeCondition} ` +
+      `within ${timeoutMs}ms (last seen: ${JSON.stringify(last)}). The worker is a single shared ` +
       'consumer, so this can mean it is still queued behind other work rather than stuck — check ' +
       '`docker compose logs worker` for the real state before assuming a regression.',
+  )
+}
+
+/**
+ * `warning_count`/`warning_reasons` land as soon as the parse stage
+ * finishes, independent of whatever `current_status` the document's broader
+ * lifecycle is otherwise reporting — waiting for those fields directly is
+ * both faster and closer to the actual condition the UI's warning chip
+ * depends on.
+ */
+export function waitForDocumentWarnings(
+  api: string,
+  knowledgeBaseId: string,
+  filename: string,
+  timeoutMs = 120_000,
+): Promise<DocumentSnapshot> {
+  return pollDocument(
+    api,
+    knowledgeBaseId,
+    filename,
+    timeoutMs,
+    (doc) => (doc.warning_count ?? 0) > 0,
+    'a nonzero warning_count',
+  )
+}
+
+/** Waits for a document's `current_status` to reach one of `terminalStatuses`. */
+export function waitForDocumentStatus(
+  api: string,
+  knowledgeBaseId: string,
+  filename: string,
+  terminalStatuses: readonly string[],
+  timeoutMs = 120_000,
+): Promise<DocumentSnapshot> {
+  return pollDocument(
+    api,
+    knowledgeBaseId,
+    filename,
+    timeoutMs,
+    (doc) => terminalStatuses.includes(doc.current_status ?? doc.status ?? 'pending'),
+    `one of [${terminalStatuses.join(', ')}]`,
   )
 }
