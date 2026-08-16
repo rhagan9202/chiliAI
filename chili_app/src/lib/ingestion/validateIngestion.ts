@@ -14,7 +14,7 @@ function warning(id: string, message: string): ValidationIssue {
   return { id, source: 'client', severity: 'warning', message }
 }
 
-export function validateRequiredWizardState({
+export function validateIngestionPrerequisites({
   knowledgeBaseId,
   sourceType,
   feedName,

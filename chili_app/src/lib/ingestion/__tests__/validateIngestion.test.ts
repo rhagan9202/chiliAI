@@ -6,7 +6,7 @@ import {
   validateDocumentFiles,
   validateRecordFile,
   validateRecordRows,
-  validateRequiredWizardState,
+  validateIngestionPrerequisites,
 } from '../validateIngestion'
 
 const feed: RecordFeedConfig = {
@@ -47,7 +47,7 @@ const validationConfig: ValidationConfig = {
 
 describe('ingestion validation', () => {
   it('requires selected knowledge base and source type', () => {
-    const issues = validateRequiredWizardState({
+    const issues = validateIngestionPrerequisites({
       knowledgeBaseId: null,
       sourceType: null,
       feedName: null,
@@ -62,7 +62,7 @@ describe('ingestion validation', () => {
 
   it('requires feed name only for structured records', () => {
     expect(
-      validateRequiredWizardState({
+      validateIngestionPrerequisites({
         knowledgeBaseId: 'kb-1',
         sourceType: 'documents',
         feedName: null,
@@ -70,7 +70,7 @@ describe('ingestion validation', () => {
     ).toEqual([])
 
     expect(
-      validateRequiredWizardState({
+      validateIngestionPrerequisites({
         knowledgeBaseId: 'kb-1',
         sourceType: 'records',
         feedName: null,

@@ -1148,7 +1148,7 @@ chili_app/src/
 │   ├── appStore.ts             # Sidebar, selected entity, active KB
 │   ├── chatStore.ts            # Local chat/session state
 │   ├── uiStore.ts              # Panel/sidebar visibility, realtime status, role
-│   └── ingestionStudioStore.ts # Staging drafts keyed by knowledge base id
+│   └── ingestionDraftStore.ts  # Staging drafts keyed by knowledge base id
 ├── pages/
 │   ├── DashboardPage.tsx
 │   ├── KnowledgeBaseManagerPage.tsx

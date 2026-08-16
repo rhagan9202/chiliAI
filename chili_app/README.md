@@ -33,7 +33,7 @@ Receipts ride the workflow run they start (`WorkflowRunResponse.receipt`), so
 the run timeline hydrates entirely from `GET /workflows`: counts survive a
 reload and are visible to readers other than the tab that submitted them.
 Staging drafts are the opposite — per-tab, and **keyed by knowledge base**
-(`ingestionStudioStore.draftsByKb`), so files staged for one corpus can never
+(`ingestionDraftStore.draftsByKb`), so files staged for one corpus can never
 submit into another; a successful submission clears that corpus's draft.
 
 The document inventory renders the durable lifecycle (`current_status`), not

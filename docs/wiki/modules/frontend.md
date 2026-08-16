@@ -53,7 +53,7 @@ verification date.
 | `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAcknowledgeAlert`, `useCases`, `usePromoteAlertToCase`, `useEvidencePack`, `useInvestigationNeighborhood` (real depth-1 subgraph for the evidence expansion, since U2), `usePolicyItems` (policy chips, since U2) | none |
 | `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries`, `useGnnClusters` (cluster overlay/membership), `usePolicyItems` (via `EntityPolicyPanel`, POLICY tab) | none — KB id and entity id are URL-driven (`?kb=`, `:entityId`), not store-backed, despite the "Drift note" below predating this |
 | `CaseManagementPage.tsx` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` | `uiStore` |
-| `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionStudioStore` | `ingestionStudioStore` — initial selection honors a `?kb=` deep-link (since 2026-07-24), matching `AlertFeedPage`/`PolicyIntelligencePage`/`InvestigationWorkbenchPage`'s convention; falls back to the existing in-scope auto-select if the id isn't in the visible KB list |
+| `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionDraftStore` | `ingestionDraftStore` — initial selection honors a `?kb=` deep-link (since 2026-07-24), matching `AlertFeedPage`/`PolicyIntelligencePage`/`InvestigationWorkbenchPage`'s convention; falls back to the existing in-scope auto-select if the id isn't in the visible KB list |
 | `PolicyIntelligencePage.tsx` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` | — |
 | `RagChatPage.tsx` | `/rag-chat` | `createConversation`, `sendMessage`, `streamMessage` | `chatStore`, `appStore` |
 | `ConfigurationPage.tsx` | `/configuration` | `useDomainConfig`, `getDomainConfigSchema` | — |
@@ -141,22 +141,32 @@ interface ChatState {
 }
 ```
 
-### `ingestionStudioStore.ts` — `useIngestionStudioStore`
+### `ingestionDraftStore.ts` — `useIngestionDraftStore`
+
+Staging work per knowledge base, keyed by id — no page-chrome state lives
+here. The six-step ingestion wizard stepper (and the `currentStep` /
+`IngestionStepId` state that drove it) was deleted in the phase-2 IA split:
+stages are routes now, so the URL says where the analyst is, not a store
+field. Backend submission errors are read directly off the mutation that
+produced them (`uploadMutation.error`, `uploadRecordFileMutation.error`,
+`pushRecordsMutation.error`) rather than stored, so they clear on retry
+without anyone remembering to clear them; document/row validation
+(`validateDocumentFiles`, `validateRecordRows`) is a memoized derivation of
+the staged content, not stored state either.
 
 ```typescript
-type IngestionStudioState = {
-  currentStep: IngestionStepId       // 'knowledge-base' | ... (from lib/ingestion/types.ts)
+type IngestionDraft = {
   sourceType: IngestionSourceType | null
   selectedFeedName: string | null
   pendingFiles: File[]
   pendingRecordFile: File | null
   parsedRows: Record<string, unknown>[]
-  validationIssues: ValidationIssue[]
-  receipts: IngestionReceiptEntry[]
-  activeTimelineEntryId: string | null
-  // Actions: setCurrentStep, setSourceType, setSelectedFeedName, setPendingFiles,
-  //          setPendingRecordFile, setParsedRows, setValidationIssues, addValidationIssues,
-  //          addReceipt, setActiveTimelineEntryId, reset
+  parseIssues: ValidationIssue[]      // issues produced by the parse itself
+}
+
+type IngestionDraftState = {
+  draftsByKb: Record<string, IngestionDraft>
+  // Actions: updateDraft(kbId, patch), clearDraft(kbId), reset()
 }
 ```
 

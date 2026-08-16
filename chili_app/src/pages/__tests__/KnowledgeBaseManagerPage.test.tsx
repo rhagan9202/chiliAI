@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useIngestionStudioStore } from '../../stores/ingestionStudioStore'
+import { useIngestionDraftStore } from '../../stores/ingestionDraftStore'
 import { KnowledgeBaseManagerPage } from '../KnowledgeBaseManagerPage'
 
 const routerMocks = vi.hoisted(() => ({
@@ -600,22 +600,12 @@ async function parseValidRecords() {
   await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
 }
 
-function getStepperItem(stepLabel: string): HTMLLIElement {
-  const item = screen
-    .getAllByRole('listitem')
-    .find((li) => within(li).queryByText(stepLabel))
-  if (!item) {
-    throw new Error(`Stepper item with label "${stepLabel}" not found`)
-  }
-  return item as HTMLLIElement
-}
-
 describe('KnowledgeBaseManagerPage ingestion', () => {
   const originalFetch = globalThis.fetch
   const originalXhr = globalThis.XMLHttpRequest
 
   beforeEach(() => {
-    useIngestionStudioStore.getState().reset()
+    useIngestionDraftStore.getState().reset()
     routerMocks.navigate.mockReset()
     installFetchMock()
   })
@@ -646,7 +636,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.getByText('Step 2 — Review and run ingestion')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeInTheDocument()
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
-    expect(screen.getByText('Knowledge base')).toBeInTheDocument()
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
   })
 
@@ -912,17 +901,23 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.queryByText('No document selected')).not.toBeInTheDocument()
     expect(screen.queryByText('Document preview')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stage a source' })).toBeInTheDocument()
-    // Hiding the timeline must not leave "Watch runs" pointing at nothing.
-    expect(screen.getByRole('button', { name: 'Watch runs' })).toBeDisabled()
   })
 
   it('sends the empty-inventory action back to the staging step (UXA-305)', async () => {
+    // Stages are on one page for now (routing lands in a later task): the
+    // empty-inventory action's only observable effect is scrolling the
+    // staging section into view. jsdom does not implement scrollIntoView, so
+    // the component guards the call — stub it in to observe the guard passing.
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
     installFetchMock({ emptyInventory: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Stage a source' }))
 
-    expect(useIngestionStudioStore.getState().currentStep).toBe('source')
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+
+    delete (HTMLElement.prototype as { scrollIntoView?: () => void }).scrollIntoView
   })
 
   it('keeps the run timeline once a knowledge base has documents (UXA-305)', async () => {
@@ -933,7 +928,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(await screen.findByText('existing-policy.txt')).toBeInTheDocument()
     expect(screen.getByText('No runs yet')).toBeInTheDocument()
     expect(screen.getByText('Document preview')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Watch runs' })).toBeEnabled()
   })
 
   it('starts score-all without requiring client-side entity ids', async () => {
@@ -1088,7 +1082,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /watch runs/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /investigate entities/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /review alerts/i })).toBeInTheDocument()
   })
@@ -1282,44 +1275,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     })
   })
 
-  it('renders the Validate stepper item as idle on cold load (no error chip, no complete chip)', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-
-    const validateItem = getStepperItem('Validate')
-    expect(within(validateItem).queryByText('Needs attention')).not.toBeInTheDocument()
-    expect(within(validateItem).queryByText('Complete')).not.toBeInTheDocument()
-  })
-
-  it('flips Validate to Needs attention when an empty document file is queued', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-    await userEvent.upload(
-      screen.getByLabelText('Document files'),
-      new File([''], 'empty.txt', { type: 'text/plain' }),
-    )
-
-    const validateItem = getStepperItem('Validate')
-    expect(within(validateItem).getByText('Needs attention')).toBeInTheDocument()
-  })
-
-  it('marks Validate as Complete when a clean document file is queued', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-    await userEvent.upload(
-      screen.getByLabelText('Document files'),
-      new File(['hello'], 'policy.txt', { type: 'text/plain' }),
-    )
-
-    const validateItem = getStepperItem('Validate')
-    expect(within(validateItem).getByText('Complete')).toBeInTheDocument()
-  })
-
   it('gates knowledge base deletion behind a typed-name confirmation', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
@@ -1357,16 +1312,5 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(deleteRequests()).toHaveLength(0)
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
-  })
-
-  it('keeps Validate idle after Documents source is picked but no files have been uploaded', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-
-    const validateItem = getStepperItem('Validate')
-    expect(within(validateItem).queryByText('Needs attention')).not.toBeInTheDocument()
-    expect(within(validateItem).queryByText('Complete')).not.toBeInTheDocument()
   })
 })

@@ -228,7 +228,7 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 - `chili_app/src/stores/appStore.ts:3-20` defines `sidebarOpen`, `selectedEntityId`, `activeKnowledgeBaseId`, plus `toggleSidebar` / `selectEntity` / `setActiveKnowledgeBase`.
 - `chili_app/src/stores/uiStore.ts:3-32` re-defines `sidebarCollapsed` (inverse semantic), `selectedEntityId`, `selectedRole`, `aiPanelOpen`, realtime status — with different setters.
 - Investigation reads KB from the URL via `searchParams.get('kb')` (`InvestigationWorkbenchPage.tsx:42`) — neither store is used.
-- `chatStore.ts` and `ingestionStudioStore.ts` exist separately and are scoped correctly.
+- `chatStore.ts` and `ingestionDraftStore.ts` exist separately and are scoped correctly.
 
 ### Acceptance Criteria
 - [ ] A single decision is recorded: either `appStore` is deleted (URL is source of truth for KB + entity, `uiStore` owns chrome) or the two are merged into one store with documented semantics.
@@ -390,7 +390,6 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 - `chili_app/src/components/ui/Tabs.tsx` (modify)
 - `chili_app/src/components/ui/FilterBar.tsx` (modify)
 - `chili_app/src/components/knowledgebase/KbTable.tsx` (modify)
-- `chili_app/src/components/ingestion/IngestionStepper.tsx` (modify)
 - `chili_app/src/components/common/ConfirmDialog.tsx` (modify)
 - `chili_app/src/hooks/useRovingTabindex.ts` (new)
 - `chili_app/src/hooks/useFocusTrap.ts` (new)
