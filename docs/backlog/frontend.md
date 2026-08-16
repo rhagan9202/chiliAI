@@ -449,7 +449,7 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 
 ### Current State
 - No `react-i18next` / `formatjs` / `lingui` dependency in `chili_app/package.json`.
-- Every label/CTA in `chili_app/src/pages/*.tsx` is a hardcoded English literal — e.g. `KnowledgeBaseManagerPage.tsx:269` `"Guide documents and config-defined structured records…"`.
+- Every label/CTA in `chili_app/src/pages/*.tsx` (and the section components under `chili_app/src/features/kb/`) is a hardcoded English literal — e.g. `KnowledgeBaseLibraryPage.tsx` `"Pick a knowledge base to work in, or create one."`.
 - Domain-config display labels already flow through `utils/domainDisplay.ts` (those are not in scope here).
 
 ### Acceptance Criteria
@@ -609,7 +609,7 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 ### Current State
 - `useKnowledgeBases`, `useAlerts`, `useCases`, `useWorkflows` all return a single page-shaped payload.
 - No page-component honors `page.total_items` or fetches subsequent pages.
-- `chili_app/src/pages/AlertFeedPage.tsx:39-47` and `chili_app/src/pages/KnowledgeBaseManagerPage.tsx:48-58` filter and slice in-memory only.
+- `chili_app/src/pages/AlertFeedPage.tsx:39-47` and `chili_app/src/pages/KnowledgeBaseLibraryPage.tsx`'s domain-scope filter (and `chili_app/src/features/kb/data/DataSection.tsx`'s document inventory) filter and slice in-memory only.
 
 ### Acceptance Criteria
 - [ ] `useAlerts`, `useCases`, `useWorkflows`, `useKnowledgeBases` are converted to `useInfiniteQuery` against cursor-shaped endpoints (cursor contract owned by `api.10`–`api.12`).
@@ -631,7 +631,8 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 - `chili_app/src/api/knowledgebases.ts` (modify)
 - `chili_app/src/pages/AlertFeedPage.tsx` (modify)
 - `chili_app/src/pages/CaseManagementPage.tsx` (modify)
-- `chili_app/src/pages/KnowledgeBaseManagerPage.tsx` (modify)
+- `chili_app/src/pages/KnowledgeBaseLibraryPage.tsx` (modify)
+- `chili_app/src/features/kb/data/DataSection.tsx` (modify — document inventory pagination; the API supports it, the UI does not yet)
 - `chili_app/src/hooks/useInfiniteScroll.ts` (new)
 
 ---
@@ -769,10 +770,10 @@ _Re-verified 2026-08-08._ A Config Manager exists at `/configuration` — `Confi
 
 ### Current State
 - `chili_app/e2e/` ships 11 specs covering happy-path renders (login redirect, smoke, knowledge-base-list, investigation render, RAG chat, etc.).
-- Missing flows per `chili_app/README.md:108-121`: ingestion-studio document upload + records submit, evidence-pack drill-down, configuration save, SSE reconnect, role-based redirect to landing, 401 logout recovery.
+- Missing flows per `chili_app/README.md`'s "Implemented Routes"/E2E tables: knowledge-bases workspace document upload + records submit (now substantially covered by `ingestion-records.spec.ts`, `ingestion-document-warnings.spec.ts`, `ingestion-truth-safety.spec.ts`, and `kb-workspace-navigation.spec.ts`), evidence-pack drill-down, configuration save, SSE reconnect, role-based redirect to landing, 401 logout recovery.
 
 ### Acceptance Criteria
-- [ ] New specs added covering: (a) ingestion-studio document upload happy path, (b) records submit happy + validation-failure path, (c) configuration save (covered with frontend.03), (d) SSE reconnect (covered with frontend.07), (e) role-based redirect, (f) 401 logout recovery.
+- [ ] New specs added covering: (a) knowledge-bases workspace document upload happy path, (b) records submit happy + validation-failure path, (c) configuration save (covered with frontend.03), (d) SSE reconnect (covered with frontend.07), (e) role-based redirect, (f) 401 logout recovery.
 - [ ] Backend fixtures/seed scripts owned by `_cicd.06` make each flow deterministic.
 - [ ] All new specs pass locally and in CI.
 - [ ] Playwright reporter uploads traces on failure.
@@ -1152,3 +1153,69 @@ a code defect: adding `policy` to `enabled_pages`/role `pages` in
 - `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (modify — `enabled_pages`/roles, if surfaced)
 - `chili_app/e2e/demo-walkthrough.spec.ts` (modify — sidebar navigation, if surfaced)
 - `docs/demo/README.md` (modify — posture note, if not surfaced)
+
+---
+
+## Story frontend.31: Close the document-inventory staleness window (polling or document-level SSE invalidation)
+
+**ID:** frontend.31
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+
+**As a** fraud analyst watching a knowledge base ingest,
+**I need** the Data section's document inventory to reliably show a document reaching a terminal status without a manual reload,
+**so that** I don't have to guess whether ingestion is still running or the UI just hasn't noticed it finished.
+
+### Current State
+Found during the phase-2 ingestion IA split's e2e verification pass (task 13).
+`useKnowledgeBaseDocuments` (`chili_app/src/api/knowledgebases.ts`) is a plain
+`useQuery` with no `refetchInterval` — it only refetches on cache invalidation
+or an explicit user action. Realtime invalidation
+(`chili_app/src/api/realtime.ts`) compares `RealtimeSnapshotResponse
+.knowledge_base_statuses` between SSE ticks and invalidates
+`knowledgeBaseDocumentsQueryKey(knowledgeBaseId)` only when the **knowledge
+base's own status** changes — there is no per-document signal, so a document
+that finishes parsing/extraction without moving the KB's own status (the KB
+was already `active`/`ready` before and after) can sit stale in the inventory
+until something else triggers a refetch. `chili_app/e2e/ingestion-records.spec.ts`
+and `chili_app/e2e/ingestion-document-warnings.spec.ts` both had to poll
+`GET /knowledgebases/{id}/documents` directly and reload the page to observe
+terminal document state deterministically, rather than asserting against the
+mounted UI's own refetch behavior — a workaround for this gap, not proof it
+doesn't exist.
+
+This is an architecture decision, not a one-line fix: either add a bounded
+`refetchInterval` while a knowledge base has non-terminal documents (poll
+under a stable identifier — matches the pattern already gating retry/backoff
+for uploads), or extend the realtime snapshot/SSE payload with a document- or
+run-level signal so `realtime.ts` can invalidate on the actual event instead
+of a KB-status proxy. The second is the more correct fix but touches the
+backend snapshot contract (`RealtimeSnapshotResponse`); the first is
+frontend-only and bounds the staleness window without a contract change.
+
+### Acceptance Criteria
+- [ ] A documented staleness bound exists for the document inventory (e.g. "a
+      terminal status appears within N seconds without a reload") and is
+      enforced by either polling or a finer-grained invalidation signal.
+- [ ] `chili_app/e2e/ingestion-records.spec.ts` and
+      `chili_app/e2e/ingestion-document-warnings.spec.ts` are simplified to
+      assert against the mounted UI's own refetch rather than polling the API
+      directly and reloading, once the gap is closed.
+- [ ] No regression to the "bounded" invalidation principle in
+      `chili_app/README.md`'s realtime section — this story must not
+      reintroduce broad invalidation on every heartbeat.
+
+### Verification
+- `cd chili_app && npm run test:run`
+- `cd chili_app && npm run test:e2e -- ingestion-records ingestion-document-warnings`
+- Manual: `make dev`, upload a document that produces a warning, watch the Data
+  section without reloading, confirm the terminal status/warning chip appears
+  within the documented bound.
+
+### Code touch points
+- `chili_app/src/api/knowledgebases.ts` (modify — `useKnowledgeBaseDocuments`)
+- `chili_app/src/api/realtime.ts` (modify, if the SSE-signal approach is chosen)
+- `backend/api/contracts.py` (`RealtimeSnapshotResponse`, modify, if the SSE-signal approach is chosen)
+- `chili_app/e2e/ingestion-records.spec.ts`, `chili_app/e2e/ingestion-document-warnings.spec.ts` (modify — drop the polling workaround once closed)

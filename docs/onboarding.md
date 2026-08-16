@@ -679,7 +679,8 @@ The frontend lives at `chili_app/src/` and already has the main workbench pages,
 chili_app/src/
   pages/
     DashboardPage.tsx
-    KnowledgeBaseManagerPage.tsx
+    KnowledgeBaseLibraryPage.tsx
+    KnowledgeBaseWorkspacePage.tsx
     AlertFeedPage.tsx
     InvestigationWorkbenchPage.tsx
     RagChatPage.tsx

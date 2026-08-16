@@ -691,7 +691,7 @@ The **logs + counters** subset of this story's scope shipped as BL-043 — the O
 - `agent/status_projection.py::project_document_status`, called from the worker's `_dispatch_event` (`agent/coordinator.py`), is the event consumer — it subscribes to `DocumentsUploadedEvent` / `DocumentsParsedEvent` / `DocumentsFailedEvent` / `DocumentsExtractionWarningEvent` (the last one also carries the `EXTRACTED_EMPTY` transition; there is no separate `DocumentDeletedEvent` consumer — deletes are handled synchronously via `delete_by_document`/`delete_by_kb`, not projected from an event).
 - `GET /knowledgebases/{kb_id}/documents` returns `current_status`, `last_error`, `dropped_entity_count`, `dropped_relationship_count`, `drop_sample_reasons` per document and supports `?status=` filtering.
 - Out-of-order/redelivered events are no-ops per the `STATUS_RANK` monotonicity guard (unit-tested on both adapters, including the FAILED-redelivery-refreshes-`last_error` edge case).
-- Frontend Ingestion Studio consumption remains **out of scope** (unchanged from the original cross-edge note) — tracked as a follow-on FE story.
+- Frontend consumption was out of scope for this story at the time; it has since landed — `chili_app/src/features/kb/data/DocumentInventory.tsx` renders `current_status`, `last_error`, and `drop_sample_reasons`, and the Data section's status filter queries `?status=`.
 
 ### Acceptance Criteria
 - [x] `SourceDocumentStatusStore` protocol plus in-memory and Postgres adapters (Postgres via migration `0009_document_status`).
@@ -700,7 +700,7 @@ The **logs + counters** subset of this story's scope shipped as BL-043 — the O
 - [x] `GET /knowledgebases/{kb_id}/documents` returns durable `current_status`/`last_error`/drop counts/`drop_sample_reasons` per document; supports filtering by status.
 - [x] Out-of-order events (e.g. a stale `parsing` event arriving after `failed`) are ignored, not regressed.
 
-Frontend Ingestion Studio consumption (`chili_app/src/pages/KnowledgeBaseManagerPage.tsx`) of the new endpoint is a cross-edge to `frontend.md`, not part of this story's AC — explicitly out of scope for BL-041; tracked as a follow-on FE story.
+Frontend consumption of the new endpoint was a cross-edge to `frontend.md`, not part of this story's AC — explicitly out of scope for BL-041 at the time. It has since landed in `chili_app/src/features/kb/data/DocumentInventory.tsx` (the knowledge-bases workspace's Data section), which was `chili_app/src/pages/KnowledgeBaseManagerPage.tsx` when this story closed; that page no longer exists.
 
 ### Verification
 - `backend/.venv/bin/pytest --cov -m "not integration"` green (ingestion/agent/api/knowledgebases/database packages); `pyright` 0 errors; `ruff check` clean.

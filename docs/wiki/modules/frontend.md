@@ -29,8 +29,13 @@ React 19 SPA serving as the analyst workbench. Renders navigation and feature ga
 | `/investigation` | `InvestigationWorkbenchPage` | |
 | `/investigation/:entityId` | `InvestigationWorkbenchPage` | Entity preselected |
 | `/cases` | `CaseManagementPage` | |
-| `/knowledge-bases` | `KnowledgeBaseManagerPage` | |
-| `/knowledgebases` | → `/knowledge-bases` | Back-compat redirect |
+| `/knowledge-bases` | `KnowledgeBaseLibraryPage` | Library — KB cards + create panel |
+| `/knowledge-bases/:kbId` | `KnowledgeBaseWorkspacePage` → `OverviewSection` | Workspace root (index route, no path segment) |
+| `/knowledge-bases/:kbId/add` | `KnowledgeBaseWorkspacePage` → `AddDataSection` | |
+| `/knowledge-bases/:kbId/data` | `KnowledgeBaseWorkspacePage` → `DataSection` | Focused document in `?document=` |
+| `/knowledge-bases/:kbId/runs` | `KnowledgeBaseWorkspacePage` → `RunsSection` | |
+| `/knowledge-bases/:kbId/settings` | `KnowledgeBaseWorkspacePage` → `SettingsSection` | |
+| `/knowledgebases` | → `/knowledge-bases` (query string preserved) | `LegacyKnowledgeBasesRedirect`; `?kb=<id>[&document=<id>[&chunk=<n>]]` resolves further, into the matching workspace address |
 | `/policy` | `PolicyIntelligencePage` | |
 | `/rag-chat` | `RagChatPage` | |
 | `/configuration` | `ConfigurationPage` | |
@@ -53,7 +58,8 @@ verification date.
 | `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAcknowledgeAlert`, `useCases`, `usePromoteAlertToCase`, `useEvidencePack`, `useInvestigationNeighborhood` (real depth-1 subgraph for the evidence expansion, since U2), `usePolicyItems` (policy chips, since U2) | none |
 | `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries`, `useGnnClusters` (cluster overlay/membership), `usePolicyItems` (via `EntityPolicyPanel`, POLICY tab) | none — KB id and entity id are URL-driven (`?kb=`, `:entityId`), not store-backed, despite the "Drift note" below predating this |
 | `CaseManagementPage.tsx` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` | `uiStore` |
-| `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionDraftStore` | `ingestionDraftStore` — initial selection honors a `?kb=` deep-link (since 2026-07-24), matching `AlertFeedPage`/`PolicyIntelligencePage`/`InvestigationWorkbenchPage`'s convention; falls back to the existing in-scope auto-select if the id isn't in the visible KB list |
+| `KnowledgeBaseLibraryPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useDomainConfig` | none — no "selected" KB here; opening one is navigation into its workspace |
+| `KnowledgeBaseWorkspacePage.tsx` + `features/kb/{overview,add-data,data,runs,settings}/*.tsx` | `/knowledge-bases/:kbId[/add\|/data\|/runs\|/settings]` | `useKnowledgeBase`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionDraftStore`, `useActiveKnowledgeBase` | `ingestionDraftStore` (Add data staging, keyed by `kbId`) — the knowledge base itself comes from the route path (`useActiveKnowledgeBase`'s top-ranked precedence level, above `?kb=`), not a deep-link fallback; a `?kb=[&document=]` address on the pre-split path redirects here rather than being read directly |
 | `PolicyIntelligencePage.tsx` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` | — |
 | `RagChatPage.tsx` | `/rag-chat` | `createConversation`, `sendMessage`, `streamMessage` | `chatStore`, `appStore` |
 | `ConfigurationPage.tsx` | `/configuration` | `useDomainConfig`, `getDomainConfigSchema` | — |
@@ -145,11 +151,12 @@ interface ChatState {
 
 Staging work per knowledge base, keyed by id — no page-chrome state lives
 here. The six-step ingestion wizard stepper (and the `currentStep` /
-`IngestionStepId` state that drove it) was deleted in the phase-2 IA split:
-stage position is no longer store state. `KnowledgeBaseManagerPage.tsx` still
-renders every stage on one page for now; routed stages (`overview`, `add`,
-`data`, `runs`, `settings`) are planned for a later task in that split, not
-present yet. Backend submission errors are read directly off the mutation that
+`IngestionStepId` state that drove it, and the store itself — formerly
+`ingestionStudioStore.ts`) was deleted in the phase-2 IA split: stage position
+is the URL, not store state. `KnowledgeBaseManagerPage.tsx` is gone; the five
+stages are now routed sections (`overview`, `add`, `data`, `runs`, `settings`)
+under `/knowledge-bases/:kbId/...`, rendered by `KnowledgeBaseWorkspacePage.tsx`
+and the components in `features/kb/`. Backend submission errors are read directly off the mutation that
 produced them (`uploadMutation.error`, `uploadRecordFileMutation.error`,
 `pushRecordsMutation.error`) rather than stored, so they clear on retry
 without anyone remembering to clear them; document/row validation

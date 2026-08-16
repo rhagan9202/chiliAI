@@ -9,14 +9,15 @@ React 19 + TypeScript + Vite 8 single-page application for the chiliAI analyst w
 Routed React 19 + TypeScript workbench prototype. `src/App.tsx` mounts
 `<AppProviders>` (QueryClient + SessionProvider) and a `RouterProvider`
 defined in `src/app/router.tsx`. The Phase 5 page tree under
-`src/pages/*Page.tsx` is the live one. Knowledge Base Manager uses the live
-backend KB repository, and Investigation Workbench uses KB-scoped live graph
+`src/pages/*Page.tsx` is the live one. The knowledge-bases area (library +
+per-KB workspace, see "Implemented Routes" below) uses the live backend KB
+repository, and Investigation Workbench uses KB-scoped live graph
 search/detail/neighborhood endpoints. Alerts, cases, evidence packs, policy
 items, workflows, and RAG conversations are backed by the current backend
 repository/service paths. Remaining live-data gaps are concentrated in
 production hardening of projections.
 
-The Knowledge Base Manager supports document upload and config-defined
+The workspace's Add data section supports document upload and config-defined
 structured record feeds. File-upload record feeds parse selected `.csv` and
 `.jsonl` files automatically for client-side preview and validation messaging;
 the backend records API remains the canonical parser/validator on submission.
@@ -33,8 +34,10 @@ Receipts ride the workflow run they start (`WorkflowRunResponse.receipt`), so
 the run timeline hydrates entirely from `GET /workflows`: counts survive a
 reload and are visible to readers other than the tab that submitted them.
 Staging drafts are the opposite — per-tab, and **keyed by knowledge base**
-(`ingestionDraftStore.draftsByKb`), so files staged for one corpus can never
-submit into another; a successful submission clears that corpus's draft.
+(`ingestionDraftStore.draftsByKb`, `src/stores/ingestionDraftStore.ts` — the
+former `ingestionStudioStore` is gone, along with its `currentStep`; stage
+position is the URL, not store state), so files staged for one corpus can
+never submit into another; a successful submission clears that corpus's draft.
 
 The document inventory renders the durable lifecycle (`current_status`), not
 the registration status: a document that parsed cleanly but yielded no domain
@@ -67,7 +70,7 @@ what is missing — in adjacent text, never in a hover tooltip.
 | Page | Purpose |
 |------|---------|
 | **Dashboard** | System overview, recent alerts, knowledge base summaries |
-| **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs, and show a selected-KB-scoped ingestion workflow timeline |
+| **Knowledge Bases** | Library of knowledge-base cards (create/browse) plus a per-KB workspace — Overview, Add data, Data (inventory + preview), Runs (timeline + score runs), Settings (identity + delete) — see "Implemented Routes" below |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, capability-gated dossier tabs (Signals, Network, Policy, Evidence) |
 | **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
@@ -112,7 +115,12 @@ under the wrong domain.
 | `/alerts` | Alert feed with filters, bulk actions, and realtime status |
 | `/investigation`, `/investigation/:entityId` | Graph workbench |
 | `/cases` | Case management queue |
-| `/knowledge-bases` | Knowledge Bases — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory, ingestion wizard |
+| `/knowledge-bases` | Library — knowledge-base cards as links (scoped to the active domain by default, with a show-all-domains toggle), and the create-knowledge-base panel. No staging, no runs, no deletion happen here. |
+| `/knowledge-bases/:kbId` | Workspace · Overview — identity, digest, and next-step guidance. Overview has no path segment of its own: this *is* the workspace root. |
+| `/knowledge-bases/:kbId/add` | Workspace · Add data — stage and submit documents or config-defined structured records |
+| `/knowledge-bases/:kbId/data` | Workspace · Data — document inventory + preview; the focused document lives in `?document=` |
+| `/knowledge-bases/:kbId/runs` | Workspace · Runs — ingestion run timeline + score runs |
+| `/knowledge-bases/:kbId/settings` | Workspace · Settings — identity details and delete |
 | `/policy` | Policy intelligence item queue |
 | `/governance` | Governance release-readiness report for the active knowledge base |
 | `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
@@ -120,11 +128,22 @@ under the wrong domain.
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |
 | `/configuration` | Config Manager (pack switcher + active-pack YAML editor with validate/apply) |
 
+**Knowledge-bases legacy addresses redirect rather than 404.** `?kb=<id>` at
+`/knowledge-bases` sends the analyst into that KB's workspace overview;
+`?kb=<id>&document=<docId>[&chunk=<n>]` sends them into the Data section with
+that document (and chunk) focused. The pre-split `/knowledgebases` path
+redirects to `/knowledge-bases` **preserving its query string** — it used to
+drop it, which sent every old bookmark to whichever knowledge base the page
+happened to auto-select; that was a real bug, fixed alongside the split.
+Selecting a knowledge base in the top-bar picker while already inside the
+knowledge-bases area navigates to the same section of the newly-picked
+workspace rather than only changing scope (UXA-101; see "Active knowledge
+base" below).
+
 ## Known Prototype Gaps
 
 - The Config Manager has no raw pack read/write endpoint yet: "Validate" dry-runs the edited YAML buffer, but "Apply" re-validates and hot-swaps the **on-disk** pack file — edits made in the editor are never persisted (charted as future config-write work in `docs/backlog/config.md` config.07/config.14 and `frontend.25/26`).
-- The KB domain-mismatch badge (`KbDomainBadge`) renders only on the ingestion KB selector and the KB Manager; other KB pickers (Investigation Workbench, RAG chat) do not badge mismatched KBs yet — follow-up work.
-- `src/components/knowledgebase/KbTable.tsx` and `KbDetailView.tsx` are orphaned (not reachable from any routed page); the KB Manager page renders its own table/detail. Fold or remove them when the KB Manager is next reworked.
+- The KB domain-mismatch badge (`KbDomainBadge`) renders on the library card list and the workspace header; other KB pickers (Investigation Workbench, RAG chat) do not badge mismatched KBs yet — follow-up work.
 - Some non-Investigation graph/entity discovery flows are still incomplete.
 - RAG chat uses the configured backend RAG service in the app factory; direct test construction can still use deterministic in-memory fallbacks.
 - There is no standalone `/workflows` page yet; workflow monitoring currently appears in Dashboard counters and the KB Manager run timeline.
@@ -327,9 +346,10 @@ not on mutable status, so they are order-independent.
 | `smoke.spec.ts` | Root renders the app shell (analyst override → no `/login`) |
 | `authenticated-shell.spec.ts` | Config-driven sidebar nav ("Alert Feed", "Knowledge Bases") |
 | `login-redirect.spec.ts` | Protected route renders without a login redirect (auth disabled) |
-| `knowledge-base-list.spec.ts` | Seeded "E2E Seed KB" appears in the Ingestion Studio |
-| `ingestion-records.spec.ts` | Records `carrier_claims_a` CSV upload → server-served receipt counts in the run timeline |
-| `ingestion-truth-safety.spec.ts` | Phase-1 regressions: disabled controls read as disabled and name what is missing, staging appends/removes/re-picks, drafts never cross knowledge bases, runs survive a reload, a zero-entity document reads "No entities" and filters, both deletions are confirmed (corpus by typed name) |
+| `knowledge-base-list.spec.ts` | Seeded "E2E Seed KB" appears as a card link in the library |
+| `kb-workspace-navigation.spec.ts` | Knowledge-bases IA: a library card opens that KB's workspace; each of the five sections is a real address that survives a reload; `?kb=`, `?kb=&document=`, and legacy `/knowledgebases` all land somewhere correct; the top-bar picker crosses workspaces without leaving the section; an unknown KB id says so instead of showing another corpus |
+| `ingestion-records.spec.ts` | Records `carrier_claims_a` CSV upload at `/…/add` → server-served receipt counts in the `/…/runs` timeline |
+| `ingestion-truth-safety.spec.ts` | Phase-1 regressions, now run against the routed sections: disabled controls read as disabled and name what is missing, staging appends/removes/re-picks, drafts never cross knowledge bases (proven by both draft content and the route changing), runs survive a reload, a zero-entity document reads "No entities" and filters, both deletions are confirmed (document at `/…/data`, corpus by typed name at `/…/settings`) |
 | `investigation-workbench.spec.ts` | Graph canvas mounts for the seeded entity neighborhood |
 | `alert-feed.spec.ts` | Seeded alert rows + severity/status chips + filter bar |
 | `alert-acknowledge.spec.ts` | Acknowledge a real alert → status chip transitions |
@@ -346,9 +366,9 @@ not on mutable status, so they are order-independent.
 | `ingestion-document-warnings.spec.ts` | Ragged-CSV upload surfaces worker-persisted parser warnings in the document inventory |
 | `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
 | `air-force-housing-context.spec.ts` | Stack-adaptive housing follow-up surfaces: scorecard viewer guard states (missing `?kb=`, unknown run), dashboard run link → viewer with graded sections/health chips + real JSON export download + back-link round trip, "Why this status" drivers pinned to the API's `status_reasons`, filter strip narrowing map markers + ranking rows + status counts together (clear restores), and a zero-failed-runs probe over every housing-domain KB's workflow history |
-| `ingestion-studio-domain-scoping.spec.ts` | Domain-adaptive Ingestion Studio scoping: default KB list shows only active-domain (+ legacy unstamped) KBs, show-all-domains toggle reveals the cross-domain list and scopes back down; expected sets computed from the real `/config/domain` + `/knowledgebases` |
+| `ingestion-studio-domain-scoping.spec.ts` | Domain-adaptive library scoping: default KB list shows only active-domain (+ legacy unstamped) KBs, show-all-domains toggle reveals the cross-domain list and scopes back down; expected sets computed from the real `/config/domain` + `/knowledgebases` |
 | `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, pack hot-swap round-trip, an issue revealing its line in the real ~1700-line pack, the transport warning, and the schema browser resolved from the real `/config/domain/schema` (requires an admin session — skips loudly otherwise) |
-| `kb-domain-mismatch.spec.ts` | Real pack switch via `/config/switch` → the other-domain KB drops out of the studio's default scoped list, and the show-all-domains toggle reveals it with the warn-only mismatch badge (requires an admin session) |
+| `kb-domain-mismatch.spec.ts` | Real pack switch via `/config/switch` → the other-domain KB drops out of the library's default scoped list, and the show-all-domains toggle reveals it with the warn-only mismatch badge (requires an admin session) |
 | `demo-walkthrough.spec.ts` | BL-051 demo-walkthrough mechanical validation, stack-adaptive: reference mode (dev-seed) walks alert row (`triage-numeral` + `.flag-label`) → "View evidence" narrative band → workbench dossier tabs → `/policy`; live mode (a "TN Demo" / `medicare_fraud` / `ready` KB, discovered via `/knowledgebases` or `E2E_DEMO_KB`) additionally asserts a factor-tagged alert, the workbench NETWORK tab's `cluster-membership-panel`, the EVIDENCE tab's `attribution-bars`, and a non-empty `/policy` queue — each live assertion `test.skip()`s with a clear reason when no TN KB exists |
 
 The two config specs are admin-gated: the pack-management routes require the
@@ -405,25 +425,42 @@ Every KB-scoped page reads one shared selection via
 `useActiveKnowledgeBase()` (`src/hooks/useActiveKnowledgeBase.ts`). Pages must
 not pick their own — divergent per-page resolution is what let the Dashboard
 and the Cases page report different counts for the same workspace (UXA-101).
+Inside the knowledge-bases area the URL owns the selection outright — there is
+no picker state to disagree with, only an address to read.
 
 Resolution precedence, implemented as the pure
 `resolveActiveKnowledgeBaseId()` in `src/utils/activeKnowledgeBase.ts`:
 
-1. `?kb=<id>` in the URL — an explicit, shareable selection.
-2. The remembered selection, persisted in `localStorage` under
+1. **The workspace route path** (`/knowledge-bases/:kbId[...]`) — on a
+   workspace route the URL *is* the page, so this outranks everything else,
+   including `?kb=`. It is what lets the top bar, the workspace header, and
+   the addressed section always agree on which corpus they describe.
+2. `?kb=<id>` in the URL — an explicit, shareable selection, used by every
+   other KB-scoped page (Dashboard, Alerts, Investigation, RAG Chat, …).
+3. The remembered selection, persisted in `localStorage` under
    `chiliai.activeKnowledgeBaseId` so it survives reloads and new sessions.
-3. **Default:** the most recently updated (`updated_at`, falling back to
+4. **Default:** the most recently updated (`updated_at`, falling back to
    `created_at`) knowledge base **with status `ready`**; if none are ready, the
    most recently updated one of any status. A still-building KB has no entities
    or analytics yet, so it only wins when nothing better exists.
 
-Candidates from a different domain pack are excluded first (`isDomainMismatch`),
-and both `?kb=` and the remembered id are validated against that in-domain list —
-a deleted or cross-domain id falls through to the default rather than stranding
-the page on a KB the API will refuse.
+Candidates from a different domain pack are excluded first (`isDomainMismatch`)
+for every precedence level except the path: a workspace route's own domain may
+legitimately mismatch the active pack (the badge warns, it does not block), so
+the path id is validated against the full list, not the in-domain one. `?kb=`
+and the remembered id are validated against the in-domain list — a deleted or
+cross-domain id falls through to the default rather than stranding the page on
+a KB the API will refuse.
 
-`setActiveKnowledgeBase(id)` writes both the store and `?kb=` (via `replace`, so
-switching does not stack history entries). Two deliberate exceptions:
+`setActiveKnowledgeBase(id)` (the top-bar picker) writes the remembered store
+either way, then branches on where it was called from
+(`knowledgeBaseSelectionTarget()` in `src/utils/knowledgeBaseRoutes.ts`):
+inside the knowledge-bases area, picking a knowledge base **navigates** —
+`replace`d, to the same section of the newly-picked workspace, since the KB
+there is the address, not a scope; everywhere else the page stays put and only
+`?kb=` changes (also via `replace`, so switching does not stack history
+entries). Two further deliberate exceptions, both outside the knowledge-bases
+area:
 
 - **RAG Chat** refuses to fall back for a *contextual* launch (arriving from an
   alert, case, or evidence pack) whose `kb` is unknown — answering against a
@@ -473,10 +510,13 @@ literal static spans, and JSX text nodes while blanking comments — and
 - **No `(s)` pluralization dodge.** Counts go through `countLabel(n, 'alert')`
   (`src/utils/countLabel.ts`), which agrees in number and groups thousands.
 
-The page at `/knowledge-bases` answers to **one** name. It used to be "Knowledge
-Bases" in the nav, "Ingestion Studio" as the title and "Ingestion Control" as
-the eyebrow; the nav label and the URL win, and the section that picks a KB is
-now titled "Choose a knowledge base" so two headings don't share a name.
+The knowledge-bases area answers to **one** name across its library and
+workspace pages, matching the nav label and the `/knowledge-bases` URL. It
+used to be a single page titled "Ingestion Studio" with "Ingestion Control" as
+its eyebrow; the library card region that picks a KB is titled "Choose a
+knowledge base" so it never competes with the page title above it, and the
+workspace's own heading is the knowledge base's name, not a repeat of
+"Knowledge Bases".
 
 `src/utils/knowledgeBaseStatus.ts` names the KB lifecycle for readers. The API's
 `active` is the *empty* state — created, nothing ingested — which reads as the
@@ -587,25 +627,25 @@ no recent entities and no suggested starting points (UXA-305). It now offers
 drawn from the alerts already loaded on the page, so no new endpoint. An empty
 search box against an unfamiliar corpus is the hardest possible starting point.
 
-## Ingestion Studio states an empty knowledge base once
+## The knowledge-bases workspace states an empty knowledge base once
 
 A brand-new knowledge base stacked three cards down the context rail that all
 said the same thing — *No runs yet*, *No documents yet*, *No document selected*
 (UXA-305). It has no runs **because** it has nothing in it, and there is nothing
 to preview until something lands, so only the document inventory's empty state
-survives, and that one carries a *Stage a source* button that scrolls back to
-the staging form in the main column.
+survives, and that one carries a *Stage a source* button that navigates to
+Add data (`/knowledge-bases/:kbId/add`).
 
 The document inventory and preview live in `src/features/kb/data/`
-(`DocumentInventory.tsx`, `DocumentPreview.tsx`, `DataSection.tsx`), extracted
-out of `KnowledgeBaseManagerPage.tsx` so the same section can later be routed
-at `/knowledge-bases/:kbId/data`. `DataSection` owns the document list and
+(`DocumentInventory.tsx`, `DocumentPreview.tsx`, `DataSection.tsx`), routed at
+`/knowledge-bases/:kbId/data`. `DataSection` owns the document list and
 preview queries, the status filter, and the delete-confirmation flow; the
 focused document lives in the `?document=` search param (not page state) so a
 citation can address a document and a reload keeps it open. The run timeline
-earns its card once `workflows` alone is non-empty — documents are the data
-section's concern now, and a knowledge base with documents always has the runs
-that produced them, so asking `documents` too would only ever be redundant.
+lives in its own route, `/knowledge-bases/:kbId/runs`, and earns its card once
+`workflows` alone is non-empty — documents are the data section's concern now,
+and a knowledge base with documents always has the runs that produced them, so
+asking `documents` too would only ever be redundant.
 
 ## Entity deep links recover
 
