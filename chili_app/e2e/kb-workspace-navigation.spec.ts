@@ -9,10 +9,17 @@
  */
 import { expect, test } from '@playwright/test'
 
+import { deleteKnowledgeBase } from './helpers/deleteKb'
+
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
 
 let seededKbId: string
 let seededKbName: string
+/** A second in-domain knowledge base so the top-bar picker always has
+ *  somewhere else to switch to. Relying on another spec's leaked decoy KB
+ *  happening to still exist made the picker test pass by accident, not by
+ *  design — this spec creates and owns its own switch target instead. */
+let secondKbId: string
 
 test.beforeAll(async () => {
   const response = await fetch(`${API}/knowledgebases`)
@@ -28,6 +35,22 @@ test.beforeAll(async () => {
   }
   seededKbId = seeded.id
   seededKbName = seeded.name
+
+  const createRes = await fetch(`${API}/knowledgebases`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: `kb-nav-e2e-${Date.now()}`, description: 'picker switch target' }),
+  })
+  if (!createRes.ok) {
+    throw new Error(`POST /knowledgebases failed (${createRes.status})`)
+  }
+  secondKbId = ((await createRes.json()) as { id: string }).id
+})
+
+test.afterAll(async () => {
+  if (secondKbId) {
+    await deleteKnowledgeBase(API, secondKbId)
+  }
 })
 
 test.describe('Knowledge base workspace navigation', () => {
@@ -77,15 +100,8 @@ test.describe('Knowledge base workspace navigation', () => {
   }) => {
     await page.goto(`/knowledge-bases/${seededKbId}/runs`)
     const picker = page.getByLabel('Active knowledge base')
-    const options = await picker.locator('option').all()
-    const other = (
-      await Promise.all(options.map(async (option) => option.getAttribute('value')))
-    ).find((value) => value && value !== seededKbId)
-
-    test.skip(!other, 'needs a second in-domain knowledge base')
-
-    await picker.selectOption(other as string)
-    await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${other}/runs$`))
+    await picker.selectOption(secondKbId)
+    await expect(page).toHaveURL(new RegExp(`/knowledge-bases/${secondKbId}/runs$`))
   })
 
   test('an unknown knowledge base id says so instead of showing another corpus', async ({
