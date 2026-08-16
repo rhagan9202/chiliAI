@@ -1682,16 +1682,31 @@ describe('RunsSection', () => {
   it('disables the score run start and names the blocker when there are no entities', async () => {
     renderSection(0)
 
-    const start = await screen.findByRole('button', { name: /Start score run/i })
+    const start = await screen.findByRole('button', { name: 'Start score-all' })
     expect(start).toBeDisabled()
     expect(
       screen.getByText('Start requires ingested entities in this knowledge base.'),
     ).toBeInTheDocument()
   })
+
+  it('enables the score run start once the knowledge base has entities', async () => {
+    renderSection(12)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start score-all' })).toBeEnabled()
+    })
+    expect(
+      screen.queryByText('Start requires ingested entities in this knowledge base.'),
+    ).not.toBeInTheDocument()
+  })
 })
 ```
 
-Check `ScoreRunStatusPanel`'s actual start-button label before writing the assertion and use it exactly; adjust the regex if it differs.
+These labels are verified against the current components, not guessed:
+`ScoreRunStatusPanel` renders `Start score-all` (it becomes `Starting` only while
+`pendingAction === 'start'`), and `RunTimeline` renders `workflow.workflow_type`
+as the run title. The panel's start button renders whether or not a run exists,
+so the empty `/score-runs` stub does not hide it.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -1810,7 +1825,7 @@ Note: the hardcoded `cms-fraud-features-v1` / `risk-linear-v1` fallbacks stay fo
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd chili_app && npm run test:run -- src/features/kb/runs/__tests__/RunsSection.test.tsx`
-Expected: PASS, 2 cases.
+Expected: PASS, 3 cases.
 
 - [ ] **Step 5: Point the manager page at it, run the suite, commit**
 
