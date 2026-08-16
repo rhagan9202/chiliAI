@@ -1205,6 +1205,7 @@ beforeEach(() => {
       const documentId = url.split('/documents/')[1].split('/')[0]
       return new Response(
         JSON.stringify({
+          knowledge_base_id: 'kb-1',
           document_id: documentId,
           filename: documentId === 'doc-2' ? 'resume.txt' : 'policy.txt',
           preview_text: `preview of ${documentId}`,
