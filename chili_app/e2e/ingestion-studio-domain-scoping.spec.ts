@@ -60,8 +60,8 @@ test.describe('Knowledge Bases domain scoping', () => {
     await page.goto('/knowledge-bases')
     await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
-    const listItems = page.locator('.ingestion-kb-list__item')
-    const countChip = page.locator('.ingestion-kb-selector__header .ui-chip')
+    const listItems = page.locator('.kb-library__card')
+    const countChip = page.locator('.kb-library__header .ui-chip')
     const toggle = page.getByTestId('kb-show-all-domains-toggle')
 
     if (hiddenCount === 0) {
@@ -94,7 +94,7 @@ test.describe('Knowledge Bases domain scoping', () => {
     )
     if (hiddenKb) {
       await expect(
-        listItems.locator('.ingestion-kb-list__name', { hasText: hiddenKb.name }),
+        listItems.locator('.kb-library__name', { hasText: hiddenKb.name }),
       ).toHaveCount(0)
     }
 

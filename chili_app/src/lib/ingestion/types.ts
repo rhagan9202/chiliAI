@@ -1,13 +1,5 @@
 export type IngestionSourceType = 'documents' | 'records'
 
-export type IngestionStepId =
-  | 'knowledge-base'
-  | 'source'
-  | 'preview'
-  | 'validate'
-  | 'submit'
-  | 'runs'
-
 export type ValidationSeverity = 'info' | 'warning' | 'error'
 export type ValidationSource = 'client' | 'backend'
 

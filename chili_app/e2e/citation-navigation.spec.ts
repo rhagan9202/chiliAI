@@ -26,12 +26,12 @@ test.describe('Citation navigation', () => {
     })
     await expect(sourceLink).toHaveAttribute(
       'href',
-      `/knowledge-bases?kb=${kb}&document=dev-seed-source`,
+      `/knowledge-bases/${kb}/data?document=dev-seed-source`,
     )
     await sourceLink.click()
 
     await expect(page).toHaveURL(
-      new RegExp(`/knowledge-bases\\?kb=${kb}&document=dev-seed-source`),
+      new RegExp(`/knowledge-bases/${kb}/data\\?document=dev-seed-source`),
     )
     await expect(page.getByText('Document preview', { exact: true })).toBeVisible()
     await expect(page.getByText(/Redwood DME Group claim review/)).toBeVisible()

@@ -51,8 +51,21 @@ export function knowledgeBaseDocumentPreviewQueryKey(
     : ['knowledge-bases', knowledgeBaseId, 'documents', documentId, 'preview'] as const
 }
 
+/**
+ * Ceiling on how many knowledge bases the list endpoint returns for the
+ * active-KB resolver (`utils/activeKnowledgeBase.ts`) and the top-bar picker.
+ * `GET /knowledgebases` defaults to `limit=50` and caps at 500
+ * (`backend/api/routers/knowledgebases.py`); without an explicit limit, a
+ * workspace address for a knowledge base outside the first 50 would resolve
+ * to the wrong corpus in the picker and readiness chip (UXA-101). This is a
+ * raised ceiling, not pagination: a knowledge base created after the 500th
+ * is still invisible here, and the Library (`features/kb/library`) does not
+ * paginate past this same response either.
+ */
+export const KNOWLEDGE_BASE_LIST_LIMIT = 500
+
 export function getKnowledgeBases(): Promise<KnowledgeBaseListResponse> {
-  return apiFetch<KnowledgeBaseListResponse>('/knowledgebases')
+  return apiFetch<KnowledgeBaseListResponse>(`/knowledgebases?limit=${KNOWLEDGE_BASE_LIST_LIMIT}`)
 }
 
 export function getKnowledgeBase(

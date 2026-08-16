@@ -435,41 +435,9 @@
   border-radius: 8px;
 }
 
-.ingestion-studio-layout {
-  display: grid;
-  /* Single column by default; widen only when the *container* can actually
-     afford the flanking rails. The primary work column is never the one that
-     gets squeezed. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-@container workspace (min-width: 700px) {
-  .ingestion-studio-layout {
-    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-  }
-}
-
-@container workspace (min-width: 700px) and (max-width: 1079.98px) {
-  /* Two columns: the summary rail is the third child, so it would otherwise
-     wrap under the narrow stepper column and squeeze its stat tiles. Let it
-     span the full row instead. */
-  .ingestion-studio-context {
-    grid-column: 1 / -1;
-  }
-}
-
-@container workspace (min-width: 1080px) {
-  .ingestion-studio-layout {
-    grid-template-columns: minmax(200px, 240px) minmax(360px, 1fr) minmax(280px, 320px);
-  }
-}
-
-.ingestion-studio-main,
-.ingestion-studio-context,
-.ingestion-studio-summary,
-.ingestion-next-actions,
+/* The three-rail studio layout went with the page that used it: a knowledge
+   base is a workspace of addressed sections now, not one screen of stacked
+   rails. Only the document inventory kept the old class name. */
 .ingestion-studio-documents,
 .score-run-panel,
 .score-run-panel__body {

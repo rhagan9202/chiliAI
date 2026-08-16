@@ -185,6 +185,11 @@ describe('PolicyIntelligencePage', () => {
     render(<MemoryRouter initialEntries={['/policy?kb=kb-1']}><PolicyIntelligencePage /></MemoryRouter>)
 
     expect(screen.getByText('No policy items yet')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Add data to this knowledge base' })).toBeInTheDocument()
+    // The label promises the add-data flow, not the workspace overview — it
+    // must land on the `add` section, not fall through to Overview.
+    expect(screen.getByRole('link', { name: 'Add data to this knowledge base' })).toHaveAttribute(
+      'href',
+      '/knowledge-bases/kb-1/add',
+    )
   })
 })

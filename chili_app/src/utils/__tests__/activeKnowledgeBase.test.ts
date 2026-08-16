@@ -21,6 +21,9 @@ function kb(
   }
 }
 
+const medicareKb = kb({ id: 'medicare-kb', domain: 'medicare_fraud' })
+const housingKb = kb({ id: 'housing-kb', domain: 'af_housing' })
+
 describe('resolveActiveKnowledgeBaseId', () => {
   it('picks the most recently updated knowledge base in the active domain', () => {
     const resolved = resolveActiveKnowledgeBaseId({
@@ -39,10 +42,7 @@ describe('resolveActiveKnowledgeBaseId', () => {
 
   it('never selects a knowledge base stamped with a different domain', () => {
     const resolved = resolveActiveKnowledgeBaseId({
-      knowledgeBases: [
-        kb({ id: 'housing-kb', domain: 'af_housing', updated_at: '2026-07-01T00:00:00Z' }),
-        kb({ id: 'medicare-kb', domain: 'medicare_fraud', updated_at: '2026-03-01T00:00:00Z' }),
-      ],
+      knowledgeBases: [housingKb, medicareKb],
       activeDomainName: 'medicare_fraud',
       requestedId: null,
       storedId: null,
@@ -108,10 +108,7 @@ describe('resolveActiveKnowledgeBaseId', () => {
 
   it('falls back to the default when the requested knowledge base is in another domain', () => {
     const resolved = resolveActiveKnowledgeBaseId({
-      knowledgeBases: [
-        kb({ id: 'housing-kb', domain: 'af_housing' }),
-        kb({ id: 'medicare-kb', domain: 'medicare_fraud' }),
-      ],
+      knowledgeBases: [housingKb, medicareKb],
       activeDomainName: 'medicare_fraud',
       requestedId: 'housing-kb',
       storedId: null,
@@ -185,5 +182,44 @@ describe('resolveActiveKnowledgeBaseId', () => {
     })
 
     expect(resolved).toBe('created-later')
+  })
+
+  it('lets a knowledge base named by the route path win over ?kb= and the stored id', () => {
+    expect(
+      resolveActiveKnowledgeBaseId({
+        knowledgeBases: [medicareKb, housingKb],
+        activeDomainName: 'medicare_fraud',
+        pathId: housingKb.id,
+        requestedId: medicareKb.id,
+        storedId: medicareKb.id,
+      }),
+    ).toBe(housingKb.id)
+  })
+
+  it('honours a path id from another domain — the workspace renders what the URL says', () => {
+    // Domain scoping is warn-only (spec §1). Silently resolving to a different
+    // corpus than the address bar names would make the header disagree with the
+    // body it sits above.
+    expect(
+      resolveActiveKnowledgeBaseId({
+        knowledgeBases: [medicareKb, housingKb],
+        activeDomainName: 'medicare_fraud',
+        pathId: housingKb.id,
+        requestedId: null,
+        storedId: null,
+      }),
+    ).toBe(housingKb.id)
+  })
+
+  it('falls through when the path names a knowledge base absent from the fetched page', () => {
+    expect(
+      resolveActiveKnowledgeBaseId({
+        knowledgeBases: [medicareKb],
+        activeDomainName: 'medicare_fraud',
+        pathId: 'kb-deleted',
+        requestedId: null,
+        storedId: null,
+      }),
+    ).toBe(medicareKb.id)
   })
 })

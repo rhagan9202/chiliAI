@@ -1,6 +1,6 @@
-import { renderHook, act } from '@testing-library/react'
-import { createElement, type ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import { createElement, useEffect, type ReactNode } from 'react'
+import { MemoryRouter, useLocation, type Location } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { KnowledgeBaseSummaryResponse } from '../../api/contracts'
@@ -42,15 +42,34 @@ function setKnowledgeBases(items: KnowledgeBaseSummaryResponse[]): void {
   } as unknown as ReturnType<typeof useKnowledgeBases>)
 }
 
+// A holder the tests can read after render. The write happens in an effect,
+// not during render, so it stays clear of the rule against a component
+// mutating an outer-scope variable while rendering.
+const locationRef: { current: Location | null } = { current: null }
+
+function LocationProbe() {
+  const location = useLocation()
+  useEffect(() => {
+    locationRef.current = location
+  }, [location])
+  return null
+}
+
 function wrapper(initialEntry: string) {
   return ({ children }: { children: ReactNode }) =>
-    createElement(MemoryRouter, { initialEntries: [initialEntry] }, children)
+    createElement(
+      MemoryRouter,
+      { initialEntries: [initialEntry] },
+      children,
+      createElement(LocationProbe),
+    )
 }
 
 describe('useActiveKnowledgeBase', () => {
   beforeEach(() => {
     window.localStorage.clear()
     useAppStore.setState({ activeKnowledgeBaseId: null })
+    locationRef.current = null
     useDomainConfigMock.mockReturnValue({
       data: { domain: { name: 'medicare_fraud' } },
     } as unknown as ReturnType<typeof useDomainConfig>)
@@ -132,5 +151,62 @@ describe('useActiveKnowledgeBase', () => {
 
     expect(result.current.isError).toBe(true)
     expect(result.current.activeKnowledgeBaseId).toBeNull()
+  })
+
+  it('resolves the knowledge base named by a workspace path', () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-2'),
+    })
+
+    expect(result.current.activeKnowledgeBaseId).toBe('kb-2')
+  })
+
+  it('keeps a cross-domain workspace knowledge base in the picker list', () => {
+    // The route outranks domain scoping, so the picker has to be able to show
+    // what is on screen. Without this the top bar's <select> holds a value
+    // matching no option, and the browser renders a different KB's name.
+    setKnowledgeBases([kb('kb-1'), kb('kb-2', { domain: 'food_supply_chain' })])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-2'),
+    })
+
+    expect(result.current.activeKnowledgeBaseId).toBe('kb-2')
+    expect(result.current.knowledgeBases.map((item) => item.id)).toContain('kb-2')
+  })
+
+  it('selecting a knowledge base inside a workspace navigates, keeping the section', async () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-1/runs'),
+    })
+
+    act(() => {
+      result.current.setActiveKnowledgeBase('kb-2')
+    })
+
+    await waitFor(() => {
+      expect(locationRef.current?.pathname).toBe('/knowledge-bases/kb-2/runs')
+    })
+  })
+
+  it('selecting a knowledge base elsewhere still writes ?kb=', async () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/alerts'),
+    })
+
+    act(() => {
+      result.current.setActiveKnowledgeBase('kb-2')
+    })
+
+    await waitFor(() => {
+      expect(locationRef.current?.pathname).toBe('/alerts')
+      expect(locationRef.current?.search).toBe('?kb=kb-2')
+    })
   })
 })

@@ -45,7 +45,12 @@ const cockpitPath = () => {
 }
 
 const PAGES: OverflowPage[] = [
-  { name: 'Knowledge Bases', path: (kb: string) => `/knowledge-bases?kb=${kb}` },
+  { name: 'Knowledge Bases', path: () => '/knowledge-bases' },
+  { name: 'Knowledge Base Overview', path: (kb: string) => `/knowledge-bases/${kb}` },
+  { name: 'Knowledge Base Add data', path: (kb: string) => `/knowledge-bases/${kb}/add` },
+  { name: 'Knowledge Base Data', path: (kb: string) => `/knowledge-bases/${kb}/data` },
+  { name: 'Knowledge Base Runs', path: (kb: string) => `/knowledge-bases/${kb}/runs` },
+  { name: 'Knowledge Base Settings', path: (kb: string) => `/knowledge-bases/${kb}/settings` },
   { name: 'Dashboard', path: () => '/dashboard' },
   { name: 'Alert Feed', path: () => '/alerts' },
   { name: 'Cases', path: () => '/cases' },

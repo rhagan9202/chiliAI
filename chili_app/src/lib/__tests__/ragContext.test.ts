@@ -174,7 +174,7 @@ describe('ragContext', () => {
         { entity_id: null, content_id: 'chunk-1', document_id: 'claims.csv', chunk_index: 1 },
         { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       ),
-    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=claims.csv&chunk=1' })
+    ).toEqual({ pathname: '/knowledge-bases/kb-1/data', search: 'document=claims.csv&chunk=1' })
   })
 
   it('resolves document-only case citations to document preview context', () => {
@@ -183,7 +183,7 @@ describe('ragContext', () => {
         { content_id: 'chunk-1', document_id: 'case-notes.md', chunk_index: 2 },
         { knowledgeBaseId: 'kb-1', source: 'case', caseId: 'case-1' },
       ),
-    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=case-notes.md&chunk=2' })
+    ).toEqual({ pathname: '/knowledge-bases/kb-1/data', search: 'document=case-notes.md&chunk=2' })
   })
 
   it('resolves document-only housing citations to document preview context', () => {
@@ -192,7 +192,7 @@ describe('ragContext', () => {
         { content_id: 'chunk-1', document_id: 'housing.pdf', chunk_index: 3 },
         { knowledgeBaseId: 'kb-1', source: 'housing', installationId: 'edwards' },
       ),
-    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=housing.pdf&chunk=3' })
+    ).toEqual({ pathname: '/knowledge-bases/kb-1/data', search: 'document=housing.pdf&chunk=3' })
   })
 
   it('returns null when no citation or context navigation target exists', () => {

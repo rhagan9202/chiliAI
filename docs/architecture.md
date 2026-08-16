@@ -172,7 +172,7 @@ The monorepo produces the following deployable containers:
 
 | Container | Technology | Responsibility |
 |-----------|-----------|----------------|
-| **chili_app** | React 19, TypeScript, Vite 8 | Single-page application served as static assets (nginx or CDN). Full analyst workbench: graph explorer, alert feed, knowledge base manager, RAG chat, domain config editor. |
+| **chili_app** | React 19, TypeScript, Vite 8 | Single-page application served as static assets (nginx or CDN). Full analyst workbench: graph explorer, alert feed, knowledge-bases library + per-KB workspace, RAG chat, domain config editor. |
 | **Backend API** | Python 3.12, FastAPI | HTTP entry point for the frontend, including the SSE workspace stream. Thin orchestration layer — routes requests to internal service modules, publishes events, pushes real-time updates. **No business logic in routers.** |
 | **Worker / Pipeline Runner** | Python 3.12, shares backend codebase | Long-running process(es) consuming events from Redis Streams. Executes ingestion, entity extraction, graph building, embedding, analytics pipelines, and alert generation. Scales via Redis consumer groups. |
 | **Redis** | Redis 7+ with Streams | Event-driven pipeline orchestration. Decouples API from worker. Also stores shared operational workflow-run state when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, allowing API and worker containers to observe the same lifecycle updates. |
@@ -904,7 +904,7 @@ The following additions landed in `feature/ingestion-pipeline-e2e-demo`. See the
 
 **LLM extractor + Ollama adapter**
 
-`LlmDocumentExtractor` in `ingestion/extractor.py` drives entity/relationship extraction from schema-guided prompts derived from `DomainConfig.entities` / `DomainConfig.relationships`. It requests JSON-mode responses, strips markdown fences, validates required properties, and deduplicates entities by natural key within each chunk. Extractor selection lives in `agent.coordinator.build_document_extractor`: every real provider routes extraction through `LlmDocumentExtractor`; `llm.provider="local"` (the deterministic echo stub) keeps the `PatternDocumentExtractor` baseline. Before schema validation, `ingestion/normalization.py` coerces raw property values to their configured types (string decimals → float, regional dates → ISO 8601, yes/no → bool, enum casing), so string-valued sources like CSV records survive `validate_entity`. Per-document parse and extraction warnings are persisted to `DocumentRecord` (`record_document_warnings`) and exposed via `DocumentSummary.warning_count`/`warning_reasons` for the Ingestion Studio.
+`LlmDocumentExtractor` in `ingestion/extractor.py` drives entity/relationship extraction from schema-guided prompts derived from `DomainConfig.entities` / `DomainConfig.relationships`. It requests JSON-mode responses, strips markdown fences, validates required properties, and deduplicates entities by natural key within each chunk. Extractor selection lives in `agent.coordinator.build_document_extractor`: every real provider routes extraction through `LlmDocumentExtractor`; `llm.provider="local"` (the deterministic echo stub) keeps the `PatternDocumentExtractor` baseline. Before schema validation, `ingestion/normalization.py` coerces raw property values to their configured types (string decimals → float, regional dates → ISO 8601, yes/no → bool, enum casing), so string-valued sources like CSV records survive `validate_entity`. Per-document parse and extraction warnings are persisted to `DocumentRecord` (`record_document_warnings`) and exposed via `DocumentSummary.warning_count`/`warning_reasons` for the knowledge-bases workspace's Data section document inventory.
 
 `OllamaLlmClient` in `llm/adapters/` is a new adapter implementing `LlmClientProtocol` via Ollama's OpenAI-compatible endpoint. It is selected by `LlmConfig.provider="ollama"` with `LlmConfig.base_url` pointing at the Ollama host. `FallbackLlmClient` wraps a primary client with an ordered list of fallback clients tried on error.
 
@@ -1128,7 +1128,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
-> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a Configuration page hosting the Config Manager (pack switcher, dry-run validation, hot-swap apply; raw pack save remains a gap). Knowledge Base Manager uses the live KB repository, Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs, and dashboard/alert/case/policy surfaces are backed by live service/repository projections. Remaining frontend gaps are configuration-write workflows, standalone workflow/evidence navigation surfaces, and production UX/performance hardening.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, a Knowledge Bases area (library of KB cards + a per-KB workspace — Overview, Add data, Data, Runs, Settings, each its own route under `/knowledge-bases/:kbId/...`), Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a Configuration page hosting the Config Manager (pack switcher, dry-run validation, hot-swap apply; raw pack save remains a gap). The knowledge-bases area uses the live KB repository, Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs, and dashboard/alert/case/policy surfaces are backed by live service/repository projections. Remaining frontend gaps are configuration-write workflows, standalone workflow/evidence navigation surfaces, and production UX/performance hardening.
 
 ### 8.2 Page / view structure
 
@@ -1148,10 +1148,11 @@ chili_app/src/
 │   ├── appStore.ts             # Sidebar, selected entity, active KB
 │   ├── chatStore.ts            # Local chat/session state
 │   ├── uiStore.ts              # Panel/sidebar visibility, realtime status, role
-│   └── ingestionStudioStore.ts # Staging drafts keyed by knowledge base id
+│   └── ingestionDraftStore.ts  # Staging drafts keyed by knowledge base id
 ├── pages/
 │   ├── DashboardPage.tsx
-│   ├── KnowledgeBaseManagerPage.tsx
+│   ├── KnowledgeBaseLibraryPage.tsx    # /knowledge-bases — KB cards + create panel
+│   ├── KnowledgeBaseWorkspacePage.tsx  # /knowledge-bases/:kbId — identity/digest + section tabs + <Outlet>
 │   ├── AlertFeedPage.tsx
 │   ├── InvestigationWorkbenchPage.tsx
 │   ├── CaseManagementPage.tsx
@@ -1161,17 +1162,60 @@ chili_app/src/
 │   ├── RagChatPage.tsx
 │   ├── ConfigurationPage.tsx
 │   └── Login.tsx
+├── features/
+│   └── kb/                     # The five workspace sections, one route each (see §8.2.1)
+│       ├── overview/           # OverviewSection.tsx + knowledgeBaseSituation.ts (route: index)
+│       ├── add-data/           # AddDataSection.tsx + useDocumentsFlow.tsx/useRecordsFlow.tsx (route: /add)
+│       ├── data/                # DataSection.tsx, DocumentInventory.tsx, DocumentPreview.tsx (route: /data)
+│       ├── runs/                # RunsSection.tsx (route: /runs)
+│       ├── settings/            # SettingsSection.tsx (route: /settings)
+│       ├── library/             # KnowledgeBaseCardList.tsx, CreateKnowledgeBasePanel.tsx (library page)
+│       └── WorkspaceTabs.tsx    # Section nav, shared by the workspace page
 ├── components/
 │   ├── investigation/          # Graph explorer, entity detail, evidence, timeline
 │   ├── alerts/                 # Alert list item, badge, detail
 │   ├── chat/                   # RAG chat message list, input
-│   ├── knowledgebase/          # KB tables, detail view, upload widgets
+│   ├── knowledgebase/          # KbDomainBadge, EmptyKnowledgeBaseNotice, ScoreRunStatusPanel, domain-mismatch logic
 │   ├── housing/                # InstallationHealthMap (d3-geo Albers CONUS), summary band, filters, ranking
+│   ├── layout/                 # AppShell, LandingRedirect, LegacyKnowledgeBasesRedirect
 │   └── common/                 # Shared UI primitives (layout, loading, error)
 └── hooks/                      # Shared custom hooks
+    ├── useActiveKnowledgeBase.ts  # workspace route path → ?kb= → remembered → default (§8.2.2)
     ├── useKnowledgeBases.ts
     └── useNeighborhood.ts
 ```
+
+#### 8.2.1 Knowledge-bases route tree
+
+```
+/knowledge-bases                 Library — KB cards (links), domain-scoping toggle, create panel
+/knowledge-bases/:kbId           Workspace · Overview  (index route — no path segment of its own)
+/knowledge-bases/:kbId/add       Workspace · Add data
+/knowledge-bases/:kbId/data      Workspace · Data — inventory + preview; focused document in `?document=`
+/knowledge-bases/:kbId/runs      Workspace · Runs — run timeline + score runs
+/knowledge-bases/:kbId/settings  Workspace · Settings — identity details + delete
+```
+
+`chili_app/src/app/router.tsx` exports this subtree as `knowledgeBaseRoutes`, a named
+`RouteObject[]` constant rather than three inline entries, so `pages/__tests__/knowledgeBaseWorkspaceRoutes.test.tsx`
+can mount the real route table — the outlet-context seam between the workspace page and
+its sections lives only in that table. `WorkspaceOutletContext` (`knowledgeBase`,
+`activeDomainName`) is loaded once by `KnowledgeBaseWorkspacePage` and read via
+`useOutletContext` by every section, so the sections never re-fetch the KB.
+
+Legacy addresses redirect rather than 404 (`chili_app/src/utils/knowledgeBaseRoutes.ts`):
+`?kb=<id>` at `/knowledge-bases` → that KB's workspace overview; `?kb=<id>&document=<docId>[&chunk=<n>]`
+→ the Data section with that document (and chunk) focused; the pre-split `/knowledgebases`
+path → `/knowledge-bases`, **preserving its query string** (`LegacyKnowledgeBasesRedirect`,
+`chili_app/src/components/layout/`) — it previously dropped the query string, which sent
+every old `?kb=` bookmark to whichever KB the page happened to auto-select.
+
+Staging state for the Add data section lives in `stores/ingestionDraftStore.ts`
+(`useIngestionDraftStore`, keyed by KB id — see §8.2 file tree), holding only in-flight
+work (`sourceType`, `selectedFeedName`, `pendingFiles`, `pendingRecordFile`, `parsedRows`,
+`parseIssues`). It replaces the former `ingestionStudioStore.ts`, which is deleted along
+with the `IngestionStepId` type and its `currentStep` field — stage position is which
+route the analyst is on, not stored state.
 
 #### Shared UI primitives and visual language
 
@@ -1197,15 +1241,23 @@ state**. Every KB-scoped page resolves it through one hook
 (`hooks/useActiveKnowledgeBase.ts`) over one store field
 (`appStore.activeKnowledgeBaseId`, persisted to `localStorage`); pages must not
 derive their own. Per-page resolution is what previously let the Dashboard and
-the Cases page report different counts for the same workspace.
+the Cases page report different counts for the same workspace (UXA-101).
 
-Precedence is `?kb=<id>` → the remembered selection → the most recently updated
-`ready` knowledge base in the active domain pack (any status if none are ready).
-Cross-domain candidates are excluded before any of those apply, and explicit ids
-are validated against that list so a stale link degrades to the default instead
-of stranding the page. Frontend detail and the two deliberate exceptions
-(contextual RAG launches, Dashboard analytics panels) are documented in
-[`chili_app/README.md`](../chili_app/README.md#active-knowledge-base-workspace-state).
+Inside the knowledge-bases area (§8.2.1), selection is **URL-owned**: the
+workspace route path (`/knowledge-bases/:kbId/...`) is the top-ranked signal,
+above `?kb=`, so `useActiveKnowledgeBase` reads the knowledge-base id straight
+off the route rather than off query state — that is what keeps the top bar,
+the workspace header, and the addressed section from disagreeing. Full
+precedence is: **workspace route path** → `?kb=<id>` → the remembered
+selection → the most recently updated `ready` knowledge base in the active
+domain pack (any status if none are ready). Cross-domain candidates are
+excluded before the `?kb=`/remembered/default levels apply, but not before the
+path level — a workspace route's own domain may legitimately mismatch the
+active pack (the badge warns, it does not block). Explicit ids at every other
+level are validated against the in-domain list so a stale link degrades to the
+default instead of stranding the page. Frontend detail and the two deliberate
+exceptions (contextual RAG launches, Dashboard analytics panels) are documented
+in [`chili_app/README.md`](../chili_app/README.md#active-knowledge-base-workspace-state).
 
 `GET /analytics/overview` is still aggregated across all knowledge bases rather
 than scoped to this selection — see the open backend work item.
@@ -1784,7 +1836,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
 | `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py`, and a durable/replayable event dead-letter ledger with an `analyst`/`admin`-gated operator API surface (`event_dlq` table, `/events/dlq*`, BL-023 — see §6.9) | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
-| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, Configuration page with Config Manager (pack switch/apply; config save still a gap), and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, a Knowledge Bases library + per-KB workspace (Overview/Add data/Data/Runs/Settings), Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, Configuration page with Config Manager (pack switch/apply; config save still a gap), and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |

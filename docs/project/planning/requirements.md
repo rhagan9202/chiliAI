@@ -105,7 +105,7 @@ chiliAI is a **domain-reconfigurable Graph RAG analytics platform** that combine
 ### 3.11 Frontend Analyst Workbench
 
 - **REQ-UI-001** — The system shall provide a React 19 single-page application served as static assets over HTTPS.
-- **REQ-UI-002** *(amended v1.2)* — The system shall implement the following routed pages: Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, Configuration — plus capability-gated pages contributed by the active domain configuration (e.g., Case Management, Policy Intelligence, Housing Executive).
+- **REQ-UI-002** *(amended v1.2)* — The system shall implement the following routed pages: Dashboard, Knowledge Bases (library + per-KB workspace), Alert Feed, Investigation Workbench, RAG Chat, Configuration — plus capability-gated pages contributed by the active domain configuration (e.g., Case Management, Policy Intelligence, Housing Executive).
 - **REQ-UI-003** — The system shall display knowledge base lists, detail views, document inventories, and ingestion workflow timelines.
 - **REQ-UI-004** — The system shall provide an interactive graph visualization using `react-force-graph-2d` with entity search, detail panels, and neighborhood expansion.
 - **REQ-UI-005** — The system shall stream workspace snapshots (alert deltas, workflow status, KB metrics) to the frontend in real time. Server-Sent Events is the default transport; WebSocket is permitted per channel where bidirectional or low-latency push semantics are required (e.g. the alert stream).

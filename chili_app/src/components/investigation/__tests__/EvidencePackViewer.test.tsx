@@ -201,7 +201,7 @@ describe('EvidencePackViewer', () => {
     expect(screen.getByText('Provider risk profile')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open citation source claim volume spike/i })).toHaveAttribute(
       'href',
-      '/knowledge-bases?kb=kb-1&document=doc-1',
+      '/knowledge-bases/kb-1/data?document=doc-1',
     )
     expect(screen.getByRole('link', { name: /open citation source provider risk profile/i })).toHaveAttribute(
       'href',

@@ -28,7 +28,7 @@ describe('citationTargets', () => {
       kind: 'link',
       label: 'Claim note',
       sourceType: 'document',
-      to: '/knowledge-bases?kb=kb-1&document=doc-1',
+      to: '/knowledge-bases/kb-1/data?document=doc-1',
       preview: 'Document preview',
     })
   })
@@ -259,7 +259,7 @@ describe('citationTargets', () => {
       kind: 'link',
       label: 'doc-1',
       sourceType: 'document',
-      to: '/knowledge-bases?kb=kb-1&document=doc-1&chunk=3',
+      to: '/knowledge-bases/kb-1/data?document=doc-1&chunk=3',
       preview: 'Document preview',
     })
   })

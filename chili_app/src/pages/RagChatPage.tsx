@@ -21,6 +21,7 @@ import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { resolveRagCitationTarget } from '../lib/citationTargets'
 import { buildRagScope, parseRagLaunchContext } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
+import { KNOWLEDGE_BASES_ROUTE } from '../utils/knowledgeBaseRoutes'
 import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { relativeAge } from '../utils/relativeTime'
 import { starterPrompts } from '../utils/starterPrompts'
@@ -153,7 +154,7 @@ export function RagChatPage() {
             action={
               <button
                 className="page-button"
-                onClick={() => navigate('/knowledge-bases')}
+                onClick={() => navigate(KNOWLEDGE_BASES_ROUTE)}
                 type="button"
               >
                 + Create Knowledge Base

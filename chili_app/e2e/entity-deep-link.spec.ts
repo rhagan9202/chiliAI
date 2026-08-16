@@ -8,6 +8,7 @@
  */
 import { test, expect } from '@playwright/test'
 
+import { deleteKnowledgeBase } from './helpers/deleteKb'
 import { seeded } from './helpers/seeded'
 
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
@@ -32,23 +33,26 @@ test.describe('Entity deep links', () => {
     // the only ready KB happens to hold the entity, so this points it at a
     // *real* knowledge base that does not — the case that still dead-ended.
     const decoy = await createDecoyKnowledgeBase()
+    try {
+      // Cases uses the shared workspace hook, so `?kb=` there is remembered.
+      // (The Alert Feed reads `?kb=` straight off the URL and never writes it to
+      // the workspace store — a separate inconsistency, noted on #47.)
+      await page.goto(`/cases?kb=${decoy}`)
+      await page.goto(`/investigation/${entityId}`)
 
-    // Cases uses the shared workspace hook, so `?kb=` there is remembered.
-    // (The Alert Feed reads `?kb=` straight off the URL and never writes it to
-    // the workspace store — a separate inconsistency, noted on #47.)
-    await page.goto(`/cases?kb=${decoy}`)
-    await page.goto(`/investigation/${entityId}`)
+      const recovery = page.getByText('This entity is in another knowledge base')
+      await expect(recovery).toBeVisible()
 
-    const recovery = page.getByText('This entity is in another knowledge base')
-    await expect(recovery).toBeVisible()
+      const switchLink = page.getByRole('link', { name: /^Switch to / })
+      await expect(switchLink).toBeVisible()
+      await switchLink.click()
 
-    const switchLink = page.getByRole('link', { name: /^Switch to / })
-    await expect(switchLink).toBeVisible()
-    await switchLink.click()
-
-    // Following it actually loads the entity rather than looping.
-    await expect(page).toHaveURL(new RegExp(`/investigation/${entityId}\\?kb=`))
-    await expect(page.getByTestId('entity-dossier-header')).toBeVisible()
+      // Following it actually loads the entity rather than looping.
+      await expect(page).toHaveURL(new RegExp(`/investigation/${entityId}\\?kb=`))
+      await expect(page.getByTestId('entity-dossier-header')).toBeVisible()
+    } finally {
+      await deleteKnowledgeBase(API, decoy)
+    }
   })
 
   test('says the entity does not exist rather than that it could not be loaded', async ({

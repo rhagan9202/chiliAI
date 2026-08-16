@@ -14,6 +14,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { countLabel } from '../utils/countLabel'
+import { knowledgeBaseWorkspacePath } from '../utils/knowledgeBaseRoutes'
 import {
   EMPTY_POLICY_FILTERS,
   hasActivePolicyFilters,
@@ -233,7 +234,7 @@ export function PolicyIntelligencePage() {
                   action={
                     <Link
                       className="page-button page-button--sm page-button--primary"
-                      to={`/knowledge-bases?kb=${encodeURIComponent(knowledgeBaseId)}`}
+                      to={knowledgeBaseWorkspacePath(knowledgeBaseId, 'add')}
                     >
                       Add data to this knowledge base
                     </Link>

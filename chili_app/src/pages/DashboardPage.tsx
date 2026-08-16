@@ -23,6 +23,7 @@ import { Tabs } from '../components/ui/Tabs'
 import { statusToneForValue } from '../components/ui/statusPill'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { flagLabelFor } from '../utils/flagLabel'
+import { KNOWLEDGE_BASES_ROUTE, knowledgeBaseWorkspacePath } from '../utils/knowledgeBaseRoutes'
 import { backlogTrend, queueHealth } from '../utils/queueHealth'
 import { countTone } from '../utils/severity'
 import { clusterColorFor } from '../utils/graphStyles'
@@ -242,7 +243,7 @@ export function DashboardPage() {
         <KpiCard color="#00d4ff" icon={AlertTriangle} label="Active alerts" sublabel="Across triage queues and evidence review" to="/alerts" value={String(overview.active_alerts)} />
         <KpiCard color="#f59e0b" icon={ShieldCheck} label="High-risk entities" sublabel="Entities currently above high-risk thresholds" to="/investigation" value={String(overview.high_risk_entities)} />
         <KpiCard color="#00e676" icon={Database} label="Entities monitored" sublabel="Entities available in the active investigation graph" to="/investigation" value={String(overview.entities_monitored)} />
-        <KpiCard color="#a855f7" icon={Activity} label="Workflow runs" sublabel="Recent ingestion and analytics pipeline activity" to="/knowledge-bases" value={String(workflows.length)} />
+        <KpiCard color="#a855f7" icon={Activity} label="Workflow runs" sublabel="Recent ingestion and analytics pipeline activity" to={activeKnowledgeBaseId ? knowledgeBaseWorkspacePath(activeKnowledgeBaseId, 'runs') : KNOWLEDGE_BASES_ROUTE} value={String(workflows.length)} />
       </div>
 
       {activeTabId === 'overview' ? (

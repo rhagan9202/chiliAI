@@ -6,6 +6,13 @@ export interface ResolveActiveKnowledgeBaseInput {
   activeDomainName: string | null
   requestedId: string | null
   storedId: string | null
+  /**
+   * A knowledge base named by the route path. On a workspace route the URL is
+   * the page, so this outranks everything else and is validated against the
+   * full list rather than the in-domain one: domain scoping is warn-only, and
+   * a cross-domain workspace must render the corpus its address names.
+   */
+  pathId?: string | null
 }
 
 /** Recency key: a KB's last update, falling back to its creation time. */
@@ -16,6 +23,11 @@ function recencyOf(knowledgeBase: KnowledgeBaseSummaryResponse): number {
 export function resolveActiveKnowledgeBaseId(
   input: ResolveActiveKnowledgeBaseInput,
 ): string | null {
+  const pathId = input.pathId ?? null
+  if (pathId !== null && input.knowledgeBases.some((item) => item.id === pathId)) {
+    return pathId
+  }
+
   const inDomain = input.knowledgeBases.filter(
     (knowledgeBase) =>
       !isDomainMismatch(knowledgeBase.domain ?? null, input.activeDomainName),

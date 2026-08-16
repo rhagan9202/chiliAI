@@ -74,6 +74,15 @@ vi.mock('react-router', () => ({
   },
   useNavigate: () => mocks.navigate,
   useSearchParams: () => [mocks.searchParams, mocks.setSearchParams],
+  // Not a workspace route, so useActiveKnowledgeBase's path-based resolution
+  // stays out of the way and ?kb= keeps deciding the selection in these tests.
+  useLocation: () => ({
+    pathname: '/rag-chat',
+    search: '',
+    hash: '',
+    state: null,
+    key: 'test',
+  }),
 }))
 
 vi.mock('../../api/config', () => ({
@@ -597,7 +606,7 @@ describe('RagChatPage', () => {
       }),
     ).toHaveAttribute(
       'href',
-      '/knowledge-bases?kb=kb-1&document=alerts.csv&chunk=1',
+      '/knowledge-bases/kb-1/data?document=alerts.csv&chunk=1',
     )
   })
 
@@ -637,7 +646,7 @@ describe('RagChatPage', () => {
       }),
     ).toHaveAttribute(
       'href',
-      '/knowledge-bases?kb=kb-1&document=case-notes.md&chunk=2',
+      '/knowledge-bases/kb-1/data?document=case-notes.md&chunk=2',
     )
   })
 
@@ -699,12 +708,12 @@ describe('RagChatPage', () => {
         screen.getByRole('link', {
           name: /open citation context.*claims\.csv.*chunk-shared.*record-1.*chunk 1/i,
         }),
-      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=1')
+      ).toHaveAttribute('href', '/knowledge-bases/kb-1/data?document=claims.csv&chunk=1')
       expect(
         screen.getByRole('link', {
           name: /open citation context.*claims\.csv.*chunk-shared.*record-2.*chunk 2/i,
         }),
-      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=2')
+      ).toHaveAttribute('href', '/knowledge-bases/kb-1/data?document=claims.csv&chunk=2')
       expect(
         consoleError.mock.calls.some((call) =>
           call.some(

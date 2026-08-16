@@ -1,10 +1,17 @@
 import { createBrowserRouter, Navigate } from 'react-router'
+import type { RouteObject } from 'react-router'
 import type { ReactElement } from 'react'
 
 import { AuthGuard } from '../components/AuthGuard'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { AppShell } from '../components/layout/AppShell'
 import { LandingRedirect } from '../components/layout/LandingRedirect'
+import { LegacyKnowledgeBasesRedirect } from '../components/layout/LegacyKnowledgeBasesRedirect'
+import { AddDataRoute } from '../features/kb/add-data/AddDataSection'
+import { DataRoute } from '../features/kb/data/DataSection'
+import { OverviewRoute } from '../features/kb/overview/OverviewSection'
+import { RunsRoute } from '../features/kb/runs/RunsSection'
+import { SettingsRoute } from '../features/kb/settings/SettingsSection'
 import { AlertFeedPage } from '../pages/AlertFeedPage'
 import { CaseManagementPage } from '../pages/CaseManagementPage'
 import { ConfigurationPage } from '../pages/ConfigurationPage'
@@ -12,7 +19,8 @@ import { DashboardPage } from '../pages/DashboardPage'
 import { GovernancePage } from '../pages/GovernancePage'
 import { HousingExecutivePage } from '../pages/HousingExecutivePage'
 import { InvestigationWorkbenchPage } from '../pages/InvestigationWorkbenchPage'
-import { KnowledgeBaseManagerPage } from '../pages/KnowledgeBaseManagerPage'
+import { KnowledgeBaseLibraryPage } from '../pages/KnowledgeBaseLibraryPage'
+import { KnowledgeBaseWorkspacePage } from '../pages/KnowledgeBaseWorkspacePage'
 import { Login } from '../pages/Login'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PolicyIntelligencePage } from '../pages/PolicyIntelligencePage'
@@ -22,6 +30,32 @@ import { ScorecardRunPage } from '../pages/ScorecardRunPage'
 function withPageBoundary(element: ReactElement) {
   return <ErrorBoundary>{element}</ErrorBoundary>
 }
+
+/**
+ * The knowledge-bases area, as one exported subtree.
+ *
+ * It is a named constant rather than three inline entries so a test can mount
+ * the *real* elements — the outlet-context seam between the workspace and its
+ * sections lives only in this table, and stubbing the children would test the
+ * stubs. See `pages/__tests__/knowledgeBaseWorkspaceRoutes.test.tsx`.
+ */
+export const knowledgeBaseRoutes: RouteObject[] = [
+  { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseLibraryPage />) },
+  {
+    path: 'knowledge-bases/:kbId',
+    element: withPageBoundary(<KnowledgeBaseWorkspacePage />),
+    children: [
+      { index: true, element: <OverviewRoute /> },
+      { path: 'add', element: <AddDataRoute /> },
+      { path: 'data', element: <DataRoute /> },
+      { path: 'runs', element: <RunsRoute /> },
+      { path: 'settings', element: <SettingsRoute /> },
+    ],
+  },
+  // The legacy address keeps its query string, which carried the knowledge
+  // base: dropping it sent every old bookmark to an arbitrary corpus.
+  { path: 'knowledgebases', element: <LegacyKnowledgeBasesRedirect /> },
+]
 
 export const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -41,8 +75,7 @@ export const router = createBrowserRouter([
       { path: 'investigation', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'investigation/:entityId', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'cases', element: withPageBoundary(<CaseManagementPage />) },
-      { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseManagerPage />) },
-      { path: 'knowledgebases', element: <Navigate to="/knowledge-bases" replace /> },
+      ...knowledgeBaseRoutes,
       { path: 'policy', element: withPageBoundary(<PolicyIntelligencePage />) },
       { path: 'governance', element: withPageBoundary(<GovernancePage />) },
       { path: 'rag-chat', element: withPageBoundary(<RagChatPage />) },
