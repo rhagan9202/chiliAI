@@ -1,3 +1,5 @@
+import { knowledgeBaseWorkspacePath } from '../utils/knowledgeBaseRoutes'
+
 import type { RagLaunchContext } from './ragContext'
 
 export type EvidenceCitationReference = {
@@ -165,8 +167,7 @@ export function resolveEvidenceCitationTarget({
       kind: 'link',
       label,
       sourceType,
-      to: `/knowledge-bases${query([
-        ['kb', knowledgeBaseId],
+      to: `${knowledgeBaseWorkspacePath(knowledgeBaseId, 'data')}${query([
         ['document', documentId],
       ])}`,
       preview: 'Document preview',
@@ -239,8 +240,7 @@ export function resolveRagCitationTarget({
       kind: 'link',
       label: citation.document_id,
       sourceType: 'document',
-      to: `/knowledge-bases${query([
-        ['kb', knowledgeBaseId],
+      to: `${knowledgeBaseWorkspacePath(knowledgeBaseId, 'data')}${query([
         ['document', citation.document_id],
         ['chunk', citation.chunk_index],
       ])}`,

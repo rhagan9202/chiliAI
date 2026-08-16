@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 
 import type { KnowledgeBaseSummaryResponse } from '../../api/contracts'
+import { knowledgeBaseWorkspacePath } from '../../utils/knowledgeBaseRoutes'
 
 interface EmptyKnowledgeBaseNoticeProps {
   knowledgeBase: KnowledgeBaseSummaryResponse | null
@@ -26,7 +27,7 @@ export function EmptyKnowledgeBaseNotice({ knowledgeBase }: EmptyKnowledgeBaseNo
       </span>
       <Link
         className="page-button page-button--sm page-button--primary"
-        to={`/knowledge-bases?kb=${encodeURIComponent(knowledgeBase.id)}`}
+        to={knowledgeBaseWorkspacePath(knowledgeBase.id, 'add')}
       >
         Add data
       </Link>

@@ -57,6 +57,7 @@ import {
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { KNOWLEDGE_BASES_ROUTE, knowledgeBaseWorkspacePath } from '../utils/knowledgeBaseRoutes'
 import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { severityTone } from '../utils/severity'
 import { toSubgraphResult } from '../utils/subgraph'
@@ -557,7 +558,7 @@ export function InvestigationWorkbenchPage() {
             action={
               <button
                 className="page-button"
-                onClick={() => navigate('/knowledge-bases')}
+                onClick={() => navigate(KNOWLEDGE_BASES_ROUTE)}
                 type="button"
               >
                 + Create Knowledge Base
@@ -922,7 +923,11 @@ export function InvestigationWorkbenchPage() {
                             action={
                               <Link
                                 className="page-button page-button--sm"
-                                to={`/knowledge-bases?kb=${encodeURIComponent(activeKnowledgeBaseId ?? '')}`}
+                                to={
+                                  activeKnowledgeBaseId
+                                    ? knowledgeBaseWorkspacePath(activeKnowledgeBaseId)
+                                    : KNOWLEDGE_BASES_ROUTE
+                                }
                               >
                                 Add data to this knowledge base
                               </Link>

@@ -353,7 +353,10 @@ describe('DashboardPage', () => {
     expect(openCasesLink).toHaveAttribute('href', '/cases')
     expect(openCasesLink).toHaveAccessibleName(/3/)
 
-    expect(screen.getByRole('link', { name: /workflow runs/i })).toHaveAttribute('href', '/knowledge-bases')
+    expect(screen.getByRole('link', { name: /workflow runs/i })).toHaveAttribute(
+      'href',
+      '/knowledge-bases/kb-ready/runs',
+    )
     expect(screen.getByRole('link', { name: /high-risk entities/i })).toHaveAttribute('href', '/investigation')
     expect(screen.getByRole('link', { name: /entities monitored/i })).toHaveAttribute('href', '/investigation')
   })
