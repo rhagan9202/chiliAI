@@ -58,9 +58,18 @@ export function matchWorkspacePath(pathname: string): WorkspaceMatch | null {
     return null
   }
 
+  let knowledgeBaseId: string
+  try {
+    knowledgeBaseId = decodeURIComponent(rawId)
+  } catch {
+    // Malformed percent-encoding (e.g., `%` without two hex digits) does not
+    // decode to a valid id, so the path does not address a knowledge base.
+    return null
+  }
+
   const finalSection: WorkspaceSection = isWorkspaceSection(section) ? section : 'overview'
   return {
-    knowledgeBaseId: decodeURIComponent(rawId),
+    knowledgeBaseId,
     section: finalSection,
   }
 }

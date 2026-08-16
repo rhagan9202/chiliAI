@@ -58,6 +58,10 @@ describe('matchWorkspacePath', () => {
     expect(matchWorkspacePath('/alerts')).toBeNull()
     expect(matchWorkspacePath('/knowledge-basesX/kb-1')).toBeNull()
   })
+
+  it('returns null for malformed percent-encoding in the id', () => {
+    expect(matchWorkspacePath('/knowledge-bases/%')).toBeNull()
+  })
 })
 
 describe('legacyWorkspaceRedirect', () => {
