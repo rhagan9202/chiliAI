@@ -146,8 +146,10 @@ interface ChatState {
 Staging work per knowledge base, keyed by id — no page-chrome state lives
 here. The six-step ingestion wizard stepper (and the `currentStep` /
 `IngestionStepId` state that drove it) was deleted in the phase-2 IA split:
-stages are routes now, so the URL says where the analyst is, not a store
-field. Backend submission errors are read directly off the mutation that
+stage position is no longer store state. `KnowledgeBaseManagerPage.tsx` still
+renders every stage on one page for now; routed stages (`overview`, `add`,
+`data`, `runs`, `settings`) are planned for a later task in that split, not
+present yet. Backend submission errors are read directly off the mutation that
 produced them (`uploadMutation.error`, `uploadRecordFileMutation.error`,
 `pushRecordsMutation.error`) rather than stored, so they clear on retry
 without anyone remembering to clear them; document/row validation
