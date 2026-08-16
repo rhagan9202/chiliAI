@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router'
+import type { RouteObject } from 'react-router'
 import type { ReactElement } from 'react'
 
 import { AuthGuard } from '../components/AuthGuard'
@@ -30,6 +31,32 @@ function withPageBoundary(element: ReactElement) {
   return <ErrorBoundary>{element}</ErrorBoundary>
 }
 
+/**
+ * The knowledge-bases area, as one exported subtree.
+ *
+ * It is a named constant rather than three inline entries so a test can mount
+ * the *real* elements — the outlet-context seam between the workspace and its
+ * sections lives only in this table, and stubbing the children would test the
+ * stubs. See `pages/__tests__/knowledgeBaseWorkspaceRoutes.test.tsx`.
+ */
+export const knowledgeBaseRoutes: RouteObject[] = [
+  { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseLibraryPage />) },
+  {
+    path: 'knowledge-bases/:kbId',
+    element: withPageBoundary(<KnowledgeBaseWorkspacePage />),
+    children: [
+      { index: true, element: <OverviewRoute /> },
+      { path: 'add', element: <AddDataRoute /> },
+      { path: 'data', element: <DataRoute /> },
+      { path: 'runs', element: <RunsRoute /> },
+      { path: 'settings', element: <SettingsRoute /> },
+    ],
+  },
+  // The legacy address keeps its query string, which carried the knowledge
+  // base: dropping it sent every old bookmark to an arbitrary corpus.
+  { path: 'knowledgebases', element: <LegacyKnowledgeBasesRedirect /> },
+]
+
 export const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
   {
@@ -48,21 +75,7 @@ export const router = createBrowserRouter([
       { path: 'investigation', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'investigation/:entityId', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'cases', element: withPageBoundary(<CaseManagementPage />) },
-      { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseLibraryPage />) },
-      {
-        path: 'knowledge-bases/:kbId',
-        element: withPageBoundary(<KnowledgeBaseWorkspacePage />),
-        children: [
-          { index: true, element: <OverviewRoute /> },
-          { path: 'add', element: <AddDataRoute /> },
-          { path: 'data', element: <DataRoute /> },
-          { path: 'runs', element: <RunsRoute /> },
-          { path: 'settings', element: <SettingsRoute /> },
-        ],
-      },
-      // The legacy address keeps its query string, which carried the knowledge
-      // base: dropping it sent every old bookmark to an arbitrary corpus.
-      { path: 'knowledgebases', element: <LegacyKnowledgeBasesRedirect /> },
+      ...knowledgeBaseRoutes,
       { path: 'policy', element: withPageBoundary(<PolicyIntelligencePage />) },
       { path: 'governance', element: withPageBoundary(<GovernancePage />) },
       { path: 'rag-chat', element: withPageBoundary(<RagChatPage />) },

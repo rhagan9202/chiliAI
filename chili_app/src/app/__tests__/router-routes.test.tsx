@@ -33,9 +33,11 @@ describe('router routes', () => {
   })
 
   it('keeps the stale knowledgebases address served', () => {
-    // The pre-split address is still in bookmarks and in e-mailed links; it
-    // redirects rather than 404s, and it carries its query string across (the
-    // `?kb=` in those links is the knowledge base itself).
+    // The pre-split address is still in bookmarks and in e-mailed links, so it
+    // must not fall through to the catch-all. Where it *lands* — query string
+    // and all — is checked by mounting the real route table in
+    // pages/__tests__/knowledgeBaseWorkspaceRoutes.test.tsx; this only asserts
+    // the address is still claimed.
     expect(paths()).toContain('knowledgebases')
   })
 })

@@ -11,7 +11,7 @@ import { KNOWLEDGE_BASES_ROUTE } from '../../utils/knowledgeBaseRoutes'
  * library resolves the `?kb=` into a workspace address from there, so neither
  * hop needs to know about the other.
  */
-export function LegacyKnowledgeBasesRedirect(): React.ReactElement {
+export function LegacyKnowledgeBasesRedirect() {
   const { search } = useLocation()
   return <Navigate replace to={`${KNOWLEDGE_BASES_ROUTE}${search}`} />
 }

@@ -72,7 +72,6 @@ const domainConfig = {
 
 /** Transport outcomes, flipped per test (and mid-test, for the retry case). */
 let documentFail = false
-let recordsFileFail = false
 let recordsPushFail = false
 let recordsPushStructuredFail = false
 
@@ -144,9 +143,8 @@ function outcomeFor(url: string): { status: number; body: unknown } {
   }
 
   if (url.includes('/records/kb-1/files')) {
-    if (recordsFileFail) {
-      return { status: 422, body: { detail: 'Records backend rejected the file.' } }
-    }
+    // The failure path for this endpoint is covered directly in
+    // useRecordsFlow.test.tsx (error precedence), so this stub only succeeds.
     return {
       status: 202,
       body: {
@@ -198,7 +196,6 @@ async function parseValidRecords() {
 beforeEach(() => {
   useIngestionDraftStore.getState().reset()
   documentFail = false
-  recordsFileFail = false
   recordsPushFail = false
   recordsPushStructuredFail = false
   installXhrMock()
