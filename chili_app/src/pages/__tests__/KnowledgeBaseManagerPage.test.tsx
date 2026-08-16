@@ -131,6 +131,16 @@ type MockScoreRun = {
   updated_at: string
 }
 
+type MockWorkflow = {
+  id: string
+  knowledge_base_id: string
+  workflow_type: 'ingestion' | 'graph_build' | 'analytics' | 'monitoring'
+  status: 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'cancelled'
+  current_step: string
+  started_at: string
+  updated_at: string
+}
+
 type MockDocumentSummary = {
   id: string
   knowledge_base_id: string
@@ -309,6 +319,7 @@ function installFetchMock({
   documentItems,
   emptyInventory = false,
   scoreRunItems = [],
+  workflowItems = [],
 }: {
   documentFail?: boolean
   recordsFail?: boolean
@@ -326,6 +337,7 @@ function installFetchMock({
   /** kb-1 has landed nothing yet — the brand-new knowledge base case. */
   emptyInventory?: boolean
   scoreRunItems?: MockScoreRun[]
+  workflowItems?: MockWorkflow[]
 } = {}) {
   const knowledgeBaseItems = (kbItems ?? [{ ...medicareKb, domain: kbDomain }]).map((item) => (
     emptyInventory && item.id === 'kb-1'
@@ -345,7 +357,7 @@ function installFetchMock({
     }
 
     if (url.includes('/workflows')) {
-      return new Response(JSON.stringify({ items: [] }), {
+      return new Response(JSON.stringify({ items: workflowItems }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
@@ -920,14 +932,38 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     delete (HTMLElement.prototype as { scrollIntoView?: () => void }).scrollIntoView
   })
 
-  it('keeps the run timeline once a knowledge base has documents (UXA-305)', async () => {
+  it('hides the run timeline card when a knowledge base has documents but no workflows (UXA-305)', async () => {
+    // Documents are the data section's business now; a knowledge base can
+    // have documents with no run submitted in this session. The timeline no
+    // longer earns a card just because documents exist — showing its own
+    // "No runs yet" here would be a second card saying nothing happened yet,
+    // when the data section already covers what has landed.
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    // Documents exist but no run has been submitted in this session: the
-    // timeline's own empty state is the honest report, not a duplicate.
     expect(await screen.findByText('existing-policy.txt')).toBeInTheDocument()
-    expect(screen.getByText('No runs yet')).toBeInTheDocument()
+    expect(screen.queryByText('No runs yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('Run timeline')).not.toBeInTheDocument()
     expect(screen.getByText('Document preview')).toBeInTheDocument()
+  })
+
+  it('shows the run timeline once a workflow exists, independent of documents (UXA-305)', async () => {
+    installFetchMock({
+      workflowItems: [
+        {
+          id: 'workflow-1',
+          knowledge_base_id: 'kb-1',
+          workflow_type: 'ingestion',
+          status: 'queued',
+          current_step: 'validate',
+          started_at: '2026-08-01T00:00:00Z',
+          updated_at: '2026-08-01T00:00:00Z',
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('Run timeline')).toBeInTheDocument()
+    expect(screen.queryByText('No runs yet')).not.toBeInTheDocument()
   })
 
   it('starts score-all without requiring client-side entity ids', async () => {
@@ -1301,7 +1337,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
   it('lets a cancelled document removal leave the document in place', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
+    // The data section fetches its own document inventory now, independent of
+    // the page-level loading gate — wait for it to land before interacting.
+    await screen.findByText('existing-policy.txt')
     await userEvent.click(screen.getByRole('button', { name: 'Remove document' }))
 
     const dialog = screen.getByRole('dialog')

@@ -596,11 +596,16 @@ to preview until something lands, so only the document inventory's empty state
 survives, and that one carries a *Stage a source* button that scrolls back to
 the staging form in the main column.
 
-The run timeline earns its card once `documents` or `workflows` is non-empty —
-documents are in the test because a knowledge base whose runs have aged out
-still has an inventory, the honest signal that ingestion happened. **Next
-actions' *Watch runs* keys off the same value**: hiding the timeline without
-disabling that button would leave it scrolling to a card that is not rendered.
+The document inventory and preview live in `src/features/kb/data/`
+(`DocumentInventory.tsx`, `DocumentPreview.tsx`, `DataSection.tsx`), extracted
+out of `KnowledgeBaseManagerPage.tsx` so the same section can later be routed
+at `/knowledge-bases/:kbId/data`. `DataSection` owns the document list and
+preview queries, the status filter, and the delete-confirmation flow; the
+focused document lives in the `?document=` search param (not page state) so a
+citation can address a document and a reload keeps it open. The run timeline
+earns its card once `workflows` alone is non-empty — documents are the data
+section's concern now, and a knowledge base with documents always has the runs
+that produced them, so asking `documents` too would only ever be redundant.
 
 ## Entity deep links recover
 

@@ -5,10 +5,7 @@ import { useDomainConfig } from '../api/config'
 import {
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
-  useDeleteKnowledgeBaseDocument,
   useKnowledgeBase,
-  useKnowledgeBaseDocumentPreview,
-  useKnowledgeBaseDocuments,
   useKnowledgeBases,
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
@@ -20,11 +17,7 @@ import {
   useScoreRuns,
   useStartScoreRun,
 } from '../api/scoreRuns'
-import type {
-  KnowledgeBaseDocumentListResponse,
-  KnowledgeBaseDocumentPreviewResponse,
-  RecordIngestReceipt,
-} from '../api/contracts'
+import type { RecordIngestReceipt } from '../api/contracts'
 import { useWorkflows } from '../api/workflows'
 import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
@@ -42,14 +35,14 @@ import { ValidationPanel } from '../components/ingestion/ValidationPanel'
 import { showToast } from '../components/common/toastStore'
 import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
-import { statusToken } from '../components/status/statusTokens'
-import { formatFileSize, formatTimestamp } from '../components/status/formatters'
+import { formatTimestamp } from '../components/status/formatters'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { DataSection } from '../features/kb/data/DataSection'
 import {
   validateDocumentFiles,
   validateIngestionPrerequisites,
@@ -76,12 +69,8 @@ export function KnowledgeBaseManagerPage() {
   // requested KB isn't in the visible list, the auto-select fallback below wins.
   const [searchParams] = useSearchParams()
   const requestedKnowledgeBaseId = searchParams.get('kb')
-  const requestedDocumentId = searchParams.get('document')
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(
     () => requestedKnowledgeBaseId,
-  )
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
-    () => requestedDocumentId,
   )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
@@ -92,13 +81,9 @@ export function KnowledgeBaseManagerPage() {
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
-  const [documentStatusFilter, setDocumentStatusFilter] = useState('all')
   // Destructive actions are staged in state and executed from a confirmation
   // dialog: both deletions used to fire on the first click.
   const [confirmingKnowledgeBaseDelete, setConfirmingKnowledgeBaseDelete] = useState(false)
-  const [confirmingDocumentDeleteId, setConfirmingDocumentDeleteId] = useState<string | null>(
-    null,
-  )
   // The staging form lives in the main column while the inventory that reports
   // "no documents yet" sits in the aside; the empty state's action has to take
   // the analyst back across the page to it (UXA-305).
@@ -129,32 +114,20 @@ export function KnowledgeBaseManagerPage() {
     { enabled: Boolean(activeKnowledgeBaseId) },
   )
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
-  const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId, {
-    ...(documentStatusFilter === 'all' ? {} : { status: documentStatusFilter }),
-  })
   const scoreRunsQuery = useScoreRuns(activeKnowledgeBaseId, { limit: 1 })
   const scoreRuns = scoreRunsQuery.data?.items ?? []
   const activeScoreRunId = selectedScoreRunId ?? scoreRuns[0]?.id ?? null
   const scoreRunQuery = useScoreRun(activeKnowledgeBaseId, activeScoreRunId)
-  const documents = documentsQuery.data?.items ?? []
   const workflows = workflowsQuery.data?.items ?? []
-  const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
-    ? selectedDocumentId
-    : documents[0]?.id ?? null
-  const documentPreviewQuery = useKnowledgeBaseDocumentPreview(
-    activeKnowledgeBaseId,
-    activeDocumentId,
-  )
   const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
-  // A brand-new knowledge base has no runs *because* it has nothing in it, and
-  // the document inventory already says so; the timeline only earns its card
-  // once there is something to time (UXA-305).
-  const runTimelineVisible = documents.length > 0 || workflows.length > 0
+  // The timeline earns its card once there is something to time. Documents are
+  // owned by the data section now, so ask the workflow list alone; a knowledge
+  // base with documents always has the runs that produced them.
+  const runTimelineVisible = workflows.length > 0
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
   const uploadMutation = useUploadKnowledgeBaseDocuments(activeKnowledgeBaseId)
-  const deleteDocumentMutation = useDeleteKnowledgeBaseDocument(activeKnowledgeBaseId)
   const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
   const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
   const startScoreRunMutation = useStartScoreRun(activeKnowledgeBaseId)
@@ -377,11 +350,11 @@ export function KnowledgeBaseManagerPage() {
     return <LoadingState label="Waiting for knowledge base configuration" />
   }
 
-  if (activeKnowledgeBaseId && (knowledgeBaseDetailQuery.isLoading || documentsQuery.isLoading)) {
+  if (activeKnowledgeBaseId && knowledgeBaseDetailQuery.isLoading) {
     return <LoadingState label="Loading selected knowledge base" />
   }
 
-  if (knowledgeBaseDetailQuery.isError || documentsQuery.isError) {
+  if (knowledgeBaseDetailQuery.isError) {
     return <ErrorState description="This knowledge base could not be opened. Try again, or pick another one." />
   }
 
@@ -451,7 +424,6 @@ export function KnowledgeBaseManagerPage() {
                   {
                     onSuccess: (created) => {
                       setSelectedKnowledgeBaseId(created.id)
-                      setSelectedDocumentId(null)
                       setActiveScoreRunId(null)
                       setKnowledgeBaseName('')
                       setKnowledgeBaseDescription('')
@@ -462,7 +434,6 @@ export function KnowledgeBaseManagerPage() {
               onDelete={() => setConfirmingKnowledgeBaseDelete(true)}
               onSelect={(knowledgeBaseId) => {
                 setSelectedKnowledgeBaseId(knowledgeBaseId)
-                setSelectedDocumentId(null)
                 setActiveScoreRunId(null)
               }}
               onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
@@ -496,7 +467,6 @@ export function KnowledgeBaseManagerPage() {
                     // Its draft has nowhere to submit to now.
                     clearDraft(deletedId)
                     setSelectedKnowledgeBaseId(null)
-                    setSelectedDocumentId(null)
                     setActiveScoreRunId(null)
                   },
                 })
@@ -674,18 +644,9 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
 
-          <Card>
-            <DocumentInventory
-              activeDocumentId={activeDocumentId}
-              deleteDisabled={deleteDocumentMutation.isPending}
-              documents={documents}
-              statusFilter={documentStatusFilter}
-              onStatusFilterChange={setDocumentStatusFilter}
-              preview={documentPreviewQuery.data ?? null}
-              previewError={documentPreviewQuery.isError}
-              previewLoading={documentPreviewQuery.isLoading}
-              onDeleteDocument={(documentId) => setConfirmingDocumentDeleteId(documentId)}
-              onSelectDocument={setSelectedDocumentId}
+          {activeKnowledgeBaseId ? (
+            <DataSection
+              knowledgeBaseId={activeKnowledgeBaseId}
               onStageSource={() => {
                 const section = sourceStepRef.current
                 if (section && typeof section.scrollIntoView === 'function') {
@@ -693,28 +654,7 @@ export function KnowledgeBaseManagerPage() {
                 }
               }}
             />
-            <ConfirmDialog
-              body={`Removes ${
-                documents.find((document) => document.id === confirmingDocumentDeleteId)
-                  ?.filename ?? 'this document'
-              } and the graph and vector artifacts built from it.`}
-              confirmLabel="Remove document"
-              destructive
-              onCancel={() => setConfirmingDocumentDeleteId(null)}
-              onConfirm={() => {
-                const documentId = confirmingDocumentDeleteId
-                setConfirmingDocumentDeleteId(null)
-                if (!documentId) {
-                  return
-                }
-                deleteDocumentMutation.mutate(documentId, {
-                  onSuccess: () => setSelectedDocumentId(null),
-                })
-              }}
-              open={confirmingDocumentDeleteId !== null}
-              title="Remove document"
-            />
-          </Card>
+          ) : null}
         </aside>
       </div>
     </section>
@@ -831,218 +771,6 @@ function SelectedKnowledgeBaseSummary({
           <strong>{formatTimestamp(knowledgeBase.created_at)}</strong>
         </div>
       </div>
-    </section>
-  )
-}
-
-/** Lifecycle states worth filtering by; the in-progress states churn too fast. */
-const DOCUMENT_STATUS_FILTERS = ['all', 'validated', 'extracted_empty', 'failed'] as const
-
-type DocumentInventoryProps = {
-  activeDocumentId: string | null
-  deleteDisabled: boolean
-  documents: KnowledgeBaseDocumentListResponse['items']
-  preview: KnowledgeBaseDocumentPreviewResponse | null
-  previewLoading: boolean
-  previewError: boolean
-  statusFilter: string
-  onStatusFilterChange: (status: string) => void
-  onStageSource: () => void
-  onDeleteDocument: (documentId: string) => void
-  onSelectDocument: (documentId: string) => void
-}
-
-function DocumentInventory({
-  activeDocumentId,
-  deleteDisabled,
-  documents,
-  preview,
-  previewLoading,
-  previewError,
-  statusFilter,
-  onStatusFilterChange,
-  onDeleteDocument,
-  onSelectDocument,
-  onStageSource,
-}: DocumentInventoryProps) {
-  // Which row has its warning reasons open. Reasons used to be reachable only
-  // by hovering a `title` or by selecting the row — undiscoverable, and dead on
-  // touch.
-  const [expandedWarningsId, setExpandedWarningsId] = useState<string | null>(null)
-
-  return (
-    <section className="ingestion-studio-documents" aria-labelledby="document-inventory-title">
-      <div className="metric-row">
-        <strong id="document-inventory-title">Document inventory</strong>
-        <Chip label={`${documents.length} tracked`} tone="network" />
-      </div>
-
-      {/* Its own row: sharing the heading's flex line squeezed the select below
-          its widest option in the 320px context rail. */}
-      <label className="ingestion-document-filter">
-        <span className="metric-row__label">Filter documents by status</span>
-        <select
-          aria-label="Filter documents by status"
-          className="page-input ingestion-document-filter__select"
-          onChange={(event) => onStatusFilterChange(event.target.value)}
-          value={statusFilter}
-        >
-          {DOCUMENT_STATUS_FILTERS.map((value) => (
-            <option key={value} value={value}>
-              {value === 'all' ? 'All statuses' : statusToken('document', value).label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {documents.length > 0 ? (
-        <div className="knowledge-base-documents">
-          {documents.map((document) => {
-            const warningReasons = document.warning_reasons ?? []
-            const droppedEntities = document.dropped_entity_count ?? 0
-            const droppedRelationships = document.dropped_relationship_count ?? 0
-
-            return (
-              <div className="knowledge-base-document-row" key={document.id}>
-                <button
-                  className={
-                    activeDocumentId === document.id
-                      ? 'page-list-item page-list-item--active'
-                      : 'page-list-item'
-                  }
-                  onClick={() => onSelectDocument(document.id)}
-                  type="button"
-                >
-                  <strong>{document.filename}</strong>
-                  <span className="metric-row__label">
-                    {formatFileSize(document.size_bytes)} | {formatTimestamp(document.created_at)}
-                  </span>
-                  <span className="alert-row-card__meta">
-                    {/* The durable lifecycle, not the registration status: the
-                        latter says "ready" for a document that produced nothing. */}
-                    <StatusChip
-                      kind="document"
-                      status={document.current_status ?? document.status}
-                    />
-                    {warningReasons.length > 0 || (document.warning_count ?? 0) > 0 ? (
-                      <Chip label={countLabel(document.warning_count ?? 0, 'warning')} tone="warning" />
-                    ) : null}
-                  </span>
-                  {document.last_error ? (
-                    <span className="ingestion-document-row__error" role="alert">
-                      {document.last_error}
-                    </span>
-                  ) : null}
-                  {droppedEntities > 0 || droppedRelationships > 0 ? (
-                    // Exact counts only: how many of each were kept is not
-                    // knowable from this payload, so it is not claimed.
-                    <span className="metric-row__label">
-                      {[
-                        droppedEntities > 0
-                          ? `${countLabel(droppedEntities, 'entity', 'entities')} dropped`
-                          : null,
-                        droppedRelationships > 0
-                          ? `${countLabel(droppedRelationships, 'relationship')} dropped`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  ) : null}
-                </button>
-                {warningReasons.length > 0 ? (
-                  <button
-                    aria-expanded={expandedWarningsId === document.id}
-                    className="page-button page-button--sm page-button--secondary"
-                    onClick={() =>
-                      setExpandedWarningsId((current) =>
-                        current === document.id ? null : document.id,
-                      )
-                    }
-                    type="button"
-                  >
-                    {expandedWarningsId === document.id ? 'Hide' : 'Show'}{' '}
-                    {countLabel(warningReasons.length, 'warning')}
-                  </button>
-                ) : null}
-                {expandedWarningsId === document.id ? (
-                  <ul className="metric-row__label" data-testid="document-warning-reasons">
-                    {warningReasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                    {(document.drop_sample_reasons ?? []).map((reason) => (
-                      <li key={`drop-${reason}`}>{reason}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <EmptyState
-          action={
-            <button
-              className="page-button page-button--sm page-button--primary"
-              onClick={onStageSource}
-              type="button"
-            >
-              Stage a source
-            </button>
-          }
-          description="Register policy, claims, or reference documents to start ingestion."
-          title="No documents yet"
-        />
-      )}
-
-      {activeDocumentId ? (
-        <button
-          className="page-button page-button--secondary"
-          disabled={deleteDisabled}
-          onClick={() => onDeleteDocument(activeDocumentId)}
-          type="button"
-        >
-          Remove document
-        </button>
-      ) : null}
-
-      {/* With no documents at all, the inventory's empty state has already said
-          so; a second "no document selected" and a third "no runs yet" made one
-          screen state the same fact three times (UXA-305). There is nothing to
-          preview until something has been ingested. */}
-      {documents.length === 0 ? null : (
-        <section className="ingestion-document-preview" aria-labelledby="document-preview-title">
-          <div className="metric-row">
-            <strong id="document-preview-title">Document preview</strong>
-            {preview?.truncated ? <Chip label="Truncated" tone="warning" /> : null}
-          </div>
-
-          {!activeDocumentId ? (
-            <EmptyState
-              title="No document selected"
-              description="Select a document in inventory to review its preview."
-            />
-          ) : previewLoading ? (
-            <LoadingState label="Loading document preview" />
-          ) : previewError ? (
-            <ErrorState description="Document preview could not be loaded from the API." />
-          ) : preview ? (
-            preview.preview_text.trim().length > 0 ? (
-              <article className="ingestion-document-preview__content">
-                <p className="metric-row__label">
-                  {countLabel(preview.line_count, 'line')} from {preview.filename}
-                </p>
-                <pre>{preview.preview_text}</pre>
-              </article>
-            ) : (
-              <EmptyState
-                title="No preview text returned"
-                description="This document has no text preview content yet."
-              />
-            )
-          ) : null}
-        </section>
-      )}
     </section>
   )
 }
