@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 
 import { useDomainConfig } from '../api/config'
 import { useCreateKnowledgeBase, useKnowledgeBase, useKnowledgeBases } from '../api/knowledgebases'
@@ -16,12 +16,12 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { AddDataSection } from '../features/kb/add-data/AddDataSection'
 import { DataSection } from '../features/kb/data/DataSection'
+import { OverviewSection } from '../features/kb/overview/OverviewSection'
 import { RunsSection } from '../features/kb/runs/RunsSection'
 import { SettingsSection } from '../features/kb/settings/SettingsSection'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
-  const navigate = useNavigate()
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
@@ -34,11 +34,6 @@ export function KnowledgeBaseManagerPage() {
   )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
-  // This tab just handed a submission to the server (AddDataSection's
-  // onSubmitted). It says nothing about history — the run timeline is the
-  // record of what happened — only that the handoff succeeded and the run
-  // has yet to surface in the poll.
-  const [submissionAccepted, setSubmissionAccepted] = useState(false)
   const [showAllDomains, setShowAllDomains] = useState(false)
   // The staging form lives in the main column while the inventory that reports
   // "no documents yet" sits in the aside; the empty state's action has to take
@@ -86,8 +81,6 @@ export function KnowledgeBaseManagerPage() {
   if (knowledgeBaseDetailQuery.isError) {
     return <ErrorState description="This knowledge base could not be opened. Try again, or pick another one." />
   }
-
-  const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
 
   return (
     <section className="page-grid">
@@ -142,7 +135,12 @@ export function KnowledgeBaseManagerPage() {
             <div ref={sourceStepRef}>
               <AddDataSection
                 knowledgeBaseId={activeKnowledgeBaseId}
-                onSubmitted={() => setSubmissionAccepted(true)}
+                // The submission's own consequences (clearing the staged draft,
+                // invalidating this knowledge base's detail query) already
+                // happen inside AddDataSection's flows; the page has nothing
+                // left to do here now that OverviewSection reads its situation
+                // straight from the (auto-refetched) knowledge base counts.
+                onSubmitted={() => undefined}
               />
             </div>
           ) : null}
@@ -156,27 +154,9 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
 
-          <Card>
-            <NextActionsPanel
-              activeKnowledgeBaseId={activeKnowledgeBaseId}
-              hasExistingActivity={Boolean(
-                knowledgeBase && (knowledgeBase.document_count > 0 || knowledgeBase.entity_count > 0),
-              )}
-              submissionAccepted={submissionAccepted}
-              onInvestigateEntities={() => {
-                if (!activeKnowledgeBaseSearch) {
-                  return
-                }
-                navigate({ pathname: '/investigation', search: activeKnowledgeBaseSearch })
-              }}
-              onReviewAlerts={() => {
-                if (!activeKnowledgeBaseSearch) {
-                  return
-                }
-                navigate({ pathname: '/alerts', search: activeKnowledgeBaseSearch })
-              }}
-            />
-          </Card>
+          {knowledgeBase ? (
+            <OverviewSection activeDomainName={activeDomainName} knowledgeBase={knowledgeBase} />
+          ) : null}
 
           {activeKnowledgeBaseId ? (
             <RunsSection
@@ -204,72 +184,6 @@ export function KnowledgeBaseManagerPage() {
             />
           ) : null}
         </aside>
-      </div>
-    </section>
-  )
-}
-
-function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
-  return knowledgeBaseId ? `kb=${encodeURIComponent(knowledgeBaseId)}` : null
-}
-
-function NextActionsPanel({
-  activeKnowledgeBaseId,
-  hasExistingActivity,
-  submissionAccepted,
-  onInvestigateEntities,
-  onReviewAlerts,
-}: {
-  activeKnowledgeBaseId: string | null
-  /**
-   * The knowledge base already carries documents or entities from a prior
-   * session. Reopening it fresh (no submission this session) must not claim
-   * nothing has happened yet — that claim is false the moment either count
-   * is non-zero.
-   */
-  hasExistingActivity: boolean
-  /** This tab's submission was accepted and its run has yet to appear. */
-  submissionAccepted: boolean
-  onInvestigateEntities: () => void
-  onReviewAlerts: () => void
-}) {
-  const disabled = !activeKnowledgeBaseId
-  // Runs themselves are the Runs section's business now (Task 6); this panel
-  // no longer watches the workflow list to decide whether runs are updating.
-  // It still has to avoid telling an analyst who opens an already-ingested
-  // knowledge base to "submit documents" as if it were empty — document_count
-  // and entity_count are static counts the page already has loaded, so
-  // reusing them costs no extra query and no polling.
-  const message = submissionAccepted
-    ? 'Submission accepted. Watch for queued or running workflow updates.'
-    : hasExistingActivity
-      ? 'This knowledge base already has ingested content. Investigate entities or review alerts.'
-      : 'Submit documents or records to unlock the handoff path.'
-
-  return (
-    <section className="ingestion-next-actions" aria-labelledby="ingestion-next-actions-title">
-      <div className="metric-row metric-row--stacked">
-        <strong id="ingestion-next-actions-title">Next actions</strong>
-        <p className="page-copy-block">{message}</p>
-      </div>
-
-      <div className="ingestion-next-actions__buttons">
-        <button
-          className="page-button page-button--secondary"
-          disabled={disabled}
-          onClick={onInvestigateEntities}
-          type="button"
-        >
-          Investigate entities
-        </button>
-        <button
-          className="page-button page-button--secondary"
-          disabled={disabled}
-          onClick={onReviewAlerts}
-          type="button"
-        >
-          Review alerts
-        </button>
       </div>
     </section>
   )

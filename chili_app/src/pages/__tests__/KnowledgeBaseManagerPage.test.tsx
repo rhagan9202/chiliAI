@@ -8,18 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useIngestionDraftStore } from '../../stores/ingestionDraftStore'
 import { KnowledgeBaseManagerPage } from '../KnowledgeBaseManagerPage'
 
-const routerMocks = vi.hoisted(() => ({
-  navigate: vi.fn(),
-}))
-
-vi.mock('react-router', async () => {
-  const actual = await vi.importActual<typeof import('react-router')>('react-router')
-  return {
-    ...actual,
-    useNavigate: () => routerMocks.navigate,
-  }
-})
-
 function renderWithClient(node: React.ReactElement, initialEntries?: string[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -618,7 +606,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
   beforeEach(() => {
     useIngestionDraftStore.getState().reset()
-    routerMocks.navigate.mockReset()
     installFetchMock()
   })
 
@@ -671,10 +658,14 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(await screen.findAllByTestId('kb-domain-mismatch')).toHaveLength(2)
     expect(screen.getAllByText('Created under food_supply_chain')).toHaveLength(2)
 
-    // Banner note on the summary card.
-    const note = screen.getByTestId('kb-domain-mismatch-note')
-    expect(note).toHaveTextContent('created under the "food_supply_chain" domain')
-    expect(note).toHaveTextContent('All actions remain available.')
+    // Banner note: one on the summary card, one on the overview section —
+    // each renders its own copy of the same warning independently.
+    const notes = screen.getAllByTestId('kb-domain-mismatch-note')
+    expect(notes).toHaveLength(2)
+    for (const note of notes) {
+      expect(note).toHaveTextContent('created under the "food_supply_chain" domain')
+      expect(note).toHaveTextContent('All actions remain available.')
+    }
 
     // Warn only — the KB stays selectable and deletable.
     expect(screen.getByRole('button', { name: /fraud kb/i })).toBeEnabled()
@@ -1099,27 +1090,15 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
   })
 
-  it('tells the analyst about existing content instead of asking them to submit, for a knowledge base with a non-zero document count and no submission this session', async () => {
-    // Reopening an already-ingested knowledge base used to fall through to
-    // "Submit documents or records to unlock the handoff path" — literally
-    // false once ingestion has already happened. The message now derives
-    // from the knowledge base's own document/entity counts (already loaded
-    // on this page) instead of the workflow list this section no longer
-    // queries.
-    installFetchMock({
-      kbItems: [{ ...medicareKb, document_count: 5, entity_count: 0 }],
-    })
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    expect(
-      await screen.findByText(
-        'This knowledge base already has ingested content. Investigate entities or review alerts.',
-      ),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByText('Submit documents or records to unlock the handoff path.'),
-    ).not.toBeInTheDocument()
-  })
+  // The three tests that used to live here — the "already has ingested
+  // content" message, the handoff buttons appearing, and navigating to
+  // Investigate via a click handler — tested NextActionsPanel, which
+  // OverviewSection replaced (Task 8). The situation-sentence logic and the
+  // handoffs' href targets now have direct coverage in
+  // src/features/kb/overview/__tests__/OverviewSection.test.tsx; there is
+  // nothing left for this page-level suite to add on top of that, since the
+  // page now passes OverviewSection the same `knowledgeBase` object these
+  // tests were shaping via `installFetchMock`.
 
   it('clears the staged draft once a document submission is accepted', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
@@ -1132,45 +1111,10 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
-    // The draft belonged to an in-flight submission that the server now owns.
-    expect(screen.queryByText('policy.txt')).not.toBeInTheDocument()
-  })
-
-  it('shows next actions after document submission', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-    await userEvent.upload(
-      screen.getByLabelText('Document files'),
-      new File(['policy'], 'policy.txt', { type: 'text/plain' }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
-
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /investigate entities/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /review alerts/i })).toBeInTheDocument()
-  })
-
-  it('navigates to investigation with the selected knowledge base after document submission', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-    await userEvent.upload(
-      screen.getByLabelText('Document files'),
-      new File(['policy'], 'policy.txt', { type: 'text/plain' }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
-
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /investigate entities/i }))
-
-    expect(routerMocks.navigate).toHaveBeenCalledWith({
-      pathname: '/investigation',
-      search: 'kb=kb-1',
-    })
+    // The submission's own success handler clears the draft directly (no
+    // page-level "submission accepted" banner survives Task 8) — its
+    // disappearance from the staged file list is what's observable here.
+    await waitFor(() => expect(screen.queryByText('policy.txt')).not.toBeInTheDocument())
   })
 
   it('parses and submits records through a configured feed', async () => {
@@ -1180,7 +1124,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
+    // A successful submit clears the whole draft, including the source-type
+    // choice, so the records panel (and its now-submitted content) unmounts.
+    await waitFor(() => expect(screen.queryByLabelText('Records content')).not.toBeInTheDocument())
   })
 
   it('uploads configured file-upload records feeds through the records file endpoint', async () => {
@@ -1201,9 +1147,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     // The file-upload feed posts through XMLHttpRequest (for byte-level upload
-    // progress), not fetch; the accepted handoff confirms the multipart
-    // upload round-tripped.
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
+    // progress), not fetch; the draft clearing (and the records panel
+    // unmounting with it) confirms the multipart upload round-tripped.
+    await waitFor(() => expect(screen.queryByLabelText('Records file')).not.toBeInTheDocument())
   })
 
   it('auto-re-parses when the records file upload draft changes', async () => {
@@ -1306,7 +1252,9 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     installFetchMock()
     await userEvent.click(retry)
 
-    expect(await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
+    // The retry's own success handler clears the draft; the staged file
+    // disappearing is what's observable once there is no page-level banner.
+    await waitFor(() => expect(screen.queryByText('policy.txt')).not.toBeInTheDocument())
   })
 
   it('shows structured backend validation arrays for records errors', async () => {
@@ -1319,27 +1267,6 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
 
     expect(await screen.findByText('Checked after upload')).toBeInTheDocument()
     expect(screen.getByText('body.rows.0.provider_npi: Field required')).toBeInTheDocument()
-  })
-
-  it('keeps the accepted-submission state when a later records submit fails validation', async () => {
-    renderWithClient(<KnowledgeBaseManagerPage />)
-
-    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
-    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
-    await userEvent.upload(
-      screen.getByLabelText('Document files'),
-      new File(['hello'], 'policy.txt', { type: 'text/plain' }),
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
-    await screen.findByText('Submission accepted. Watch for queued or running workflow updates.')
-
-    await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
-    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Submission accepted. Watch for queued or running workflow updates.')).toBeInTheDocument()
-      expect(screen.getByText('Select a structured records feed before submitting.')).toBeInTheDocument()
-    })
   })
 
   it('gates knowledge base deletion behind a typed-name confirmation', async () => {

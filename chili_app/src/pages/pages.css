@@ -469,7 +469,6 @@
 .ingestion-studio-main,
 .ingestion-studio-context,
 .ingestion-studio-summary,
-.ingestion-next-actions,
 .ingestion-studio-documents,
 .score-run-panel,
 .score-run-panel__body {
@@ -1836,4 +1835,17 @@ a.housing-run-link:hover {
 .kb-settings__details dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* Overview section situation + handoffs (Task 8). Moves to kb.css in Task 9. */
+.kb-overview,
+.kb-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kb-overview {
+  flex-direction: column;
+  gap: 12px;
 }
