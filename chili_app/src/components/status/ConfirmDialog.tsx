@@ -10,6 +10,8 @@ type ConfirmDialogProps = {
   confirmLabel: string
   /** When set, confirm stays disabled until the user types this exactly. */
   confirmTypedText?: string | null
+  /** Overrides the Cancel button's label, e.g. "Keep staging". Defaults to "Cancel". */
+  cancelLabel?: string
   destructive?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -35,6 +37,7 @@ function ConfirmDialogBody({
   body,
   confirmLabel,
   confirmTypedText = null,
+  cancelLabel = 'Cancel',
   destructive = false,
   onConfirm,
   onCancel,
@@ -101,7 +104,7 @@ function ConfirmDialogBody({
             ref={cancelRef}
             type="button"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             className={

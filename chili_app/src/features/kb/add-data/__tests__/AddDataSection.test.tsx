@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { createMemoryRouter, Link, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useIngestionDraftStore } from '../../../../stores/ingestionDraftStore'
@@ -169,10 +169,15 @@ function renderSection(onSubmitted = vi.fn()) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
 
+  // A data router, not MemoryRouter: AddDataSection calls useBlocker, which
+  // requires data-router context even when nothing in a given test navigates.
   function Wrapper({ children }: { children: ReactNode }) {
+    const router = createMemoryRouter([{ path: '/', element: children }], {
+      initialEntries: ['/'],
+    })
     return (
       <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <RouterProvider router={router} />
       </QueryClientProvider>
     )
   }
@@ -182,6 +187,35 @@ function renderSection(onSubmitted = vi.fn()) {
     { wrapper: Wrapper },
   )
   return { ...result, onSubmitted }
+}
+
+/** For navigation-blocking cases, which need a real data router. */
+function renderInRouter() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/knowledge-bases/kb-1/add',
+        element: (
+          <>
+            <AddDataSection knowledgeBaseId="kb-1" onSubmitted={vi.fn()} />
+            <Link to="/knowledge-bases/kb-1/runs">Go to runs</Link>
+          </>
+        ),
+      },
+      { path: '/knowledge-bases/kb-1/runs', element: <p>Runs section</p> },
+    ],
+    { initialEntries: ['/knowledge-bases/kb-1/add'] },
+  )
+
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
+  return router
 }
 
 /** Stages a valid pasted api-push records batch and parses it. */
@@ -467,5 +501,52 @@ describe('AddDataSection', () => {
     await userEvent.click(retry)
 
     await waitFor(() => expect(screen.queryByText('policy.txt')).not.toBeInTheDocument())
+  })
+
+  it('asks before discarding staged files on the way out', async () => {
+    renderInRouter()
+
+    await userEvent.click(await screen.findByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files', { exact: true }),
+      new File(['{}'], 'claim.json', { type: 'application/json' }),
+    )
+    await userEvent.click(screen.getByRole('link', { name: 'Go to runs' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Discard staged files for this knowledge base?')
+    expect(screen.queryByText('Runs section')).not.toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep staging' }))
+    expect(screen.getByLabelText('Document files', { exact: true })).toBeInTheDocument()
+  })
+
+  it('lets the navigation through once discarding is confirmed', async () => {
+    renderInRouter()
+
+    await userEvent.click(await screen.findByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files', { exact: true }),
+      new File(['{}'], 'claim.json', { type: 'application/json' }),
+    )
+    await userEvent.click(screen.getByRole('link', { name: 'Go to runs' }))
+
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Runs section')).toBeInTheDocument()
+    })
+  })
+
+  it('does not ask when there is nothing staged', async () => {
+    renderInRouter()
+
+    await userEvent.click(screen.getByRole('link', { name: 'Go to runs' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Runs section')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router'
+import { useBlocker, useNavigate, useOutletContext } from 'react-router'
 
 import type { WorkspaceOutletContext } from '../../../pages/KnowledgeBaseWorkspacePage'
 import { knowledgeBaseWorkspacePath } from '../../../utils/knowledgeBaseRoutes'
 import { useDomainConfig } from '../../../api/config'
+import { ConfirmDialog } from '../../../components/status/ConfirmDialog'
 import { SourceTypeStep } from '../../../components/ingestion/SourceTypeStep'
 import { SubmitPanel } from '../../../components/ingestion/SubmitPanel'
 import { UploadProgress } from '../../../components/ingestion/UploadProgress'
@@ -13,7 +14,11 @@ import { Card } from '../../../components/ui/Card'
 import { apiErrorMessage } from '../../../lib/apiClient'
 import type { ValidationIssue } from '../../../lib/ingestion/types'
 import { validateIngestionPrerequisites } from '../../../lib/ingestion/validateIngestion'
-import { useIngestionDraft, useIngestionDraftStore } from '../../../stores/ingestionDraftStore'
+import {
+  hasStagedWork,
+  useIngestionDraft,
+  useIngestionDraftStore,
+} from '../../../stores/ingestionDraftStore'
 import type { IngestionDraft } from '../../../stores/ingestionDraftStore'
 import { useDocumentsFlow } from './useDocumentsFlow'
 import { useRecordsFlow } from './useRecordsFlow'
@@ -120,6 +125,18 @@ export function AddDataSection({ knowledgeBaseId, onSubmitted }: AddDataSectionP
     (draft.sourceType === 'records' && recordsFlow.canRunIngestion)
   const runPending = documentsFlow.runPending || recordsFlow.runPending
 
+  const staged = hasStagedWork(draft)
+  // The only place in this flow where leaving loses work. A submitted draft is
+  // cleared before this can fire, so the prompt never appears after a success.
+  // useBlocker only intercepts in-app navigation: a hard reload or a closed
+  // tab still discards staging, and deliberately so — no beforeunload handler
+  // is added, because a browser-chrome confirmation the app cannot word is
+  // worse than none.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      staged && currentLocation.pathname !== nextLocation.pathname,
+  )
+
   function runIngestion() {
     if (draft.sourceType === 'documents') {
       documentsFlow.submit()
@@ -182,6 +199,20 @@ export function AddDataSection({ knowledgeBaseId, onSubmitted }: AddDataSectionP
           />
         </section>
       </Card>
+
+      <ConfirmDialog
+        body="The files and rows staged here have not been submitted. Leaving discards them."
+        cancelLabel="Keep staging"
+        confirmLabel="Discard"
+        destructive
+        onCancel={() => blocker.reset?.()}
+        onConfirm={() => {
+          clearDraft(knowledgeBaseId)
+          blocker.proceed?.()
+        }}
+        open={blocker.state === 'blocked'}
+        title="Discard staged files for this knowledge base?"
+      />
     </>
   )
 }

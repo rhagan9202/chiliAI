@@ -89,4 +89,25 @@ describe('ConfirmDialog', () => {
     )
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
   })
+
+  it('overrides the cancel button label when cancelLabel is given', async () => {
+    const onCancel = vi.fn()
+    render(
+      <ConfirmDialog
+        open
+        title="Discard staged files for this knowledge base?"
+        body="Leaving discards them."
+        confirmLabel="Discard"
+        cancelLabel="Keep staging"
+        destructive
+        onConfirm={() => {}}
+        onCancel={onCancel}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    const cancel = screen.getByRole('button', { name: 'Keep staging' })
+    expect(cancel).toHaveFocus()
+    await userEvent.click(cancel)
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
 })
