@@ -644,8 +644,11 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })).toBeInTheDocument()
-    expect(screen.getByText('Step 1 — Stage ingestion source')).toBeInTheDocument()
-    expect(screen.getByText('Step 2 — Review and run ingestion')).toBeInTheDocument()
+    // The staging headings moved into AddDataSection's own copy when the
+    // add-data flow was extracted (Task 5): the page renders through it now,
+    // so this checks the same DOM the section owns, not the old page text.
+    expect(screen.getByText('Choose a source')).toBeInTheDocument()
+    expect(screen.getByText('Review and submit')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeInTheDocument()
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useDomainConfig } from '../api/config'
@@ -7,9 +7,7 @@ import {
   useDeleteKnowledgeBase,
   useKnowledgeBase,
   useKnowledgeBases,
-  useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
-import { usePushRecords, useUploadRecordFile } from '../api/records'
 import {
   useCancelScoreRun,
   useReplayScoreRun,
@@ -17,22 +15,12 @@ import {
   useScoreRuns,
   useStartScoreRun,
 } from '../api/scoreRuns'
-import type { RecordIngestReceipt } from '../api/contracts'
 import { useWorkflows } from '../api/workflows'
-import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
 import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
 import { ScoreRunStatusPanel } from '../components/knowledgebase/ScoreRunStatusPanel'
-import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
-import { RecordsPreviewTable } from '../components/ingestion/RecordsPreviewTable'
 import { RunTimeline } from '../components/ingestion/RunTimeline'
-import { SourceTypeStep } from '../components/ingestion/SourceTypeStep'
-import { SubmitPanel } from '../components/ingestion/SubmitPanel'
-import { UploadProgress } from '../components/ingestion/UploadProgress'
-import type { UploadStatus } from '../components/ingestion/UploadProgress'
-import { ValidationPanel } from '../components/ingestion/ValidationPanel'
-import { showToast } from '../components/common/toastStore'
 import { ConfirmDialog } from '../components/status/ConfirmDialog'
 import { StatusChip } from '../components/status/StatusChip'
 import { formatTimestamp } from '../components/status/formatters'
@@ -42,25 +30,17 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { AddDataSection } from '../features/kb/add-data/AddDataSection'
 import { DataSection } from '../features/kb/data/DataSection'
-import {
-  validateDocumentFiles,
-  validateIngestionPrerequisites,
-  validateRecordFile,
-  validateRecordRows,
-} from '../lib/ingestion/validateIngestion'
-import { apiErrorMessage } from '../lib/apiClient'
-import type { ValidationIssue } from '../lib/ingestion/types'
-import { useIngestionDraft, useIngestionDraftStore } from '../stores/ingestionDraftStore'
-import type { IngestionDraft } from '../stores/ingestionDraftStore'
+import { useIngestionDraftStore } from '../stores/ingestionDraftStore'
 import { countLabel } from '../utils/countLabel'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
   const navigate = useNavigate()
-  // Selector subscriptions only: a bare `useIngestionDraftStore()` re-renders
-  // the entire page on every keystroke landing in any draft.
-  const updateDraft = useIngestionDraftStore((state) => state.updateDraft)
+  // Selector subscription only, not a bare `useIngestionDraftStore()`: staging
+  // state itself belongs to AddDataSection now, but a deleted knowledge base's
+  // draft has nowhere left to submit to, so this page still clears it.
   const clearDraft = useIngestionDraftStore((state) => state.clearDraft)
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
@@ -74,12 +54,12 @@ export function KnowledgeBaseManagerPage() {
   )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
-  const [uploadPercent, setUploadPercent] = useState(0)
-  const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedScoreRunId, setActiveScoreRunId] = useState<string | null>(null)
-  // Holds the last upload invocation so the Retry button can re-run it verbatim.
-  const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
+  // This tab just handed a submission to the server (AddDataSection's
+  // onSubmitted). It says nothing about history — the run timeline is the
+  // record of what happened — only that the handoff succeeded and the run
+  // has yet to surface in the poll.
+  const [submissionAccepted, setSubmissionAccepted] = useState(false)
   const [showAllDomains, setShowAllDomains] = useState(false)
   // Destructive actions are staged in state and executed from a confirmation
   // dialog: both deletions used to fire on the first click.
@@ -87,7 +67,7 @@ export function KnowledgeBaseManagerPage() {
   // The staging form lives in the main column while the inventory that reports
   // "no documents yet" sits in the aside; the empty state's action has to take
   // the analyst back across the page to it (UXA-305).
-  const sourceStepRef = useRef<HTMLElement | null>(null)
+  const sourceStepRef = useRef<HTMLDivElement | null>(null)
 
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeDomainName = domainConfigQuery.data?.domain.name ?? null
@@ -106,9 +86,6 @@ export function KnowledgeBaseManagerPage() {
   )
     ? selectedKnowledgeBaseId
     : scopedKnowledgeBases[0]?.id ?? visibleKnowledgeBases[0]?.id ?? null
-  // Staging work belongs to the knowledge base it was staged for. Switching
-  // knowledge base switches drafts; it never carries one across.
-  const draft = useIngestionDraft(activeKnowledgeBaseId)
   const workflowsQuery = useWorkflows(
     { knowledgeBaseId: activeKnowledgeBaseId ?? undefined },
     { enabled: Boolean(activeKnowledgeBaseId) },
@@ -127,216 +104,9 @@ export function KnowledgeBaseManagerPage() {
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
-  const uploadMutation = useUploadKnowledgeBaseDocuments(activeKnowledgeBaseId)
-  const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
-  const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
   const startScoreRunMutation = useStartScoreRun(activeKnowledgeBaseId)
   const cancelScoreRunMutation = useCancelScoreRun(activeKnowledgeBaseId, activeScoreRunId)
   const replayScoreRunMutation = useReplayScoreRun(activeKnowledgeBaseId, activeScoreRunId)
-
-  const feeds = domainConfigQuery.data?.records?.feeds ?? []
-  const selectedFeed = feeds.find((feed) => feed.name === draft.selectedFeedName) ?? null
-  const documentIssues = useMemo(
-    () => validateDocumentFiles(draft.pendingFiles, domainConfigQuery.data?.validation),
-    [draft.pendingFiles, domainConfigQuery.data?.validation],
-  )
-  const recordIssues = useMemo(
-    () =>
-      selectedFeed
-        ? validateRecordRows(selectedFeed, draft.parsedRows, {
-            recordFile: draft.pendingRecordFile,
-          })
-        : [],
-    [selectedFeed, draft.parsedRows, draft.pendingRecordFile],
-  )
-  const requiredIssues = validateIngestionPrerequisites({
-    knowledgeBaseId: activeKnowledgeBaseId,
-    sourceType: draft.sourceType,
-    feedName: draft.selectedFeedName,
-  })
-  const submitError =
-    uploadMutation.error ?? uploadRecordFileMutation.error ?? pushRecordsMutation.error ?? null
-  // A backend rejection belongs to the mutation that produced it: it clears
-  // when that mutation is retried, without anyone remembering to clear it.
-  const backendIssues: ValidationIssue[] = submitError
-    ? [
-        {
-          id: 'ingestion-backend-error',
-          source: 'backend',
-          severity: 'error',
-          message: apiErrorMessage(submitError, 'Submission failed.'),
-        },
-      ]
-    : []
-  const currentIssues = [
-    ...requiredIssues,
-    ...(draft.sourceType === 'documents' ? documentIssues : []),
-    ...(draft.sourceType === 'records' ? recordIssues : []),
-    ...draft.parseIssues,
-    ...backendIssues,
-  ]
-
-  /** Write to the active knowledge base's draft; a no-op when none is selected. */
-  function patchDraft(patch: Partial<IngestionDraft>) {
-    if (activeKnowledgeBaseId) {
-      updateDraft(activeKnowledgeBaseId, patch)
-    }
-  }
-
-  function beginUpload(retry: () => void) {
-    setUploadStatus('uploading')
-    setUploadPercent(0)
-    setUploadError(null)
-    setRetryUpload(() => retry)
-  }
-
-  function reportUploadProgress(percent: number) {
-    setUploadPercent(percent)
-  }
-
-  function runDocumentUpload(files: File[]) {
-    beginUpload(() => runDocumentUpload(files))
-    uploadMutation.mutate(
-      { files, onUploadProgress: reportUploadProgress },
-      {
-        onSuccess: (response) => {
-          const documentsLabel = countLabel(response.documents.length, 'document')
-
-          setUploadStatus('done')
-          setUploadPercent(100)
-          setRetryUpload(null)
-          // The submission is the server's business from here: the run and its
-          // receipt arrive through GET /workflows. Nothing about it stays in
-          // this tab's draft.
-          if (activeKnowledgeBaseId) {
-            clearDraft(activeKnowledgeBaseId)
-          }
-          showToast('success', `${documentsLabel} uploaded.`)
-        },
-        onError: (error) => {
-          const message = apiErrorMessage(error, 'Document submission failed.')
-          setUploadStatus('error')
-          setUploadError(message)
-          showToast('error', message)
-        },
-      },
-    )
-  }
-
-  function runRecordFileUpload(feedName: string, file: File) {
-    beginUpload(() => runRecordFileUpload(feedName, file))
-    uploadRecordFileMutation.mutate(
-      { feedName, file, onUploadProgress: reportUploadProgress },
-      {
-        onSuccess: (receipt) => {
-          setUploadStatus('done')
-          setUploadPercent(100)
-          setRetryUpload(null)
-          if (activeKnowledgeBaseId) {
-            clearDraft(activeKnowledgeBaseId)
-          }
-          showToast('success', receiptToastMessage(receipt))
-        },
-        onError: (error) => {
-          const message = apiErrorMessage(error, 'Records submission failed.')
-          setUploadStatus('error')
-          setUploadError(message)
-          showToast('error', message)
-        },
-      },
-    )
-  }
-
-  function submitDocuments() {
-    const issues = [
-      ...validateIngestionPrerequisites({
-        knowledgeBaseId: activeKnowledgeBaseId,
-        sourceType: 'documents',
-        feedName: draft.selectedFeedName,
-      }),
-      ...validateDocumentFiles(draft.pendingFiles, domainConfigQuery.data?.validation),
-    ]
-
-    if (issues.some((issue) => issue.severity === 'error')) {
-      patchDraft({ parseIssues: issues })
-      return
-    }
-
-    runDocumentUpload(draft.pendingFiles)
-  }
-
-  function submitRecords() {
-    const recordFileIssues = selectedFeed?.source === 'file_upload'
-      ? validateRecordFile(draft.pendingRecordFile)
-      : []
-    const issues = [
-      ...validateIngestionPrerequisites({
-        knowledgeBaseId: activeKnowledgeBaseId,
-        sourceType: 'records',
-        feedName: draft.selectedFeedName,
-      }),
-      ...recordFileIssues,
-      ...(selectedFeed
-        ? validateRecordRows(selectedFeed, draft.parsedRows, {
-            recordFile: draft.pendingRecordFile,
-          })
-        : []),
-    ]
-
-    if (issues.some((issue) => issue.severity === 'error') || !selectedFeed) {
-      patchDraft({ parseIssues: issues })
-      return
-    }
-
-    if (selectedFeed.source === 'file_upload') {
-      const recordFile = draft.pendingRecordFile
-      if (!recordFile) {
-        patchDraft({ parseIssues: recordFileIssues })
-        return
-      }
-      runRecordFileUpload(selectedFeed.name, recordFile)
-      return
-    }
-
-    pushRecordsMutation.mutate(
-      {
-        feed_name: selectedFeed.name,
-        rows: draft.parsedRows,
-      },
-      {
-        onSuccess: (receipt) => {
-          if (activeKnowledgeBaseId) {
-            clearDraft(activeKnowledgeBaseId)
-          }
-          showToast('success', receiptToastMessage(receipt))
-        },
-        onError: (error) => {
-          const message = apiErrorMessage(error, 'Records submission failed.')
-          showToast('error', message)
-        },
-      },
-    )
-  }
-
-  function runIngestion() {
-    if (draft.sourceType === 'documents') {
-      submitDocuments()
-      return
-    }
-
-    if (draft.sourceType === 'records') {
-      submitRecords()
-      return
-    }
-
-    patchDraft({
-      parseIssues: validateIngestionPrerequisites({
-        knowledgeBaseId: activeKnowledgeBaseId,
-        sourceType: draft.sourceType,
-        feedName: draft.selectedFeedName,
-      }),
-    })
-  }
 
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
     return <LoadingState label="Loading knowledge bases" />
@@ -357,22 +127,6 @@ export function KnowledgeBaseManagerPage() {
   if (knowledgeBaseDetailQuery.isError) {
     return <ErrorState description="This knowledge base could not be opened. Try again, or pick another one." />
   }
-
-  const canRunIngestion =
-    (draft.sourceType === 'documents' &&
-      draft.pendingFiles.length > 0 &&
-      documentIssues.every((issue) => issue.severity !== 'error')) ||
-    (draft.sourceType === 'records' &&
-      selectedFeed !== null &&
-      (selectedFeed.source !== 'file_upload' || draft.pendingRecordFile !== null) &&
-      draft.parsedRows.length > 0 &&
-      recordIssues.every((issue) => issue.severity !== 'error'))
-  const runPending = uploadMutation.isPending || pushRecordsMutation.isPending || uploadRecordFileMutation.isPending
-  // This tab just handed a submission to the server. It says nothing about
-  // history — the run timeline is the record of what happened — only that the
-  // handoff succeeded and the run has yet to surface in the poll.
-  const submissionAccepted =
-    uploadStatus === 'done' || uploadMutation.isSuccess || pushRecordsMutation.isSuccess
 
   const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
   const scoreRunStartDisabled = !knowledgeBase || knowledgeBase.entity_count === 0
@@ -476,101 +230,18 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
 
-          <Card>
-            <section
-              aria-labelledby="ingestion-step-stage"
-              className="ingestion-step-section"
-              ref={sourceStepRef}
-            >
-              <div className="ingestion-step-section__header">
-                <strong id="ingestion-step-stage">Step 1 — Stage ingestion source</strong>
-                <p className="page-copy-block">
-                  Choose a source and prepare documents or structured records for review.
-                </p>
-              </div>
-              <SourceTypeStep
-                selectedSourceType={draft.sourceType}
-                onChange={(sourceType) => {
-                  patchDraft({ sourceType: sourceType })
-                }}
+          {activeKnowledgeBaseId ? (
+            // The staging form used to report "no documents yet" via a ref
+            // scrolled into view by the empty-inventory action below
+            // (UXA-305); AddDataSection owns the form now, so the ref moves
+            // to this wrapper instead of the section it used to sit inside.
+            <div ref={sourceStepRef}>
+              <AddDataSection
+                knowledgeBaseId={activeKnowledgeBaseId}
+                onSubmitted={() => setSubmissionAccepted(true)}
               />
-
-              {draft.sourceType === 'documents' ? (
-                <DocumentSourcePanel
-                  acceptContentTypes={domainConfigQuery.data?.validation.allowed_content_types}
-                  files={draft.pendingFiles}
-                  onFilesChange={(files) => {
-                    patchDraft({ pendingFiles: files })
-                    patchDraft({ parseIssues: [] })
-                  }}
-                />
-              ) : null}
-
-              {draft.sourceType === 'records' ? (
-                <RecordsSourcePanel
-                  feeds={feeds}
-                  issues={recordIssues}
-                  showPreviewTable={false}
-                  onDraftChange={() => {
-                    patchDraft({ parsedRows: [] })
-                    patchDraft({ parseIssues: [] })
-                  }}
-                  onFileChange={(file) => {
-                    patchDraft({ pendingRecordFile: file })
-                  }}
-                  rows={draft.parsedRows}
-                  recordFile={draft.pendingRecordFile}
-                  selectedFeedName={draft.selectedFeedName}
-                  onFeedChange={(feedName) => {
-                    patchDraft({ selectedFeedName: feedName })
-                    patchDraft({ pendingRecordFile: null })
-                  }}
-                  onRowsParsed={(rows, parseIssues) => {
-                    patchDraft({ parsedRows: rows })
-                    patchDraft({ parseIssues })
-                  }}
-                />
-              ) : null}
-            </section>
-          </Card>
-
-          <Card>
-            <section className="ingestion-step-section" aria-labelledby="ingestion-step-review">
-              <div className="ingestion-step-section__header">
-                <strong id="ingestion-step-review">Step 2 — Review and run ingestion</strong>
-                <p className="page-copy-block">
-                  Validate staged content, review previews, then run ingestion.
-                </p>
-              </div>
-
-              {draft.sourceType === 'records' ? (
-                <RecordsPreviewTable
-                  rows={draft.parsedRows}
-                  issues={recordIssues}
-                  emptyDescription="Parse records to review staged rows before running ingestion."
-                />
-              ) : null}
-
-              <ValidationPanel issues={currentIssues} />
-              <SubmitPanel
-                sourceType={draft.sourceType}
-                canRunIngestion={canRunIngestion}
-                runPending={runPending}
-                onRunIngestion={runIngestion}
-              />
-              <UploadProgress
-                label={
-                  draft.sourceType === 'documents'
-                    ? 'Document upload progress'
-                    : 'Records upload progress'
-                }
-                status={uploadStatus}
-                percent={uploadPercent}
-                error={uploadError ?? undefined}
-                onRetry={() => retryUpload?.()}
-              />
-            </section>
-          </Card>
+            </div>
+          ) : null}
         </div>
 
         <aside className="ingestion-studio-context" aria-label="Ingestion context">
@@ -773,19 +444,4 @@ function SelectedKnowledgeBaseSummary({
       </div>
     </section>
   )
-}
-
-function receiptToastMessage(receipt: RecordIngestReceipt): string {
-  if (receipt.duplicate) {
-    return `Duplicate submission for ${receipt.feed_name} (no-op).`
-  }
-
-  const parts = [`${receipt.accepted_count} accepted`]
-  if (receipt.duplicate_count > 0) {
-    parts.push(`${receipt.duplicate_count} duplicate`)
-  }
-  if (receipt.rejected_count > 0) {
-    parts.push(`${receipt.rejected_count} rejected`)
-  }
-  return `${parts.join(', ')} for ${receipt.feed_name}.`
 }
