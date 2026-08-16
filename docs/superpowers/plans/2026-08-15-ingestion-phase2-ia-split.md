@@ -336,7 +336,7 @@ export function knowledgeBaseSelectionTarget(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd chili_app && npm run test:run -- src/utils/__tests__/knowledgeBaseRoutes.test.ts`
-Expected: PASS, all 17 assertions.
+Expected: PASS, 16 cases.
 
 - [ ] **Step 5: Lint and commit**
 
@@ -452,63 +452,97 @@ Expected: PASS.
 
 - [ ] **Step 5: Write the failing hook test**
 
-Append to `chili_app/src/hooks/__tests__/useActiveKnowledgeBase.test.tsx`. Match the file's existing wrapper: it renders through `MemoryRouter` with `initialEntries`, so pass a workspace path.
+`chili_app/src/hooks/__tests__/useActiveKnowledgeBase.test.tsx` already has the
+helpers these cases need: `kb(id, overrides)` builds a summary,
+`setKnowledgeBases([...])` stubs the list query, and `wrapper(initialEntry)`
+returns a `MemoryRouter` wrapper. Use them — do not invent parallel helpers.
 
-```ts
-  it('resolves the knowledge base named by a workspace path', () => {
-    const { result } = renderHook(() => useActiveKnowledgeBase(), {
-      wrapper: createWrapper(['/knowledge-bases/kb-2']),
-    })
-
-    expect(result.current.activeKnowledgeBaseId).toBe('kb-2')
-  })
-
-  it('selecting a knowledge base inside a workspace navigates, keeping the section', async () => {
-    const { result } = renderHook(() => useActiveKnowledgeBase(), {
-      wrapper: createWrapper(['/knowledge-bases/kb-1/runs']),
-    })
-
-    act(() => {
-      result.current.setActiveKnowledgeBase('kb-2')
-    })
-
-    await waitFor(() => {
-      expect(currentLocation()?.pathname).toBe('/knowledge-bases/kb-2/runs')
-    })
-  })
-
-  it('selecting a knowledge base elsewhere still writes ?kb=', async () => {
-    const { result } = renderHook(() => useActiveKnowledgeBase(), {
-      wrapper: createWrapper(['/alerts']),
-    })
-
-    act(() => {
-      result.current.setActiveKnowledgeBase('kb-2')
-    })
-
-    await waitFor(() => {
-      expect(currentLocation()?.search).toBe('?kb=kb-2')
-      expect(currentLocation()?.pathname).toBe('/alerts')
-    })
-  })
-```
-
-The existing file already needs a way to observe the location — if it has no `currentLocation()` helper, add one by rendering a location probe inside the wrapper:
+Two additions are needed first. Extend the wrapper with a location probe so the
+navigation cases can observe where the hook sent the router:
 
 ```tsx
-let observedLocation: ReturnType<typeof useLocation> | null = null
+let observedLocation: Location | null = null
 
 function LocationProbe() {
   observedLocation = useLocation()
   return null
 }
 
-function currentLocation() {
-  return observedLocation
+function wrapper(initialEntry: string) {
+  return ({ children }: { children: ReactNode }) =>
+    createElement(
+      MemoryRouter,
+      { initialEntries: [initialEntry] },
+      children,
+      createElement(LocationProbe),
+    )
 }
 ```
 
-and render `<LocationProbe />` as a sibling of `children` inside the wrapper's `MemoryRouter`.
+Add `useLocation` and `type Location` to the `react-router` import, `waitFor`
+to the `@testing-library/react` import (`act` is already there), and reset
+`observedLocation = null` in the existing `beforeEach`.
+
+Then append these four cases inside the existing `describe`:
+
+```tsx
+  it('resolves the knowledge base named by a workspace path', () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-2'),
+    })
+
+    expect(result.current.activeKnowledgeBaseId).toBe('kb-2')
+  })
+
+  it('keeps a cross-domain workspace knowledge base in the picker list', () => {
+    // The route outranks domain scoping, so the picker has to be able to show
+    // what is on screen. Without this the top bar's <select> holds a value
+    // matching no option, and the browser renders a different KB's name.
+    setKnowledgeBases([kb('kb-1'), kb('kb-2', { domain: 'food_supply_chain' })])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-2'),
+    })
+
+    expect(result.current.activeKnowledgeBaseId).toBe('kb-2')
+    expect(result.current.knowledgeBases.map((item) => item.id)).toContain('kb-2')
+  })
+
+  it('selecting a knowledge base inside a workspace navigates, keeping the section', async () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/knowledge-bases/kb-1/runs'),
+    })
+
+    act(() => {
+      result.current.setActiveKnowledgeBase('kb-2')
+    })
+
+    await waitFor(() => {
+      expect(observedLocation?.pathname).toBe('/knowledge-bases/kb-2/runs')
+    })
+  })
+
+  it('selecting a knowledge base elsewhere still writes ?kb=', async () => {
+    setKnowledgeBases([kb('kb-1'), kb('kb-2')])
+
+    const { result } = renderHook(() => useActiveKnowledgeBase(), {
+      wrapper: wrapper('/alerts'),
+    })
+
+    act(() => {
+      result.current.setActiveKnowledgeBase('kb-2')
+    })
+
+    await waitFor(() => {
+      expect(observedLocation?.pathname).toBe('/alerts')
+      expect(observedLocation?.search).toBe('?kb=kb-2')
+    })
+  })
+```
 
 - [ ] **Step 6: Run it to verify it fails**
 
@@ -550,6 +584,39 @@ Pass it through to the resolver:
     storedId,
   })
 ```
+
+Then make the returned list able to represent it. `knowledgeBases` currently
+filters to the active domain and feeds the top bar's picker; a cross-domain
+workspace would leave that `<select>` holding a value matching no option, so it
+would display some other knowledge base's name over this one's page. Replace
+the existing `knowledgeBases` memo with:
+
+```ts
+  const inDomainKnowledgeBases = useMemo(
+    () =>
+      allKnowledgeBases.filter(
+        (knowledgeBase) => !isDomainMismatch(knowledgeBase.domain ?? null, activeDomainName),
+      ),
+    [allKnowledgeBases, activeDomainName],
+  )
+
+  // Whatever is active must be selectable, even when domain scoping would hide
+  // it: the picker names what is on screen, and a picker that cannot name it
+  // shows the wrong knowledge base instead.
+  const knowledgeBases = useMemo(() => {
+    if (
+      activeKnowledgeBaseId === null ||
+      inDomainKnowledgeBases.some((item) => item.id === activeKnowledgeBaseId)
+    ) {
+      return inDomainKnowledgeBases
+    }
+    const active = allKnowledgeBases.find((item) => item.id === activeKnowledgeBaseId)
+    return active ? [...inDomainKnowledgeBases, active] : inDomainKnowledgeBases
+  }, [allKnowledgeBases, inDomainKnowledgeBases, activeKnowledgeBaseId])
+```
+
+Note the ordering constraint: `activeKnowledgeBaseId` must be computed before
+this memo, so move the `resolveActiveKnowledgeBaseId` call above it.
 
 and replace `setActiveKnowledgeBase`:
 
@@ -887,7 +954,7 @@ The first section body to come out of the 1131-line page. It moves rather than c
 - Modify: `chili_app/src/pages/KnowledgeBaseManagerPage.tsx`
 
 **Interfaces:**
-- Consumes: `knowledgeBaseWorkspacePath` (Task 1), `useIngestionDraft` (Task 3).
+- Consumes: nothing from earlier tasks. `DataSection` navigates through the `onStageSource` callback its caller supplies, so it needs neither the route vocabulary nor the draft store. Do not add an import to satisfy this line.
 - Produces:
   - `DocumentInventory` — props exactly as the manager page's local `DocumentInventoryProps`, minus `preview`/`previewLoading`/`previewError` (which move to `DocumentPreview`), plus nothing.
   - `DocumentPreview` — `{ documentSelected: boolean; hasDocuments: boolean; preview: KnowledgeBaseDocumentPreviewResponse | null; loading: boolean; error: boolean }`.
