@@ -3,7 +3,8 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import type { KnowledgeBaseSummaryResponse } from '../../../../api/contracts'
-import { knowledgeBaseSituation, OverviewSection } from '../OverviewSection'
+import { knowledgeBaseSituation } from '../knowledgeBaseSituation'
+import { OverviewSection } from '../OverviewSection'
 
 const base: KnowledgeBaseSummaryResponse = {
   id: 'kb-1',

@@ -20,18 +20,4 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
-  {
-    // `knowledgeBaseSituation` is a pure helper colocated with the component
-    // it drives (spec Task 8), exported so it can be unit-tested directly
-    // without rendering. It is not a component, but this file has no other
-    // consumer than its own test, so the fast-refresh boundary this rule
-    // protects is never actually at stake here.
-    files: ['src/features/kb/overview/OverviewSection.tsx'],
-    rules: {
-      'react-refresh/only-export-components': [
-        'error',
-        { allowExportNames: ['knowledgeBaseSituation'] },
-      ],
-    },
-  },
 ])
