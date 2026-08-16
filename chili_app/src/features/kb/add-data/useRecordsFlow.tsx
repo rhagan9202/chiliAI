@@ -188,7 +188,9 @@ export function useRecordsFlow({
     clientIssues: recordIssues,
     canRunIngestion,
     runPending: pushRecordsMutation.isPending || uploadRecordFileMutation.isPending,
-    error: pushRecordsMutation.error ?? uploadRecordFileMutation.error,
+    // Precedence matches the pre-extraction page: the file-upload mutation's
+    // error wins over the push mutation's, not the other way around.
+    error: uploadRecordFileMutation.error ?? pushRecordsMutation.error,
     isSuccess: pushRecordsMutation.isSuccess || uploadRecordFileMutation.isSuccess,
     submit: submitRecords,
   }

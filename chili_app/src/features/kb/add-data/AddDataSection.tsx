@@ -12,8 +12,8 @@ import type { ValidationIssue } from '../../../lib/ingestion/types'
 import { validateIngestionPrerequisites } from '../../../lib/ingestion/validateIngestion'
 import { useIngestionDraft, useIngestionDraftStore } from '../../../stores/ingestionDraftStore'
 import type { IngestionDraft } from '../../../stores/ingestionDraftStore'
-import { useDocumentsFlow } from './DocumentsFlow'
-import { useRecordsFlow } from './RecordsFlow'
+import { useDocumentsFlow } from './useDocumentsFlow'
+import { useRecordsFlow } from './useRecordsFlow'
 
 type AddDataSectionProps = {
   knowledgeBaseId: string
