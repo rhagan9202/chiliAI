@@ -8,9 +8,6 @@ import { Chip } from '../../../components/ui/Chip'
 import { EmptyState } from '../../../components/ui/EmptyState'
 import { countLabel } from '../../../utils/countLabel'
 import { knowledgeBaseWorkspacePath } from '../../../utils/knowledgeBaseRoutes'
-// Reuses `KnowledgeBaseSelector`'s classnames until the cutover that deletes
-// it retires this stylesheet too — see the module docstring below.
-import '../../../components/ingestion/ingestion.css'
 import '../kb.css'
 
 type KnowledgeBaseCardListProps = {
@@ -41,12 +38,12 @@ export function KnowledgeBaseCardList({
   showAllDomains,
 }: KnowledgeBaseCardListProps) {
   return (
-    <section aria-labelledby="kb-library-title" className="ingestion-kb-selector">
-      <div className="ingestion-kb-selector__header">
+    <section aria-labelledby="kb-library-title" className="kb-library__section">
+      <div className="kb-library__header">
         {/* Named for its job, not its contents: the page itself is already
             called Knowledge Bases, and two headings by that name are two
             things with one name. */}
-        <h2 id="kb-library-title" className="ingestion-kb-selector__title">
+        <h2 id="kb-library-title" className="kb-library__title">
           Choose a knowledge base
         </h2>
         <Chip label={countLabel(knowledgeBases.length, 'knowledge base')} tone="info" />
@@ -55,7 +52,7 @@ export function KnowledgeBaseCardList({
       {hiddenDomainCount > 0 ? (
         <button
           aria-pressed={showAllDomains}
-          className="page-button page-button--secondary ingestion-kb-selector__domain-toggle"
+          className="page-button page-button--secondary kb-library__domain-toggle"
           data-testid="kb-show-all-domains-toggle"
           onClick={onToggleShowAllDomains}
           type="button"

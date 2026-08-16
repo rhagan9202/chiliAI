@@ -29,3 +29,37 @@
   gap: 6px;
   text-decoration: none;
 }
+
+.kb-library__section {
+  display: grid;
+  gap: 12px;
+}
+
+.kb-library__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kb-library__title {
+  margin: 0;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.kb-library__field {
+  display: grid;
+  gap: 12px;
+}
+
+.kb-library__label {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}

@@ -2,9 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { useCreateKnowledgeBase } from '../../../api/knowledgebases'
-// Reuses `KnowledgeBaseSelector`'s field/label classnames until the cutover
-// that deletes it retires this stylesheet too.
-import '../../../components/ingestion/ingestion.css'
+import '../kb.css'
 
 type CreateKnowledgeBasePanelProps = {
   onCreated: (knowledgeBaseId: string) => void
@@ -44,8 +42,8 @@ export function CreateKnowledgeBasePanel({ onCreated }: CreateKnowledgeBasePanel
     <details className="kb-library__create">
       <summary className="page-button page-button--primary">New knowledge base</summary>
       <form onSubmit={handleSubmit}>
-        <label className="ingestion-kb-selector__field">
-          <span className="ingestion-kb-selector__label">Knowledge base name</span>
+        <label className="kb-library__field">
+          <span className="kb-library__label">Knowledge base name</span>
           <input
             className="page-input"
             onChange={(event) => setName(event.target.value)}
@@ -53,8 +51,8 @@ export function CreateKnowledgeBasePanel({ onCreated }: CreateKnowledgeBasePanel
             value={name}
           />
         </label>
-        <label className="ingestion-kb-selector__field">
-          <span className="ingestion-kb-selector__label">Description</span>
+        <label className="kb-library__field">
+          <span className="kb-library__label">Description</span>
           <textarea
             className="page-textarea"
             onChange={(event) => setDescription(event.target.value)}
