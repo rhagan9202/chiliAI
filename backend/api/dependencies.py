@@ -2352,6 +2352,7 @@ def get_risk_service() -> RiskServiceProtocol:
         event_bus=get_event_bus(),
         default_medium_risk_threshold=analytics_config.medium_risk_threshold,
         default_high_risk_threshold=analytics_config.high_risk_threshold,
+        min_signals=analytics_config.min_risk_signals,
     )
 
 

@@ -104,8 +104,87 @@ def test_risk_service_requires_multiple_signals() -> None:
         event_bus=event_bus,
     )
 
-    with pytest.raises(RiskInsufficientSignalsError, match="at least two signals"):
+    with pytest.raises(RiskInsufficientSignalsError, match="at least 2 signals"):
         service.assess(RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7"))
+
+
+def test_the_signal_floor_is_configurable() -> None:
+    """A hardcoded floor of 2 silently zeroed the whole risk pipeline.
+
+    The CMS pack declares exactly 2 peer metrics, so any metric without ingested
+    data leaves every entity one signal short and every score run scores
+    nothing — `risk_score_history` was empty in dev for that reason. The number
+    is a domain judgement in a platform whose premise is that domain behaviour
+    is configured, not coded.
+    """
+    event_bus = InMemoryEventBus()
+    source = InMemoryRiskSignalSource(
+        profiles=[
+            RiskProfile(
+                knowledge_base_id="kb-1",
+                entity_id="provider-7",
+                signals=[RiskSignal(signal_name="timeseries", value=0.9, weight=2.0)],
+            )
+        ]
+    )
+
+    service = create_risk_service(source, event_bus=event_bus, min_signals=1)
+    response = service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
+    )
+
+    assert response.factor_count == 1
+    assert response.overall_score > 0.0
+
+
+def test_the_default_floor_is_unchanged_at_two() -> None:
+    """Making it configurable must not quietly relax it for existing packs."""
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-7",
+                    signals=[RiskSignal(signal_name="timeseries", value=0.9, weight=2.0)],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+
+    with pytest.raises(RiskInsufficientSignalsError, match="at least 2 signals"):
+        service.assess(
+            RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
+        )
+
+
+def test_the_error_names_the_configured_floor_not_a_fixed_word() -> None:
+    """"at least two signals" was a literal that could not track the setting.
+
+    An operator raising the floor to 3 and reading "requires at least two"
+    would reasonably conclude the setting had not taken effect.
+    """
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-7",
+                    signals=[
+                        RiskSignal(signal_name="a", value=0.9, weight=1.0),
+                        RiskSignal(signal_name="b", value=0.5, weight=1.0),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+        min_signals=3,
+    )
+
+    with pytest.raises(RiskInsufficientSignalsError, match="at least 3 signals"):
+        service.assess(
+            RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
+        )
 
 
 def test_risk_service_list_scores_filters_and_orders() -> None:

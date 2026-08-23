@@ -1289,9 +1289,18 @@ def build_worker_dependencies() -> WorkerDependencies:
         cache=embedding_cache,
         cache_namespace=embedding_cache_ns,
     )
+    # The worker is what actually scores a batch, so it needs the pack's risk
+    # settings as much as the API does. It previously passed none of them and
+    # silently used library defaults: harmless while no pack overrode the
+    # thresholds, but the first one to do so would have got a different risk
+    # level from the worker than from the API for the same entity.
+    risk_analytics = config.analytics or AnalyticsConfig()
     risk_service = create_risk_service(
         build_risk_signal_source(connection_provider),
         event_bus=event_bus,
+        default_medium_risk_threshold=risk_analytics.medium_risk_threshold,
+        default_high_risk_threshold=risk_analytics.high_risk_threshold,
+        min_signals=risk_analytics.min_risk_signals,
     )
     explainability_service = create_explainability_service(
         build_explainability_context_source(config),

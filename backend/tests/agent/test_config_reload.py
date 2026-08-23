@@ -41,7 +41,13 @@ from events.types import ConfigUpdatedEvent
 WORKER_LOGGER = "chili.worker"
 
 
-def _write_pack(directory: Path, name: str, *, peer_stats: bool) -> Path:
+def _write_pack(
+    directory: Path,
+    name: str,
+    *,
+    peer_stats: bool,
+    analytics: dict[str, object] | None = None,
+) -> Path:
     """Write a minimal valid domain pack and return its path."""
 
     pack: dict[str, object] = {
@@ -62,6 +68,7 @@ def _write_pack(directory: Path, name: str, *, peer_stats: bool) -> Path:
         ],
         "relationships": [],
         "capabilities": {"peer_stats": peer_stats},
+        **({"analytics": analytics} if analytics is not None else {}),
         "ingestion": {"sources": [{"type": "file_upload", "formats": ["txt"]}]},
         "alerts": {"thresholds": {}},
     }
@@ -306,3 +313,35 @@ def test_run_worker_swaps_deps_only_between_drain_iterations(
     # Exactly one rebuild happened (initial build + one hot-swap).
     assert build_calls == 2
     assert "Worker dependencies rebuilt for domain pack 'pack_b'" in caplog.text
+
+
+def test_the_worker_honours_the_packs_risk_settings(worker_env: Path) -> None:
+    """The worker scores the batches, so it must use the pack's risk settings.
+
+    It previously passed none of them to `create_risk_service` and silently used
+    library defaults. Harmless while no pack overrode them — and invisible for
+    the same reason, since removing the wiring broke no test here.
+
+    `min_risk_signals` is the one that matters most: it was a hardcoded 2 that
+    zeroed the entire risk pipeline whenever a pack's configured metrics
+    outnumbered the ones its data could produce.
+    """
+    pack = _write_pack(
+        worker_env,
+        "risk_pack",
+        peer_stats=True,
+        analytics={
+            "min_risk_signals": 1,
+            "medium_risk_threshold": 0.4,
+            "high_risk_threshold": 0.7,
+        },
+    )
+    write_active_pack(pack, pack_name="risk_pack")
+
+    deps = build_worker_dependencies()
+
+    risk_service = deps.risk_service
+    assert risk_service is not None
+    assert risk_service.min_signals == 1
+    assert risk_service.default_medium_risk_threshold == 0.4
+    assert risk_service.default_high_risk_threshold == 0.7
