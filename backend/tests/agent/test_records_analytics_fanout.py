@@ -1,7 +1,7 @@
 """Tests for the records→analytics fan-out (analytics.34).
 
 A structured-records batch whose entities are risk-assessable runs Flow B
-(GNN → risk → explainability → alerts) in-process at the end of
+(GNN → risk → explainability for non-low risks → alerts) in-process at the end of
 ``handle_records_ingested`` — gated on ``RecordsConfig.analytics_trigger``,
 throttled per KB, and capped to the batch's top-N entities by risk score.
 No ``graph.updated`` event is published: the fan-out is a direct call with
@@ -303,11 +303,16 @@ def test_records_only_kb_produces_clusters_and_alerts_when_trigger_enabled() -> 
     assert processed == 2
     # Flow B ran natively: GNN communities persisted for the records-only KB…
     assert harness.cluster_store.load_clusters(knowledge_base_id="kb-1")
-    # …and both assessable providers raised alerts.
+    # …and both assessable providers were scored, while only non-low risk
+    # entities raised alerts.
     alerts_events = harness.alerts_created()
     assert len(alerts_events) == 1
     alert_entities = {alert.entity_id for alert in alerts_events[0].alerts}
-    assert alert_entities == {"provider:1", "provider:2"}
+    assert alert_entities == {"provider:1"}
+    provider_2 = harness.graph_repository.get_entity(["kb-1"], "provider:2")
+    assert provider_2 is not None
+    assert provider_2.properties["risk_level"] == "low"
+    assert provider_2.properties["risk_signal_count"] == 2
 
 
 def test_trigger_disabled_runs_no_analytics() -> None:

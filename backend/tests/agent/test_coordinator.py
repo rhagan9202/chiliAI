@@ -4474,6 +4474,124 @@ def test_analytics_handler_writes_gnn_properties_when_risk_stage_yields_nothing(
     assert "risk_assessed_at" not in updated.properties
 
 
+def test_analytics_handler_does_not_alert_for_low_risk_one_signal_entity() -> None:
+    from typing import cast
+
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import (
+        GraphRepositorySnapshotSource,
+    )
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from events.types import AlertsCreatedEvent
+
+    class _Boom:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"explainability used for low risk: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-low-risk",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="provider-1", type="claim", properties={"name": "Provider 1"}),
+            Entity(id="other-1", type="claim", properties={"name": "Other 1"}),
+        ],
+    )
+    graph_repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-provider-other",
+                type="referral",
+                source_id="provider-1",
+                target_id="other-1",
+                weight=1.0,
+            )
+        ],
+    )
+    cluster_store = InMemoryClusterSummaryStore()
+    gnn_service = create_gnn_service(
+        GraphRepositorySnapshotSource(graph_repository, cluster_store),
+        event_bus=event_bus,
+    )
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(signal_name="documentation_gap", value=0.2, weight=1.0),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+        min_signals=1,
+    )
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-low-risk",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-low-risk",
+                    graph_update_storage_key="gk-low-risk",
+                )
+            ],
+        ),
+        gnn_service=gnn_service,
+        risk_service=risk_service,
+        explainability_service=cast(ExplainabilityService, _Boom()),
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+        gnn_cluster_store=cluster_store,
+    )
+
+    assert alerts == 0
+    assert [
+        e for e in event_bus.published_events if isinstance(e, AlertsCreatedEvent)
+    ] == []
+    updated = graph_repository.get_entity(["kb-1"], "provider-1")
+    assert updated is not None
+    assert updated.properties["risk_level"] == "low"
+    assert updated.properties["risk_signal_count"] == 1
+    assert updated.properties["risk_min_signals"] == 1
+
+
 def test_analytics_handler_stops_immediately_when_cancelled() -> None:
     """A cancelled run aborts Flow B at the first loop boundary: no GNN/risk/
     explainability work runs and no alerts.created / analysis.failed is published."""

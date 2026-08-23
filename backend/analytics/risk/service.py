@@ -125,6 +125,8 @@ class RiskService:
             overall_score=result.overall_score,
             risk_level=result.risk_level,
             factor_count=result.factor_count,
+            signal_count=len(profile.signals),
+            min_risk_signals=self.min_signals,
             factors=[
                 RiskFactorScore(
                     factor_name=factor.factor_name,

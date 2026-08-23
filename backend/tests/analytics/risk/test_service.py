@@ -134,7 +134,51 @@ def test_the_signal_floor_is_configurable() -> None:
     )
 
     assert response.factor_count == 1
+    assert response.signal_count == 1
+    assert response.min_risk_signals == 1
     assert response.overall_score > 0.0
+
+
+def test_the_signal_floor_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="min_signals must be at least 1"):
+        create_risk_service(
+            InMemoryRiskSignalSource(profiles=[]),
+            event_bus=InMemoryEventBus(),
+            min_signals=0,
+        )
+
+
+def test_one_signal_floor_still_uses_risk_thresholds() -> None:
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="low-provider",
+                    signals=[RiskSignal(signal_name="weak", value=0.2, weight=1.0)],
+                ),
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="high-provider",
+                    signals=[RiskSignal(signal_name="strong", value=0.9, weight=1.0)],
+                ),
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+        min_signals=1,
+        default_medium_risk_threshold=0.5,
+        default_high_risk_threshold=0.8,
+    )
+
+    low = service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="low-provider")
+    )
+    high = service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="high-provider")
+    )
+
+    assert low.risk_level == "low"
+    assert high.risk_level == "high"
 
 
 def test_the_default_floor_is_unchanged_at_two() -> None:

@@ -36,7 +36,8 @@ note §3.1 B2).
   route recomputes per request against seeded data.
 - **Signal stores split by consumer.** Peerstats z-scores →
   `entity_derived_signals` → `PostgresRiskSignalSource.load_profile` → risk
-  scoring (requires ≥ 2 signals, `backend/analytics/risk/service.py:63`) →
+  scoring (requires the active `analytics.min_risk_signals` floor, defaulting
+  to 2, `backend/analytics/risk/service.py`) →
   `RiskScoredEvent` → monitoring. Monitoring's own observation path
   threshold-evaluates `observations` rows. Anomaly output currently reaches
   neither.

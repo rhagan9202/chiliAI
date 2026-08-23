@@ -2365,6 +2365,9 @@ def handle_graph_updated_for_analytics(
             if risk_response is None:
                 continue
 
+            if risk_response.risk_level == "low":
+                continue
+
             alert_reference = _run_explainability_stage(
                 event=event,
                 explainability_service=explainability_service,
@@ -2689,6 +2692,8 @@ def build_explanation_context(
         factor.factor_name: factor.contribution for factor in risk_response.factors
     }
     scores["overall"] = risk_response.overall_score
+    scores["signal_count"] = float(risk_response.signal_count)
+    scores["min_risk_signals"] = float(risk_response.min_risk_signals)
 
     alert = Alert(
         id=alert_id,
@@ -2792,6 +2797,8 @@ def _write_analytics_properties_to_graph(
     if risk_response is not None:
         properties["risk_score"] = float(risk_response.overall_score)
         properties["risk_level"] = risk_response.risk_level
+        properties["risk_signal_count"] = risk_response.signal_count
+        properties["risk_min_signals"] = risk_response.min_risk_signals
         properties["risk_assessed_at"] = datetime.now(tz=timezone.utc).isoformat()
     centrality_score = _resolve_centrality_score(gnn_response, entity_id)
     if centrality_score is not None:
@@ -3200,7 +3207,7 @@ def assess_entities(
     persisted to risk_score_history under a deterministic request id derived from
     ``correlation_id`` + entity, so a retried ingest re-assesses idempotently
     instead of accumulating duplicate history rows. Only *expected* per-entity
-    conditions are swallowed (an entity below the >=2-signal floor, or a
+    conditions are swallowed (an entity below the configured signal floor, or a
     per-entity threshold misconfiguration) so one such entity never aborts the
     batch. Infrastructure failures (``RiskSourceError``/``RiskHistoryError``)
     deliberately propagate so a transient DB/source outage surfaces (logged with

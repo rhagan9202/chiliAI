@@ -2481,6 +2481,11 @@ export interface components {
              */
             metrics_recompute_min_interval_seconds: number;
             /**
+             * Min Risk Signals
+             * @default 2
+             */
+            min_risk_signals: number;
+            /**
              * Narrative Backend
              * @default deterministic
              * @enum {string}
@@ -6995,6 +7000,11 @@ export interface components {
             entity_id: string;
             /** Factors */
             factors?: components["schemas"]["RiskFactorResponse"][];
+            /**
+             * Min Risk Signals
+             * @default 2
+             */
+            min_risk_signals: number;
             /** Overall Score */
             overall_score: number;
             /**
@@ -7002,6 +7012,11 @@ export interface components {
              * @enum {string}
              */
             risk_level: "low" | "medium" | "high" | "critical";
+            /**
+             * Signal Count
+             * @default 0
+             */
+            signal_count: number;
             /** Unavailable Reason */
             unavailable_reason?: string | null;
         };

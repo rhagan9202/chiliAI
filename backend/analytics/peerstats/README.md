@@ -34,9 +34,10 @@ which the KB-delete cascade calls to purge a knowledge base's `entity_derived_si
 Cohort `< min_peers` → no signal; `peer_std == 0` → `z = 0`; missing/non-numeric
 value → row skipped; group membership computed per interval.
 
-> **Two-signal floor:** the risk service requires ≥2 signals to score an entity.
-> Each `PeerMetricSpec` contributes one derived signal per entity, so a domain
-> must configure **at least two matching specs** for an entity type for those
-> entities to receive a risk score (the medicare default ships two provider
-> specs). With a single spec, affected entities are assessed but skipped with an
-> INFO log (`RiskInsufficientSignalsError`) and produce no score.
+> **Configured signal floor:** the risk service scores an entity only after it
+> meets the active domain pack's `analytics.min_risk_signals` floor. The default
+> floor is `2`, so a typical domain needs at least two matching risk-signal specs
+> for an entity type before those entities receive a risk score. Sparse packs may
+> explicitly lower the floor to `1`; affected entities that do not meet the
+> configured floor are assessed but skipped with an INFO log
+> (`RiskInsufficientSignalsError`) and produce no score.

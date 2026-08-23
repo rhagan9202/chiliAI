@@ -86,6 +86,24 @@ def test_build_explanation_context_uses_graph_subgraph_and_risk_scores() -> None
     assert context.lineage.correlation_id == "corr-1"
 
 
+def test_build_explanation_context_preserves_signal_floor_metadata() -> None:
+    response = _risk_response().model_copy(
+        update={"signal_count": 1, "min_risk_signals": 1}
+    )
+
+    context = build_explanation_context(
+        graph_service=_graph_service(),
+        knowledge_base_id="kb-1",
+        entity_id="provider-1",
+        alert_id="alert-provider-1-req-1",
+        risk_response=response,
+        correlation_id="corr-1",
+    )
+
+    assert context.scores["signal_count"] == 1.0
+    assert context.scores["min_risk_signals"] == 1.0
+
+
 def test_build_explanation_context_falls_back_to_seed_when_no_factors() -> None:
     context = build_explanation_context(
         graph_service=_graph_service(),

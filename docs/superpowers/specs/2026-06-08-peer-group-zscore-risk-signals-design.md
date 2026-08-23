@@ -113,7 +113,8 @@ class PeerStatsConfig(BaseModel):
 The medicare default YAML (`config/defaults/medicare_fraud.yaml`) gains
 `capabilities.peer_stats: true` and ≥2 specs (e.g. weekly `SUM(billed_amount)`
 per provider, and weekly `COUNT` of claims per provider) so the risk service's
-≥2-signal requirement is satisfied for the exemplar domain.
+configured signal floor is satisfied for the exemplar domain; the default floor
+is two signals.
 
 ### 2. New module — `backend/analytics/peerstats/`
 

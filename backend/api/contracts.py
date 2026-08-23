@@ -1690,6 +1690,8 @@ class RiskScoreResponse(BaseModel):
     entity_id: str
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: Literal["low", "medium", "high", "critical"]
+    signal_count: int = Field(default=0, ge=0)
+    min_risk_signals: int = Field(default=2, ge=1)
     factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
     availability_status: Literal["available", "unavailable"] = "available"
     unavailable_reason: str | None = None
