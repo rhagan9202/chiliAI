@@ -50,9 +50,13 @@ operations, `0015` alert generation metadata, `0016` `audit_log`, `0017`
 (+ `cases.playbook_ref`), `0020` playbook-snapshot KB scoping, `0021`
 `workflow_definition_snapshots`, `0022` `governance_eval_runs`, `0023`
 `governance_eval_runs.dataset_source_refs`. `0024` adds `score_runs` and
-`score_batches`, making score-all runs durable across a restart.
+`score_batches`, making score-all runs durable across a restart. `0025` adds
+`connectors` + `connector_sync_runs`, `0026` a stale-sync index, `0027`
+`score_runs.skipped_entities`, and `0028` re-points
+`ix_entity_derived_signals_latest` at `interval_start DESC, computed_at DESC`
+so the risk-scoring freshness lookup stays index-backed.
 
-**Head is `0024_score_runs` — 24 tables.** Derive both rather than
+**Head is `0028_derived_signal_interval_ix` — 27 tables.** Derive both rather than
 trusting this line: `ls database/migrations/versions/` for the head, and
 `grep -c 'CREATE TABLE' database/migrations/snapshots/head.sql` for the table
 count. This sentence previously read "Head is `0013` — 16 tables total" for ten

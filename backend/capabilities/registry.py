@@ -144,7 +144,9 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
             ),
             side_effect_class="read",
             permission=CapabilityPermission(required_roles=["viewer"]),
-            domain_compatibility=_compat("medicare_fraud", "af_housing", "food_supply_chain"),
+            domain_compatibility=_compat(
+                "medicare_fraud", "department_air_force_housing", "food_supply_chain"
+            ),
             health=CapabilityHealth(status="healthy"),
             examples=[
                 _example(
@@ -239,7 +241,9 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
             ),
             side_effect_class="read",
             permission=CapabilityPermission(required_roles=["viewer"], requires_audit=True),
-            domain_compatibility=_compat("medicare_fraud", "af_housing", "food_supply_chain"),
+            domain_compatibility=_compat(
+                "medicare_fraud", "department_air_force_housing", "food_supply_chain"
+            ),
             health=CapabilityHealth(status="healthy"),
             examples=[
                 _example(
@@ -277,7 +281,9 @@ def _default_manifests() -> tuple[CapabilityManifest, ...]:
                 required_roles=["analyst"],
                 requires_audit=True,
             ),
-            domain_compatibility=_compat("medicare_fraud", "af_housing", "food_supply_chain"),
+            domain_compatibility=_compat(
+                "medicare_fraud", "department_air_force_housing", "food_supply_chain"
+            ),
             health=CapabilityHealth(status="healthy"),
             examples=[
                 _example(

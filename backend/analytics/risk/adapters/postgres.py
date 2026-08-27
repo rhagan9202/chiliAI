@@ -54,7 +54,7 @@ _LATEST_SIGNALS_SQL = """
         metric_name, signal_value, weight, rationale
     FROM entity_derived_signals
     WHERE knowledge_base_id = %s AND entity_id = %s
-    ORDER BY metric_name, computed_at DESC
+    ORDER BY metric_name, interval_start DESC, computed_at DESC
 """
 
 _RANKED_SQL = """

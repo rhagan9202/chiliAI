@@ -9,8 +9,11 @@ unreachable. It read as enforced tenancy while enforcing nothing.
 
 from __future__ import annotations
 
+import pathlib
+import time
 from datetime import datetime, timezone
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
@@ -22,12 +25,21 @@ from agent.models import (
 )
 from agent.service import create_agent_service
 from api.app import create_app
-from api.dependencies import get_agent_service
-from api.middleware.auth import User, get_current_user
+from api.dependencies import get_agent_service, get_domain_config, get_session_store
+from api.middleware.auth import SESSION_COOKIE_NAME, User, get_current_user
+from api.middleware.session_store import InMemorySessionStore, SessionRecord
+from config.loader import load_config
+from config.schema import AuthConfig, DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
 
+_MEDICARE_YAML = (
+    pathlib.Path(__file__).resolve().parents[2] / "config" / "defaults" / "medicare_fraud.yaml"
+)
 
-def _client_with_workflow(user: User) -> TestClient:
+
+def _workflow_app() -> FastAPI:
+    """App serving one workflow run that lives in ``kb-1``."""
+
     app = create_app()
     run_store = InMemoryWorkflowRunStore(
         runs=[
@@ -48,8 +60,28 @@ def _client_with_workflow(user: User) -> TestClient:
     )
     agent_service = create_agent_service(run_store, event_bus=InMemoryEventBus())
     app.dependency_overrides[get_agent_service] = lambda: agent_service
+    return app
+
+
+def _client_with_workflow(user: User) -> TestClient:
+    app = _workflow_app()
     app.dependency_overrides[get_current_user] = lambda: user
     return TestClient(app)
+
+
+def _auth_enabled_domain_config() -> DomainConfig:
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    return load_config(_MEDICARE_YAML).model_copy(update={"auth": auth_cfg})
 
 
 def test_entitlement_denies_a_knowledge_base_outside_the_claim() -> None:
@@ -89,3 +121,53 @@ def test_admin_bypasses_the_entitlement_claim() -> None:
     response = client.get("/workflows/workflow-kb-1")
 
     assert response.status_code == 200
+
+
+class TestEntitlementSurvivesTheCookieSessionPath:
+    """The gate above is exercised with a hand-built ``User``.
+
+    Every browser request arrives on the cookie/session path instead, which
+    rebuilds the principal from a ``SessionRecord``. These tests drive that
+    real path — no ``get_current_user`` override — so a claim dropped between
+    the IdP and the rebuilt ``User`` cannot pass unnoticed.
+    """
+
+    def _client(self, knowledge_base_ids: list[str] | None) -> TestClient:
+        domain = _auth_enabled_domain_config()
+        store = InMemorySessionStore()
+        store.save(
+            SessionRecord(
+                session_id="sid-1",
+                user_id="analyst-1",
+                roles=["analyst"],
+                email="analyst@example.com",
+                knowledge_base_ids=knowledge_base_ids,
+                access_token="acc",
+                refresh_token="ref",
+                access_token_expires_at=time.time() + 3600,
+                id_token="id",
+                created_at=time.time(),
+                ttl_seconds=3600,
+            )
+        )
+        app = _workflow_app()
+        app.dependency_overrides[get_domain_config] = lambda: domain
+        app.dependency_overrides[get_session_store] = lambda: store
+        client = TestClient(app)
+        client.cookies.set(SESSION_COOKIE_NAME, "sid-1")
+        return client
+
+    def test_a_session_entitlement_denies_a_knowledge_base_outside_the_claim(self) -> None:
+        response = self._client(["kb-other"]).get("/workflows/workflow-kb-1")
+
+        assert response.status_code == 404
+
+    def test_a_session_entitlement_allows_a_knowledge_base_named_in_the_claim(self) -> None:
+        response = self._client(["kb-1"]).get("/workflows/workflow-kb-1")
+
+        assert response.status_code == 200
+
+    def test_a_session_without_the_claim_stays_unrestricted(self) -> None:
+        response = self._client(None).get("/workflows/workflow-kb-1")
+
+        assert response.status_code == 200

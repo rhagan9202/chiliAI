@@ -18,9 +18,19 @@ pytestmark = pytest.mark.integration
 
 
 def _ollama_model_available() -> bool:
-    """Return True only when Ollama is reachable AND the target model is pulled."""
+    """Return True only when this smoke is opted into AND the model is pulled.
+
+    ``OLLAMA_MODEL`` must be set explicitly. chiliAI ships no Ollama service,
+    so defaulting the model name meant the probe accepted whatever Ollama
+    happened to be listening on the host — another project's server, with its
+    own models and load — and the suite then exercised a foreign LLM. Requiring
+    the opt-in matches how the other non-compose smokes behave and how
+    ``backend/README.md`` already documents this one.
+    """
+    model = os.environ.get("OLLAMA_MODEL")
+    if not model:
+        return False
     base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
     try:
         resp = httpx.get(base_url + "/api/tags", timeout=2.0)
         if resp.status_code != 200:
@@ -33,7 +43,10 @@ def _ollama_model_available() -> bool:
 
 @pytest.mark.skipif(
     not _ollama_model_available(),
-    reason="Ollama not reachable or target model not pulled (set OLLAMA_MODEL to an available model)",
+    reason=(
+        "Ollama smoke is opt-in: set OLLAMA_MODEL (and optionally OLLAMA_BASE_URL) "
+        "to a reachable server with that model pulled."
+    ),
 )
 def test_extract_policy_fixture_with_ollama() -> None:
     fixture = Path(__file__).parent / "fixtures" / "policies" / "policy_001_inpatient_billing.md"
@@ -64,7 +77,7 @@ def test_extract_policy_fixture_with_ollama() -> None:
     )
 
     ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    ollama_model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    ollama_model = os.environ["OLLAMA_MODEL"]
     config = LlmConfig(
         provider="ollama",
         model=ollama_model,
@@ -92,7 +105,20 @@ def test_extract_policy_fixture_with_ollama() -> None:
     )
     result = extractor.extract_document(chunks)
     # Surface LLM errors as test failures rather than silently returning empty.
-    assert not result.warnings, f"Extraction produced warnings: {result.warnings}"
+    #
+    # Relationship warnings are excluded deliberately: this test declares no
+    # relationship definitions, so any relationship the model volunteers is
+    # reported as an unknown type. That is the extractor behaving correctly
+    # about something this test is not exercising, and asserting on it made
+    # the test fail or pass on model chatter rather than on extraction.
+    extraction_warnings = [
+        warning
+        for warning in result.warnings
+        if "Unknown relationship type" not in warning
+    ]
+    assert not extraction_warnings, (
+        f"Extraction produced warnings: {extraction_warnings}"
+    )
     npis = {c.properties.get("npi") for c in result.candidate_entities}
     # The fixture references NPI 1234567890; assert the extractor catches it.
     # Small local models can be imperfect; if the model misses it, the test will

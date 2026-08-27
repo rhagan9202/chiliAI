@@ -126,6 +126,7 @@ from policy.service import PolicyService, create_policy_service
 from shared.environments import SUPPORTED_ENVIRONMENT_TAGS
 from shared.utils import utc_now
 from api.state import ApiState, create_api_state
+from config.feature_typology_index import build_feature_typology_index
 from config.loader import ConfigLoadError, load_config
 from config.store import ActivePackStoreError, read_active_pack
 from config.schema import (
@@ -2882,15 +2883,8 @@ def get_risk_projection_rebuild_source() -> RiskProjectionRebuildSourceProtocol 
         return None
     return PostgresRiskProjectionRebuildSource(
         provider,
-        feature_typology_index=_feature_typology_index(get_domain_config()),
+        feature_typology_index=build_feature_typology_index(get_domain_config()),
     )
-
-
-def _feature_typology_index(config: DomainConfig) -> dict[str, list[str]]:
-    return {
-        feature.id: list(feature.typology_ids)
-        for feature in config.feature_catalog.features
-    }
 
 
 def get_risk_projection_service(

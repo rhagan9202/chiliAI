@@ -85,7 +85,7 @@ class ScorecardService:
         records = self._select_records(request)
         evaluation = evaluate_template(template, ScorecardEvalState(records=records))
         now = utc_now()
-        snapshot_hash = _source_snapshot_hash(request, records)
+        snapshot_hash = _source_snapshot_hash(request, records, template)
         run = ScorecardRun(
             id=_run_id(snapshot_hash),
             knowledge_base_id=request.knowledge_base_id,
@@ -186,13 +186,20 @@ def create_scorecard_service(
 
 
 def _source_snapshot_hash(
-    request: ScorecardGenerateRequest, records: list[SourceRecord]
+    request: ScorecardGenerateRequest,
+    records: list[SourceRecord],
+    template: ScorecardTemplateConfig,
 ) -> str:
-    """Fingerprint the run request together with the exact records evaluated.
+    """Fingerprint the run request, the records evaluated, and the template.
 
     Including per-record content digests means re-generating after new or
     changed source data produces a new run id, while an identical request
     over identical data stays idempotent.
+
+    The template is fingerprinted too because the grades are a function of it:
+    without it, retuning a threshold and re-running over unchanged records
+    reuses the run computed under the *old* thresholds and silently returns
+    the grade the change was meant to alter.
     """
     record_digests = sorted(
         f"{record.feed_name}:{record.record_id}:{_record_values_digest(record)}"
@@ -206,10 +213,17 @@ def _source_snapshot_hash(
         "period_start": request.period_start.isoformat(),
         "period_end": request.period_end.isoformat(),
         "records": record_digests,
-        "version": 1,
+        "template": _template_digest(template),
+        "version": 2,
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _template_digest(template: ScorecardTemplateConfig) -> str:
+    """Content hash of the template definition the grades were computed from."""
+    canonical = template.model_dump_json(by_alias=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def _record_values_digest(record: SourceRecord) -> str:

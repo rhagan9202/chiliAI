@@ -22,6 +22,8 @@ from typing import cast
 
 import pytest
 
+from tests.e2e.stack_gate import resolve_stack
+
 pytestmark = pytest.mark.integration
 
 _BASE_URL = os.environ.get("CHILI_E2E_BASE_URL", "http://localhost:8000")
@@ -51,13 +53,12 @@ def _requests():
 @pytest.fixture
 def base_url() -> str:
     requests = _requests()
-    try:
-        response = requests.get(f"{_BASE_URL}/health", timeout=5)
-    except Exception:  # noqa: BLE001 - any connection failure means "no stack"
-        pytest.skip(f"No stack answering at {_BASE_URL}; start it with `make dev`.")
-    if response.status_code != 200:
-        pytest.skip(f"Stack at {_BASE_URL} is not healthy.")
-    return _BASE_URL
+
+    def probe(path: str) -> tuple[int, str]:
+        response = requests.get(f"{_BASE_URL}{path}", timeout=5)
+        return response.status_code, response.text
+
+    return resolve_stack(_BASE_URL, probe=probe)
 
 
 @pytest.fixture

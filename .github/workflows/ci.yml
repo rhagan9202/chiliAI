@@ -23,16 +23,22 @@ jobs:
   backend:
     name: Backend (lint, typecheck, tests, audit)
     runs-on: ubuntu-latest
-    # The full service stack is brought up before any test runs (see the
-    # "Bring up the service stack" step), and these env vars point the
-    # integration/e2e tests at the published localhost ports so they execute
+    # Infrastructure services are brought up before any test runs (see the
+    # "Bring up the service stack" step) and these env vars point the
+    # integration tests at the published localhost ports so they execute
     # against real services instead of self-skipping.
+    #
+    # The api and worker containers are started too, so the live-stack e2e
+    # tests actually run. CHILI_E2E_REQUIRE_STACK makes their absence a
+    # failure rather than a silent skip — without it a stack that failed to
+    # come up would leave every one of those tests skipped and the job green.
     env:
       # Pin the pyright binary to match the version pinned in pyproject (dev extra)
       # so the typecheck gate is deterministic and matches local development.
       PYRIGHT_PYTHON_FORCE_VERSION: "1.1.409"
       DATABASE_URL: postgresql://chili:chili@localhost:5432/chili
       REDIS_URL: redis://localhost:6379
+      CHILI_E2E_REQUIRE_STACK: "1"
       CHILI_TEST_REDIS_URL: redis://localhost:6379
       QDRANT_URL: http://localhost:6333
       NEO4J_AUTH: neo4j/ci_password
@@ -68,7 +74,14 @@ jobs:
         # tests never start before the stack is ready. NEO4J_AUTH (job env)
         # enables Neo4j auth for the integration tests.
         working-directory: ${{ github.workspace }}
-        run: docker compose -f docker-compose.dev.yaml up -d --wait redis postgres neo4j qdrant minio
+        run: |
+          docker compose -f docker-compose.dev.yaml up -d --wait \
+            redis postgres neo4j qdrant minio
+          # The application containers are what the live-stack e2e tests talk
+          # to. Started after the infra --wait so their migrations run against
+          # a database that is already accepting connections.
+          docker compose -f docker-compose.dev.yaml up -d --build api worker
+          scripts/wait_for_stack.sh
 
       - name: Install backend with all extras
         # Every optional adapter is always installed; no silent fallback. If the
@@ -269,6 +282,50 @@ jobs:
 
       - name: Run npm audit (fail on HIGH/CRITICAL)
         run: npm audit --audit-level=high
+
+  e2e:
+    name: End-to-end (Playwright against the full stack)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    # The 41 Playwright specs previously ran in no job at all: lint, tsc,
+    # vitest, build and backend pytest could all pass while the alert-feed ->
+    # evidence -> workbench flow was broken. This job is the gate for that.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: chili_app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: chili_app
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: chili_app
+        run: npx playwright install --with-deps chromium
+
+      - name: Bring up the full stack
+        # make test-e2e owns the compose lifecycle and the readiness wait, so
+        # the stack definition stays in one place. CHILI_DEV_ANONYMOUS_ROLE
+        # matches the target so role-gated specs are reachable.
+        run: make test-e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: chili_app/playwright-report
+          if-no-files-found: warn
+
+      - name: Dump stack logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.dev.yaml logs --no-color --tail=300
 
   backlog:
     name: Backlog consistency (DAG + status invariants)

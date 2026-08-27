@@ -65,9 +65,19 @@ to happen inline while building the delivery list, so one unregistered
 `event_type` or a body that no longer validated took its whole `XREADGROUP`
 batch down with it: the exception escaped before `run_handler_with_retry`, so
 the retry/DLQ machinery never ran, nothing in the batch was acked, and with
-`reclaim_min_idle_ms` unset (the default) `>` never redelivers. Measured on a
-live stack, one poison message stranded four good events alongside it with
-`/events/dlq` still reporting `total: 0`.
+`reclaim_min_idle_ms` unset (the default at the time) `>` never redelivers.
+Measured on a live stack, one poison message stranded four good events
+alongside it with `/events/dlq` still reporting `total: 0`.
+
+**Since 2026-08-26 `reclaim_min_idle_ms` defaults to 60 000 ms** (see
+`DEFAULT_RECLAIM_MIN_IDLE_MS` in `events/runtime.py`), so pending-entry
+recovery is opt-out rather than opt-in. `reclaim_stale_pending` is the only
+`XAUTOCLAIM` in the tree and it no-ops while the setting is `None`, which meant
+every shipped configuration silently dropped whatever a crashed worker had
+in flight — the only downstream signal was stale reconciliation failing the run
+an hour later. The value must stay above the longest stage so a slow-but-alive
+worker is never stolen from. Set `CHILI_EVENT_RECLAIM_MIN_IDLE_MS=0` to opt out
+deliberately; `.env.example` and both compose files now set it explicitly.
 
 A message that cannot be decoded cannot succeed on redelivery either, so it is
 recorded and acked rather than left pending forever where nothing surfaces it.

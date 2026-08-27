@@ -84,3 +84,21 @@ class InMemoryRawRecordStore:
     ) -> None:
         """Record that a submission hash has been accepted for a KB."""
         self._submissions.add((knowledge_base_id, submission_hash))
+
+    def discard_submission(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> None:
+        """Forget a submission hash so an identical retry is not a duplicate."""
+        self._submissions.discard((knowledge_base_id, submission_hash))
+
+    def delete_batch(self, *, knowledge_base_id: str, correlation_id: str) -> int:
+        """Delete the rows landed under one ingest run; return the count removed."""
+        keys = [
+            key
+            for key, record in self._records.items()
+            if record.knowledge_base_id == knowledge_base_id
+            and record.correlation_id == correlation_id
+        ]
+        for key in keys:
+            del self._records[key]
+        return len(keys)

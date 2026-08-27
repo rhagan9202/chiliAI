@@ -96,15 +96,37 @@ class RecordsService:
             correlation_id=correlation_id,
         )
         if accepted > 0:
-            self._event_bus.publish(
-                RecordsIngestedEvent(
-                    correlation_id=correlation_id,
-                    knowledge_base_id=knowledge_base_id,
-                    feed_name=feed.name,
-                    record_type=feed.record_type,
-                    record_count=accepted,
+            try:
+                self._event_bus.publish(
+                    RecordsIngestedEvent(
+                        correlation_id=correlation_id,
+                        knowledge_base_id=knowledge_base_id,
+                        feed_name=feed.name,
+                        record_type=feed.record_type,
+                        record_count=accepted,
+                    )
                 )
-            )
+            except Exception:
+                # The rows are committed but no event references them, and
+                # ``handle_records_ingested`` loads strictly by correlation id
+                # — so nothing will ever read them. Leaving the submission
+                # hash behind would compound that: the client's retry would
+                # short-circuit to duplicate=True and publish nothing, and
+                # re-persisting cannot help either because the rows already
+                # exist under the *original* correlation id.
+                #
+                # Roll the whole attempt back instead, so the retry is a clean
+                # first ingest. Only this attempt's rows are removed: rows that
+                # pre-existed this submission carry a different correlation id.
+                self._store.delete_batch(
+                    knowledge_base_id=knowledge_base_id,
+                    correlation_id=correlation_id,
+                )
+                self._store.discard_submission(
+                    knowledge_base_id=knowledge_base_id,
+                    submission_hash=submission_hash,
+                )
+                raise
         # Rows whose record_id already existed are silently dropped by the
         # store's per-row dedup during persist() (dedup behavior itself is
         # unchanged) — surface that so it isn't just "accepted came back

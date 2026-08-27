@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from prometheus_client import REGISTRY
 
@@ -10,7 +12,9 @@ from events.adapters.in_memory import InMemoryEventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.exceptions import RecordFeedNotFoundError
-from records.service import create_records_service
+from events.protocols import EventBus
+from records.service import RecordsService, create_records_service
+from records.service_models import RecordIngestReceipt
 from records.service_models import RecordSubmission
 from shared.types import PropertyDefinition, PropertyType
 
@@ -343,3 +347,82 @@ def test_register_records_mixed_batch_accepts_fresh_and_suppresses_changed_row()
     assert second.accepted_count == 1
     assert second.suppressed_existing_count == 1
     assert second.duplicate is False
+
+
+class _PublishFailsOnce:
+    """Event bus that rejects the first publish and accepts the rest.
+
+    Models Redis being briefly unavailable while the push endpoint is serving
+    a batch — the rows are already committed by then.
+    """
+
+    def __init__(self) -> None:
+        self.published_events: list[object] = []
+        self._failed = False
+
+    def publish(self, event: object) -> None:
+        if not self._failed:
+            self._failed = True
+            raise RuntimeError("event bus unavailable")
+        self.published_events.append(event)
+
+    def subscribe(self, event_type: str, handler: object) -> None:
+        return None
+
+
+def _push(service: object, rows: list[dict[str, object]]) -> object:
+    submission = RecordSubmission(
+        feed_name="claims_feed",
+        rows=rows,
+        source_type="api_push",
+        source_ref="push",
+    )
+    return cast(RecordsService, service).register_records("kb-1", submission)
+
+
+def test_a_retry_after_a_failed_publish_still_reaches_the_pipeline() -> None:
+    """A publish failure must not leave the persisted rows unreachable.
+
+    The submission hash is what makes an identical retry a no-op. If it
+    survives a failed publish, the retry short-circuits to duplicate=True and
+    publishes nothing, while the rows it refers to sit in ``raw_records`` with
+    a correlation id no event ever carried — the only consumer loads strictly
+    by correlation id, so nothing ever maps them into the graph.
+    """
+    store = InMemoryRawRecordStore()
+    bus = _PublishFailsOnce()
+    service = create_records_service(
+        store, event_bus=cast(EventBus, bus), records_config=_records_config()
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    with pytest.raises(RuntimeError):
+        _push(service, rows)
+
+    receipt = cast(RecordIngestReceipt, _push(service, rows))
+
+    assert receipt.duplicate is False
+    published = [e for e in bus.published_events if isinstance(e, RecordsIngestedEvent)]
+    assert len(published) == 1
+    reachable = store.load_batch(
+        knowledge_base_id="kb-1", correlation_id=published[0].correlation_id
+    )
+    assert {record.record_id for record in reachable} == {"c1"}
+
+
+def test_a_successful_publish_still_dedupes_an_identical_retry() -> None:
+    """The rollback must not weaken dedup on the happy path."""
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(
+        store, event_bus=bus, records_config=_records_config()
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    _push(service, rows)
+    second = cast(RecordIngestReceipt, _push(service, rows))
+
+    assert second.duplicate is True
+    assert second.accepted_count == 0
+    published = [e for e in bus.published_events if isinstance(e, RecordsIngestedEvent)]
+    assert len(published) == 1

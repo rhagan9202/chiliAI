@@ -27,6 +27,8 @@ from events.types import (
     KnowledgeBaseReadyEvent,
     KnowledgeBaseReadyReference,
     RecordsIngestedEvent,
+    RiskScoredEvent,
+    RiskScoredReference,
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
@@ -728,3 +730,68 @@ def test_reconcilable_statuses_exclude_awaiting_approval() -> None:
         WorkflowRunStatus.QUEUED,
         WorkflowRunStatus.RUNNING,
     )
+
+
+def _risk_scored_event(*, correlation_id: str = "corr-orphan") -> RiskScoredEvent:
+    return RiskScoredEvent(
+        correlation_id=correlation_id,
+        assessments=[
+            RiskScoredReference(
+                knowledge_base_id="kb-1",
+                request_id="req-1",
+                entity_id="provider:1",
+                overall_score=0.9,
+                risk_level="high",
+                factor_count=1,
+                factors=[],
+            )
+        ],
+    )
+
+
+class TestOrphanTerminalEventsDoNotFabricateHistory:
+    """A late terminal event whose run is unknown must not invent one.
+
+    ``risk.scored`` maps to the last step in the default sequence, so a
+    fallback run built for it marks every preceding step COMPLETED and is then
+    closed as COMPLETED — a run claiming a full successful ingestion that
+    never happened. Analytics scoring emits one of these per entity, so a
+    single batch can manufacture thousands of them.
+    """
+
+    def test_an_orphan_risk_scored_event_does_not_report_earlier_steps_complete(
+        self,
+    ) -> None:
+        store = InMemoryWorkflowRunStore()
+        tracker = WorkflowEventTracker(store)
+
+        tracker.begin_event(_risk_scored_event())
+
+        runs = store.list_runs(knowledge_base_id="kb-1").items
+        fabricated_completions = [
+            step.step_name
+            for run in runs
+            for step in run.steps
+            if step.status is WorkflowStepStatus.COMPLETED
+        ]
+        assert fabricated_completions == [], (
+            "a fallback run reported steps as COMPLETED that never ran: "
+            f"{fabricated_completions}"
+        )
+
+    def test_an_orphan_risk_scored_event_does_not_complete_a_whole_run(self) -> None:
+        store = InMemoryWorkflowRunStore()
+        tracker = WorkflowEventTracker(store)
+        event = _risk_scored_event()
+
+        tracker.begin_event(event)
+        tracker.complete_event(event)
+
+        completed = [
+            run
+            for run in store.list_runs(knowledge_base_id="kb-1").items
+            if run.status is WorkflowRunStatus.COMPLETED
+        ]
+        assert completed == [], (
+            "an orphan risk.scored event closed a run as a successful full pipeline"
+        )

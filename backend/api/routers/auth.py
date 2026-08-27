@@ -303,6 +303,10 @@ def callback(
     email = raw_email if isinstance(raw_email, str) else None
     raw_roles = claims.get(auth_config.roles_claim)
     roles = coerce_roles(raw_roles)
+    # Absent claim stays None (unrestricted); a present one restricts, even
+    # when empty — same semantics as the bearer path in ``_extract_user``.
+    raw_kb_ids = claims.get(auth_config.knowledge_base_ids_claim)
+    knowledge_base_ids = None if raw_kb_ids is None else coerce_roles(raw_kb_ids)
 
     sid = generate_id()
     now = time.time()
@@ -311,6 +315,7 @@ def callback(
         user_id=user_id,
         roles=roles,
         email=email,
+        knowledge_base_ids=knowledge_base_ids,
         access_token=tokens.access_token,
         refresh_token=tokens.refresh_token,
         access_token_expires_at=now + tokens.expires_in,

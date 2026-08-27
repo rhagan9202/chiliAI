@@ -41,6 +41,16 @@ class RawRecordStore(Protocol):
         """Record that a submission hash has been accepted for a KB."""
         ...
 
+    def discard_submission(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> None:
+        """Forget a submission hash so an identical retry is not a duplicate."""
+        ...
+
+    def delete_batch(self, *, knowledge_base_id: str, correlation_id: str) -> int:
+        """Delete the rows landed under one ingest run; return the count removed."""
+        ...
+
 
 @runtime_checkable
 class RecordSourceProtocol(Protocol):

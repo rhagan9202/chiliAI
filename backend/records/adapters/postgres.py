@@ -63,6 +63,16 @@ _RECORD_SUBMISSION_SQL = """
     ON CONFLICT (knowledge_base_id, submission_hash) DO NOTHING
 """
 
+_DISCARD_SUBMISSION_SQL = """
+    DELETE FROM record_submissions
+    WHERE knowledge_base_id = %s AND submission_hash = %s
+"""
+
+_DELETE_BATCH_SQL = """
+    DELETE FROM raw_records
+    WHERE knowledge_base_id = %s AND correlation_id = %s
+"""
+
 
 class PostgresRawRecordStore:
     """A ``RawRecordStore`` backed by the ``raw_records`` table."""
@@ -165,6 +175,34 @@ class PostgresRawRecordStore:
             raise RecordPersistenceError(
                 "Failed to record submission hash."
             ) from exc
+
+    def discard_submission(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> None:
+        """Forget a submission hash so an identical retry is not a duplicate."""
+        try:
+            with self._provider.connection() as conn:
+                conn.execute(
+                    _DISCARD_SUBMISSION_SQL, (knowledge_base_id, submission_hash)
+                )
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError(
+                "Failed to discard submission hash."
+            ) from exc
+
+    def delete_batch(self, *, knowledge_base_id: str, correlation_id: str) -> int:
+        """Delete the rows landed under one ingest run; return the count removed."""
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(
+                    _DELETE_BATCH_SQL, (knowledge_base_id, correlation_id)
+                )
+                removed = cursor.rowcount
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError("Failed to delete record batch.") from exc
+        return removed
 
 
 def _row_to_record(row: Row) -> RawRecord:

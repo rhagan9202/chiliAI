@@ -301,6 +301,20 @@ class WorkflowEventTracker:
         step_name = _WORKFLOW_REGISTRY.step_for_event_type(event.event_type)
         if step_name is None:
             return None
+        default_step_sequence = _WORKFLOW_REGISTRY.default_step_names()
+        if step_name in default_step_sequence and default_step_sequence.index(step_name):
+            # A mid-pipeline step with no run behind it. Representing this as a
+            # run would assert a whole multi-step pipeline that nothing
+            # observed starting — and for a terminal-success event type
+            # ``complete_event`` would immediately close it as a successful
+            # end-to-end ingestion. ``risk.scored`` maps to the *last* step and
+            # analytics emits one per entity, so accepting these manufactures a
+            # phantom "successful ingestion" per scored entity, each of which
+            # also counts as busy against ``is_busy`` and blocks uploads.
+            #
+            # Standalone steps (``records_ingest``) and genuine first steps are
+            # still tracked: a one-step run records exactly what was seen.
+            return None
         steps = _fallback_steps(step_name)
         metadata: dict[str, MetadataValue] = {
             "correlation_id": event.correlation_id,
@@ -349,13 +363,15 @@ def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
             )
         ]
     steps: list[WorkflowStepState] = []
-    current_step_index = default_step_sequence.index(current_step)
-    for index, step_name in enumerate(default_step_sequence):
-        status = WorkflowStepStatus.PENDING
-        if step_name == current_step:
-            status = WorkflowStepStatus.RUNNING
-        elif index < current_step_index:
-            status = WorkflowStepStatus.COMPLETED
+    for step_name in default_step_sequence:
+        # Earlier steps stay PENDING. The run is a fallback precisely because
+        # nothing tracked the events that would have completed them, so
+        # marking them COMPLETED reports work that was never observed.
+        status = (
+            WorkflowStepStatus.RUNNING
+            if step_name == current_step
+            else WorkflowStepStatus.PENDING
+        )
         steps.append(WorkflowStepState(step_name=step_name, status=status))
     return steps
 

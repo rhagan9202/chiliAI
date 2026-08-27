@@ -38,6 +38,7 @@ from agent.policy import (
 )
 from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
+from config.feature_typology_index import build_feature_typology_index
 from config.display import entity_display_label
 from config.loader import load_active_config
 from config.schema import (
@@ -2508,6 +2509,7 @@ def _run_risk_stage(
             RiskAssessmentRequest(
                 knowledge_base_id=knowledge_base_id,
                 entity_id=entity_id,
+                correlation_id=event.correlation_id,
                 request_id=_risk_request_id(
                     correlation_id=event.correlation_id,
                     knowledge_base_id=knowledge_base_id,
@@ -2954,10 +2956,7 @@ def _entity_type_from_id(entity_id: str) -> str:
 def _feature_typology_index(config: DomainConfig | None) -> dict[str, list[str]]:
     if config is None:
         return {}
-    return {
-        feature.id: list(feature.typology_ids)
-        for feature in config.feature_catalog.features
-    }
+    return build_feature_typology_index(config)
 
 
 def handle_alerts_created_for_graph(
@@ -3206,6 +3205,7 @@ def assess_entities(
                 RiskAssessmentRequest(
                     knowledge_base_id=knowledge_base_id,
                     entity_id=entity_id,
+                    correlation_id=correlation_id,
                     request_id=_risk_request_id(
                         correlation_id=correlation_id,
                         knowledge_base_id=knowledge_base_id,

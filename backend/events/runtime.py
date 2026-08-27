@@ -11,6 +11,10 @@ from events.adapters.redis_streams import RedisStreamsEventBus
 from events.protocols import DlqRecordStore, EventBus
 
 
+DEFAULT_RECLAIM_MIN_IDLE_MS = 60_000
+"""Idle time before a pending entry may be reclaimed by another consumer."""
+
+
 @dataclass(frozen=True, slots=True)
 class EventBusSettings:
     """Runtime settings for event transport selection and Redis Streams."""
@@ -23,7 +27,13 @@ class EventBusSettings:
     batch_size: int = 10
     block_ms: int = 1000
     stream_maxlen: int | None = None
-    reclaim_min_idle_ms: int | None = None
+    # Redelivery of entries stranded in the consumer group's PEL by a worker
+    # that died mid-batch. ``reclaim_stale_pending`` is the only XAUTOCLAIM in
+    # the tree and it no-ops while this is None, so leaving it unset means a
+    # crash silently drops in-flight work. Default it on, comfortably above the
+    # longest stage so a slow-but-alive worker is never stolen from. Set
+    # CHILI_EVENT_RECLAIM_MIN_IDLE_MS=0 to opt out deliberately.
+    reclaim_min_idle_ms: int | None = DEFAULT_RECLAIM_MIN_IDLE_MS
 
     def consumer_name(self) -> str:
         """Return a unique consumer identifier for the running process."""
@@ -46,15 +56,16 @@ def load_event_bus_settings() -> EventBusSettings:
         block_ms=int(os.environ.get("CHILI_EVENT_BLOCK_MS", "1000")),
         stream_maxlen=_optional_positive_int_from_env("CHILI_EVENT_STREAM_MAXLEN"),
         reclaim_min_idle_ms=_optional_positive_int_from_env(
-            "CHILI_EVENT_RECLAIM_MIN_IDLE_MS"
+            "CHILI_EVENT_RECLAIM_MIN_IDLE_MS",
+            default=DEFAULT_RECLAIM_MIN_IDLE_MS,
         ),
     )
 
 
-def _optional_positive_int_from_env(name: str) -> int | None:
+def _optional_positive_int_from_env(name: str, *, default: int | None = None) -> int | None:
     raw = os.environ.get(name)
     if raw is None or raw == "":
-        return None
+        return default
     value = int(raw)
     return value if value > 0 else None
 

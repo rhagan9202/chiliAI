@@ -151,6 +151,23 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > compose services stay opt-in and skip unless their env var is set:
 > `OPENAI_API_KEY` (paid API), `SENTENCE_TRANSFORMERS_SMOKE_MODEL` (model
 > download), and the Ollama e2e (`OLLAMA_MODEL` + a reachable Ollama server).
+> `OLLAMA_MODEL` has no default: the stack ships no Ollama service, so
+> defaulting it made the probe accept whatever Ollama happened to hold
+> `localhost:11434` — another project's server, with its own models and load.
+>
+> **`CHILI_E2E_REQUIRE_STACK=1` turns a missing stack into a failure.** The
+> live-stack suites under `tests/e2e/` share one gate (`tests/e2e/stack_gate.py`).
+> By default they skip when nothing answers, which is right locally and wrong
+> in CI: a job that started no application containers reported success while
+> every one of those tests quietly skipped. CI sets the variable, so the same
+> condition fails loudly there.
+>
+> The gate also checks *whose* stack answered. A bare `/health` probe accepts
+> any service holding the port — an unrelated project's API on
+> `localhost:8000` returns its own `{"status": "ok"}`, and the suite then
+> asserts against a foreign service (this happened: 13 e2e tests "failed" on
+> another project's 404 bodies). The gate now additionally requires
+> `/config/domain` to return a domain config before accepting the stack.
 >
 > ⚠️ **Postgres-touching tests default to `chili_test`, never the dev DB.**
 > `tests/database/test_migrations.py` runs `alembic downgrade base` →

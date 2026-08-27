@@ -69,6 +69,7 @@ services:
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
       - CHILI_EVENT_BLOCK_MS=500
+      - CHILI_EVENT_RECLAIM_MIN_IDLE_MS=60000
       - LOG_LEVEL=INFO
       - LOG_FORMAT=console
       - REDIS_URL=redis://redis:6379
@@ -130,6 +131,7 @@ services:
       # metadata (status, warning counts/reasons) is visible to API reads.
       - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_EVENT_BLOCK_MS=500
+      - CHILI_EVENT_RECLAIM_MIN_IDLE_MS=60000
       - LOG_LEVEL=INFO
       - LOG_FORMAT=console
       - REDIS_URL=redis://redis:6379

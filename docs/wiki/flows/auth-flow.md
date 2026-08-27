@@ -30,9 +30,10 @@ Auth is enabled by setting `auth.enabled: true` in the domain YAML config and pr
    ├── Exchanges code for tokens via POST to AuthConfig.token_endpoint
    │     (includes code_verifier from PKCE session)
    │     Headers: client_id + client_secret (from AuthConfig.client_secret_env_var)
-   ├── Extracts user_id, email, roles from ID token claims
-   │     (roles extracted from AuthConfig.roles_claim, default = "roles")
-   ├── Creates SessionRecord {user_id, email, roles}
+   ├── Extracts user_id, email, roles, knowledge_base_ids from ID token claims
+   │     (roles from AuthConfig.roles_claim, default = "roles";
+   │      knowledge_base_ids from AuthConfig.knowledge_base_ids_claim)
+   ├── Creates SessionRecord {user_id, email, roles, knowledge_base_ids}
    ├── Stores session in SessionStoreProtocol with TTL = AuthConfig.session_ttl_seconds
    └── Sets HttpOnly cookie: chiliai_session=<session_id>
          Secure=AuthConfig.cookie_secure (True in prod)
@@ -42,7 +43,7 @@ Auth is enabled by setting `auth.enabled: true` in the domain YAML config and pr
 4. Subsequent API calls:
    └── auth.py middleware reads chiliai_session cookie
          → SessionStoreProtocol.get(session_id) → SessionRecord
-         → User {user_id, roles, email}
+         → User {user_id, roles, email, knowledge_base_ids}
          (Alternative: Authorization: Bearer <jwt> → JWKS validation)
 ```
 
@@ -123,9 +124,17 @@ class SessionRecord:
     user_id: str
     email: str | None
     roles: list[str]
+    knowledge_base_ids: list[str] | None
     created_at: datetime
     expires_at: datetime
 ```
+
+`knowledge_base_ids` carries the per-KB entitlement claim and must be persisted
+on the session, because the cookie path rebuilds the principal from the
+`SessionRecord` alone and never re-reads the `id_token`. `None` means the IdP
+issued no claim (unrestricted); an empty list is a real restriction. Omitting it
+here silently disables every per-KB gate on the only path the SPA uses — it did,
+until 2026-08-26 — while the bearer path stayed correctly enforced.
 
 ---
 
