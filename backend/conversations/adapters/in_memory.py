@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from conversations.models import Conversation
-from shared.utils import utc_now
 
 __all__ = ["InMemoryConversationRepository"]
 
@@ -22,9 +21,8 @@ class InMemoryConversationRepository:
         return self._conversations.get(conversation_id)
 
     def save(self, conversation: Conversation) -> Conversation:
-        updated = conversation.model_copy(update={"updated_at": utc_now()})
-        self._conversations[updated.id] = updated
-        return updated
+        self._conversations[conversation.id] = conversation
+        return conversation
 
     def list_by_kb(
         self, knowledge_base_id: str, *, limit: int, offset: int

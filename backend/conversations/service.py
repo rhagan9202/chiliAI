@@ -5,7 +5,7 @@ from __future__ import annotations
 from conversations.adapters.protocols import ConversationRepository
 from conversations.exceptions import ConversationNotFoundError
 from conversations.models import Conversation, ConversationMessage
-from shared.utils import generate_id
+from shared.utils import generate_id, utc_now
 
 __all__ = ["ConversationService", "create_conversation_service"]
 
@@ -51,7 +51,14 @@ class ConversationService:
         if existing is None:
             raise ConversationNotFoundError(conversation_id)
         updated = existing.model_copy(
-            update={"messages": [*existing.messages, *messages]}
+            update={
+                "messages": [*existing.messages, *messages],
+                # Owned here rather than in an adapter: the in-memory adapter
+                # used to re-stamp this inside save() and the Postgres one did
+                # not, so "most recently updated first" was really creation
+                # order -- in production only.
+                "updated_at": utc_now(),
+            }
         )
         return self._repository.save(updated)
 

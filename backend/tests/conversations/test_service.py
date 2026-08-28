@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from conversations.adapters.in_memory import InMemoryConversationRepository
+from conversations.adapters.postgres import PostgresConversationRepository
+from conversations.adapters.protocols import ConversationRepository
 from conversations.exceptions import ConversationNotFoundError
 from conversations.models import ConversationMessage
 from conversations.service import create_conversation_service
@@ -47,3 +49,37 @@ def test_append_messages_unknown_conversation_raises() -> None:
 
     with pytest.raises(ConversationNotFoundError):
         service.append_messages("missing", [])
+
+
+@pytest.mark.integration
+def test_appending_messages_advances_updated_at_in_every_adapter(
+    conversation_pg_repo: PostgresConversationRepository,
+) -> None:
+    """The in-memory adapter used to re-stamp updated_at inside save(); the
+    Postgres one writes back whatever it was handed. So `/chat/conversations`,
+    ordered "most recently updated first", was really ordered by creation
+    time -- but only in production, because the in-memory adapter the rest of
+    the tests exercise hid it.
+
+    The service must own the timestamp so both adapters agree.
+    """
+    repositories: tuple[ConversationRepository, ...] = (
+        InMemoryConversationRepository(),
+        conversation_pg_repo,
+    )
+    for repository in repositories:
+        service = create_conversation_service(repository)
+        created = service.create(knowledge_base_id="kb-1")
+        original = created.updated_at
+
+        appended = service.append_messages(
+            created.id,
+            [ConversationMessage(id="m-1", role="user", content="hello")],
+        )
+
+        assert appended.updated_at > original, (
+            f"{type(repository).__name__} did not advance updated_at"
+        )
+        reloaded = repository.get(created.id)
+        assert reloaded is not None
+        assert reloaded.updated_at == appended.updated_at
