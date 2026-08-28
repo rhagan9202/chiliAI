@@ -9961,6 +9961,7 @@
               "additionalProperties": true,
               "type": "object"
             },
+            "maxItems": 50000,
             "minItems": 1,
             "title": "Rows",
             "type": "array"

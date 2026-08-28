@@ -95,7 +95,15 @@ require a documented justification in this file.
   DomainConfig-driven `validation.max_file_size_mb` (default 512 MB,
   pack-overridable), enforced incrementally with HTTP 413 by the
   `read_upload_file_with_limit` readers in `api/routers/knowledgebases.py`
-  and `api/routers/records.py`. nginx body-size checking is deliberately
+  and `api/routers/records.py`. The JSON api-push route
+  (`POST /records/{kb}/push`) is bounded by the same setting: its
+  `_SizeLimitedPushRoute` (`api/routers/records.py`) wraps the ASGI
+  `receive()` channel to enforce the budget against the body while it is
+  still streaming in, before FastAPI's automatic Pydantic body parsing would
+  otherwise buffer it whole, plus a `RecordPushRequest.rows` `max_length`
+  bound on row count. Neither check depends on a trustworthy
+  Content-Length — the running byte count is authoritative regardless of
+  whether the header is present. nginx body-size checking is deliberately
   disabled (`client_max_body_size 0; Helm/k8s ingress proxy-body-size "0"`) so
   the config gate is the single authority — a fixed nginx number silently
   contradicted per-pack limits (it defaulted to 1 MB). Multi-GB uploads

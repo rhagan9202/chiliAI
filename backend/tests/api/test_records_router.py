@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
@@ -14,8 +14,14 @@ from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_knowledge_base_repository, get_raw_record_store
+from api.dependencies import (
+    get_domain_config,
+    get_knowledge_base_repository,
+    get_raw_record_store,
+)
 from api.routers.records import read_upload_file_with_limit
+from config.loader import load_config
+from config.schema import ValidationConfig
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from records.adapters.in_memory import InMemoryRawRecordStore
 from shared.types import KnowledgeBase
@@ -42,6 +48,26 @@ def _seeded_repository() -> InMemoryKnowledgeBaseRepository:
     repository = InMemoryKnowledgeBaseRepository()
     repository.create(_knowledge_base())
     return repository
+
+
+def _client(*, max_file_size_mb: int) -> TestClient:
+    """Build a TestClient against the real medicare_fraud config, with only
+    the validation section overridden to a small max_file_size_mb so size
+    limits can be exercised without huge fixture bodies."""
+    defaults_dir = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    base = load_config(defaults_dir / "medicare_fraud.yaml")
+    tiny_config = base.model_copy(
+        update={"validation": ValidationConfig(max_file_size_mb=max_file_size_mb)}
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("CHILI_ENV", "local")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+        app = create_app()
+        app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
+        app.dependency_overrides[get_domain_config] = lambda: tiny_config
+        return TestClient(app)
 
 
 @pytest.fixture
@@ -77,6 +103,48 @@ def test_push_records_returns_a_receipt(client: TestClient) -> None:
     body = response.json()
     assert body["accepted_count"] == 1
     assert body["record_type"] == "claim_record"
+
+
+def test_an_oversized_push_body_is_rejected_before_it_is_parsed() -> None:
+    """nginx sets client_max_body_size 0 in both configs on purpose --
+    docs/security_checklist.md names the application config gate as 'the single
+    authority'. But that gate names only the two read_upload_file_with_limit
+    readers, and this route is not one of them: it takes an unbounded JSON array
+    straight into memory.
+    """
+    client = _client(max_file_size_mb=1)
+    oversized = {
+        "feed_name": "claims_feed",
+        "rows": [{"claim_id": f"c{i}", "amount": "1"} for i in range(200_000)],
+    }
+
+    response = client.post(
+        "/records/kb-1/push",
+        json=oversized,
+        headers={"Content-Length": str(4 * 1024 * 1024)},
+    )
+
+    assert response.status_code == 413
+    assert "size" in response.json()["detail"].lower()
+
+
+def test_an_oversized_push_body_without_content_length_is_still_rejected() -> None:
+    """A streamed/chunked-style request has no Content-Length at all, so the
+    declared-size fast path has nothing to check. The byte-count guard on
+    the wrapped receive channel must still bound how much gets buffered.
+    """
+    client = _client(max_file_size_mb=1)
+
+    def oversized_chunks() -> Iterator[bytes]:
+        chunk = b"a" * (256 * 1024)
+        for _ in range(8):  # 2 MB total, well past the 1 MB budget
+            yield chunk
+
+    response = client.post("/records/kb-1/push", content=oversized_chunks())
+
+    assert response.request.headers.get("content-length") is None
+    assert response.status_code == 413
+    assert "size" in response.json()["detail"].lower()
 
 
 def test_push_records_rejects_unknown_feed(client: TestClient) -> None:
