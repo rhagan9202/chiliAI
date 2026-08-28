@@ -81,7 +81,16 @@ jobs:
           # to. Started after the infra --wait so their migrations run against
           # a database that is already accepting connections.
           docker compose -f docker-compose.dev.yaml up -d --build api worker
-          scripts/wait_for_stack.sh
+          # Wait on the two API routes this job's tests use, NOT the script's
+          # defaults: those include the Vite app on :5173, and this job starts
+          # no `app` container (nothing depends on it — `app` depends on
+          # `api`, not the reverse). Waiting on :5173 here can only time out.
+          # /config/domain is the second probe for the reason
+          # tests/e2e/stack_gate.py gives: a bare /health accepts any service
+          # holding the port.
+          scripts/wait_for_stack.sh \
+            http://localhost:8000/health \
+            http://localhost:8000/config/domain
 
       - name: Install backend with all extras
         # Every optional adapter is always installed; no silent fallback. If the
@@ -287,9 +296,11 @@ jobs:
     name: End-to-end (Playwright against the full stack)
     runs-on: ubuntu-latest
     needs: [backend, frontend]
-    # The 41 Playwright specs previously ran in no job at all: lint, tsc,
-    # vitest, build and backend pytest could all pass while the alert-feed ->
-    # evidence -> workbench flow was broken. This job is the gate for that.
+    # The Playwright suite (39 spec files, 102 test cases as reported by
+    # `npx playwright test --list`) previously ran in no job at all: lint,
+    # tsc, vitest, build and backend pytest could all pass while the
+    # alert-feed -> evidence -> workbench flow was broken. This job is the
+    # gate for that.
     steps:
       - name: Check out repository
         uses: actions/checkout@v7

@@ -246,7 +246,7 @@ make test-e2e
 
 `make test-e2e` does: `docker compose down -v` (clean slate) →
 `CHILI_DEV_ANONYMOUS_ROLE=analyst docker compose up -d --build` →
-`scripts/wait_for_stack.sh` (polls API `:8000/health` and app `:5173/`) →
+`scripts/wait_for_stack.sh` (polls two readiness URLs; defaults are API `:8000/health` and app `:5173/`, and callers that start only some services pass their own) →
 `npm run test:e2e` → `docker compose down`.
 
 For iterative local runs against an already-running stack:
