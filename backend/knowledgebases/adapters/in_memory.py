@@ -163,6 +163,28 @@ class InMemoryKnowledgeBaseRepository:
         kb_documents[document_id] = updated
         return updated
 
+    def set_document_warnings(
+        self,
+        knowledge_base_id: str,
+        document_id: str,
+        *,
+        count: int,
+        reasons: list[str],
+    ) -> None:
+        kb_documents = self._documents.get(knowledge_base_id)
+        if kb_documents is None:
+            return
+        document = kb_documents.get(document_id)
+        if document is None:
+            return
+        updated = document.model_copy(
+            update={
+                "warning_count": count,
+                "warning_reasons": reasons[:MAX_DOCUMENT_WARNING_REASONS],
+            }
+        )
+        kb_documents[document_id] = updated
+
     def delete_document(
         self,
         knowledge_base_id: str,

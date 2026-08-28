@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 import time
 from types import SimpleNamespace
-from typing import Literal
+from typing import Literal, TypedDict
 
 from collections.abc import Sequence
 
@@ -70,7 +70,7 @@ from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
 from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
 from events.codec import encode_event
 from events.dlq_models import DlqRecord
-from events.protocols import DlqErrorInfo, EventDelivery
+from events.protocols import DlqErrorInfo, EventBus, EventDelivery
 from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
@@ -107,7 +107,7 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
 from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
-from ingestion.chunker import ChunkingResult, create_document_chunker
+from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.models import (
     CandidateEntity,
@@ -124,6 +124,7 @@ from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import (
     Entity,
     EntityDefinition,
@@ -134,6 +135,7 @@ from shared.types import (
 )
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.models import StoredObject
+from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
 
@@ -5786,6 +5788,98 @@ def test_handle_documents_parsed_persists_parser_warnings() -> None:
     assert record is not None
     assert record.warning_count == 2
     assert "csv.ragged_row: row 1" in record.warning_reasons
+
+
+_REPLAY_PARSED_STORAGE_KEY = "knowledgebases/kb-1/parsed/parsed-1.json"
+
+
+class _HandlerDeps(TypedDict):
+    document_chunker: DocumentChunker
+    object_store: ObjectStore
+    event_bus: EventBus
+    kb_repository: KnowledgeBaseRepository
+
+
+def _seed_document(
+    repository: InMemoryKnowledgeBaseRepository, *, kb_id: str, document_id: str
+) -> None:
+    from knowledgebases.models import DocumentRecord
+    from shared.utils import utc_now
+
+    repository.create(
+        KnowledgeBase(id=kb_id, name="KB", description="", created_at=utc_now())
+    )
+    repository.add_document(
+        DocumentRecord(
+            id=document_id,
+            knowledge_base_id=kb_id,
+            filename="claims.csv",
+            content_type="text/csv",
+        )
+    )
+
+
+def _parsed_event(
+    *, knowledge_base_id: str, document_id: str, warning_count: int
+) -> DocumentsParsedEvent:
+    return DocumentsParsedEvent(
+        documents=[
+            ParsedDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id=document_id,
+                parsed_document_id="parsed-1",
+                parser_name="test-parser",
+                warning_count=warning_count,
+                warning_samples=["truncated table"],
+                parsed_document_storage_key=_REPLAY_PARSED_STORAGE_KEY,
+            )
+        ]
+    )
+
+
+def _deps(*, kb_repository: KnowledgeBaseRepository) -> _HandlerDeps:
+    object_store = InMemoryObjectStore()
+    parsed_document = ParsedDocument(
+        id="parsed-1",
+        source_document_id="doc-1",
+        text_content="claim_id: 42",
+        parser_name="test-parser",
+    )
+    object_store.put_bytes(
+        _REPLAY_PARSED_STORAGE_KEY,
+        parsed_document.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return _HandlerDeps(
+        document_chunker=create_document_chunker(),
+        object_store=object_store,
+        event_bus=InMemoryEventBus(),
+        kb_repository=kb_repository,
+    )
+
+
+def test_replaying_a_parsed_event_does_not_inflate_the_warning_count() -> None:
+    """The handler body runs again on retry and on redelivery.
+
+    record_document_warnings is a blind read-modify-write at the very top of
+    handle_documents_parsed, before the work that can fail. With
+    RetryPolicy(max_retries=3) a transient chunker error runs the increment
+    four times, so a document with 2 warnings reports 8 -- and the value is
+    shown to users on the KB document inventory chip. Redis Streams is
+    at-least-once, so redelivery reproduces this with no handler failure at
+    all.
+    """
+    repository = InMemoryKnowledgeBaseRepository()
+    _seed_document(repository, kb_id="kb-1", document_id="doc-1")
+    event = _parsed_event(knowledge_base_id="kb-1", document_id="doc-1", warning_count=2)
+
+    handle_documents_parsed(event, **_deps(kb_repository=repository))
+    handle_documents_parsed(event, **_deps(kb_repository=repository))
+
+    document = repository.get_document("kb-1", "doc-1")
+    assert document is not None
+    assert document.warning_count == 2
+    assert document.warning_reasons == ["truncated table"]
 
 
 def test_handle_entities_extracted_persists_extraction_warnings() -> None:

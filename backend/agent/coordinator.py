@@ -1577,10 +1577,13 @@ def handle_documents_parsed(
     for document in event.documents:
         started_at = time.perf_counter()
         if kb_repository is not None and document.warning_count > 0:
-            kb_repository.record_document_warnings(
+            # Absolute, not additive: this handler body is re-entered on retry
+            # and on at-least-once redelivery, and the event already carries
+            # the document's total.
+            kb_repository.set_document_warnings(
                 document.knowledge_base_id,
                 document.source_document_id,
-                additional_count=document.warning_count,
+                count=document.warning_count,
                 reasons=list(document.warning_samples),
             )
         if document.parsed_document_storage_key is None:
