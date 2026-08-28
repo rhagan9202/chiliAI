@@ -5610,6 +5610,7 @@ def test_run_worker_passes_configured_stage_policy_registry(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 
@@ -5679,6 +5680,7 @@ def test_run_worker_replays_recovery_markers_before_drain(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 
@@ -5741,6 +5743,7 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 

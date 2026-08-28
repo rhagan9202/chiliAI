@@ -31,6 +31,17 @@ worker keeps consuming the stream it subscribed to, so a pack must **not**
 change the `events` backend/URI across a hot-swap (transport changes require a
 restart). See `docs/architecture.md` §9.3.
 
+Each rebuild opens a fresh connection pool, graph driver, vector store client,
+and two Redis clients. On a successful swap `apply_pending_config_updates`
+calls `WorkerDependencies.close()` on the replaced set (after the old
+transport acks its deliveries) so those connections are released instead of
+leaked; `run_worker` calls it again on shutdown. `close()` is best-effort per
+resource (`contextlib.suppress`) and safe on a partially built set, but it can
+only close a resource that made it into a constructed `WorkerDependencies` —
+if `build_worker_dependencies` opens something and then raises before
+returning, that resource is never attached to any instance and `close()`
+cannot reach it.
+
 ## Pipeline Handlers
 
 ### Document status projection (BL-041)

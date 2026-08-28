@@ -513,6 +513,37 @@ class WorkerDependencies:
     workflow_definition_repository: WorkflowDefinitionRepository | None = None
     capability_registry: CapabilityRegistryService | None = None
     audit_service: AuditLogService | None = None
+    connection_provider: ConnectionProvider | None = None
+
+    def close(self) -> None:
+        """Release every resource this dependency set owns.
+
+        Each call is suppressed independently so a half-built set -- one
+        whose factory raised partway through -- is still fully releasable:
+        a resource that never got constructed simply isn't in this tuple,
+        and one whose ``close()`` itself raises doesn't stop the rest from
+        being released.
+
+        Limitation: this can only close resources that made it into a
+        constructed ``WorkerDependencies`` instance. If
+        ``build_worker_dependencies`` opens a resource (e.g. a Neo4j driver)
+        and then raises before returning, that resource is a bare local
+        variable at the point of failure -- it was never attached to any
+        instance, so no ``WorkerDependencies.close()`` call can ever reach
+        it. That is a real gap in this approach, not covered here.
+        """
+        for closeable in (
+            self.connection_provider,
+            self.graph_repository,
+            self.vector_store,
+            self.event_bus,
+            self.workflow_run_store,
+        ):
+            close = getattr(closeable, "close", None)
+            if close is None:
+                continue
+            with contextlib.suppress(Exception):
+                close()
 
 
 # ---------------------------------------------------------------------------
@@ -1439,6 +1470,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         ),
         capability_registry=capability_registry,
         audit_service=build_audit_log_service(connection_provider),
+        connection_provider=connection_provider,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -1544,6 +1576,12 @@ def apply_pending_config_updates(
             )
     # Ack on the bus the deliveries came from (the *old* deps' bus).
     deps.event_bus.ack(deliveries)
+    if current is not deps:
+        # The swap succeeded (`current` was rebound to `rebuilt` above).
+        # Close the replaced set now -- after the ack, since the ack still
+        # has to go out on the outgoing bus. Nothing to close on the
+        # `except` path: the factory raised, so `rebuilt` never existed.
+        deps.close()
     return current
 
 
@@ -4963,6 +5001,9 @@ async def run_worker(
     except asyncio.CancelledError:
         logger.info("Worker shutting down")
     finally:
+        # `deps` is assigned unconditionally before this try/finally begins,
+        # so it is always bound here -- no None guard needed.
+        deps.close()
         if health_server is not None:
             health_server.close()
             with contextlib.suppress(Exception):

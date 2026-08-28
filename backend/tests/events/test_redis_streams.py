@@ -27,6 +27,7 @@ class FakeRedis:
         self.autoclaim_response: tuple[str, list[tuple[str, dict[str, str]]]] = ("0-0", [])
         self.autoclaim_responses: dict[str, tuple[str, list[tuple[str, dict[str, str]]]]] = {}
         self.xautoclaim_calls: list[tuple[str, str, str, int, str, int]] = []
+        self.close_calls = 0
 
     def xadd(
         self,
@@ -97,6 +98,22 @@ class FakeRedis:
             (stream, groupname, consumername, min_idle_time, start_id, count)
         )
         return self.autoclaim_responses.get(stream, self.autoclaim_response)
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+def test_redis_streams_event_bus_close_closes_the_underlying_client() -> None:
+    client = FakeRedis()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+
+    event_bus.close()
+
+    assert client.close_calls == 1
 
 
 def test_redis_streams_event_bus_publishes_consumes_and_acks() -> None:

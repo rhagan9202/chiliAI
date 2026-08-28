@@ -8,7 +8,9 @@ Covers the frozen consumer semantics from the config-updated interface:
 - redelivery of an already-applied ``correlation_id`` is skipped (idempotent);
 - a failed reload logs loudly and keeps the previous dependencies serving;
 - ``run_worker`` swaps dependencies only *between* drain iterations — an
-  in-flight drain always completes with the dependencies it started with.
+  in-flight drain always completes with the dependencies it started with;
+- a successful hot-swap closes the dependency set it replaces instead of
+  dropping it on the floor.
 
 Everything runs on the in-memory event bus; no Redis required.
 """
@@ -19,8 +21,9 @@ import asyncio
 import contextlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -36,6 +39,8 @@ from agent.health import HealthState
 from agent.models import HealthSettings, RetryPolicy
 from agent.policy import StagePolicyRegistry
 from config.store import write_active_pack
+from events.adapters.in_memory import InMemoryEventBus
+from events.runtime import EventBusSettings
 from events.types import ConfigUpdatedEvent
 
 WORKER_LOGGER = "chili.worker"
@@ -101,6 +106,59 @@ class _FactoryStub:
             raise self.error
         assert self.result is not None, "factory stub needs a result"
         return self.result
+
+
+@dataclass
+class _ClosableFakeDeps:
+    """A double exposing only what ``apply_pending_config_updates`` touches on
+    ``deps`` itself, plus ``close()``/``closed``.
+
+    Deliberately *not* a real ``WorkerDependencies`` — the point of this test
+    is to observe whether the hot-swap calls ``.close()`` on the set it
+    replaces, not to prove the method merely exists on the class. A real
+    ``WorkerDependencies`` is exercised separately in
+    ``test_coordinator.py``/adapter tests for what ``close()`` itself does.
+    """
+
+    event_settings: EventBusSettings = field(
+        default_factory=lambda: EventBusSettings(backend="in-memory")
+    )
+    event_bus: InMemoryEventBus = field(default_factory=InMemoryEventBus)
+    closed: bool = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _fake_deps() -> _ClosableFakeDeps:
+    return _ClosableFakeDeps()
+
+
+def test_hot_swap_closes_the_dependencies_it_replaces() -> None:
+    """A successful rebuild must close the outgoing dependency set.
+
+    ``build_worker_dependencies`` opens a fresh connection provider, Neo4j
+    driver, Qdrant client and two Redis clients on every call. Before this
+    fix, the success branch of ``apply_pending_config_updates`` only rebound
+    ``current`` to the freshly built set -- the replaced set's connections
+    were never released, so every config reload leaked a full dependency
+    graph's worth of connections.
+    """
+
+    first = _fake_deps()
+    second = _fake_deps()
+    stub = _FactoryStub(result=cast(WorkerDependencies, second))
+
+    first.event_bus.publish(ConfigUpdatedEvent(pack_name="housing", reason="switch"))
+    state = ConfigReloadState()
+
+    rebuilt = apply_pending_config_updates(
+        cast(WorkerDependencies, first), state=state, deps_factory=stub
+    )
+
+    assert rebuilt is cast(WorkerDependencies, second)
+    assert first.closed is True
+    assert second.closed is False
 
 
 def test_event_type_constant_matches_frozen_interface() -> None:

@@ -56,6 +56,10 @@ class RedisWorkflowRunStore:
         """Underlying Redis client (exposed for health checks and test cleanup)."""
         return self._client
 
+    def close(self) -> None:
+        """Release the underlying Redis client's connection pool."""
+        self._client.close()
+
     def save_run(self, run: WorkflowRun) -> WorkflowRun:
         previous = self._get_optional(run.workflow_id)
         claimed_idempotency_key: str | None = None
