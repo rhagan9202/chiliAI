@@ -68,6 +68,40 @@ count. This sentence previously read "Head is `0013` — 16 tables total" for te
 revisions after it stopped being true, which is exactly how a new migration gets
 authored as `0014_*` on top of an existing one.
 
+## Pre-deploy requirements
+
+Migrations that add a constraint can fail on a populated database even though
+they applied cleanly in CI. Check these before running `alembic upgrade head`
+against an environment that already holds data.
+
+### `0029` — unique index on `alert_history (alert_id)`
+
+`0029_alert_history_alert_id_ix` issues `CREATE UNIQUE INDEX` and was validated
+only against an empty `alert_history` (0 rows in `chili_test`). If the target
+database holds duplicate `alert_id` values, the migration **fails** — loudly,
+transactionally, with no data loss, but the upgrade stops.
+
+Run this first and resolve anything it returns:
+
+```sql
+SELECT alert_id, count(*)
+FROM alert_history
+GROUP BY alert_id
+HAVING count(*) > 1;
+```
+
+Duplicates are not a reason to weaken the index to a non-unique one. The
+unscoped read and triage paths (`_ALERT_GET_SQL`, `_ALERT_ACK_SQL` in
+`monitoring/adapters/postgres.py`) already match on `alert_id` alone, so
+duplicates mean those queries are **already** returning an arbitrary row. A
+failing migration reveals that latent bug; a plain index would keep it hidden.
+Deduplicate the rows (keep the newest per `alert_id`, or the one the audit log
+references), then re-run the upgrade.
+
+The index build is non-concurrent and takes a table lock for its duration,
+consistent with every other index migration here (`0026`, `0028`). Size the
+maintenance window accordingly on a large `alert_history`.
+
 ## Commands
 
 ```bash

@@ -163,6 +163,23 @@ issued no claim (unrestricted); an empty list is a real restriction. Omitting it
 here silently disables every per-KB gate on the only path the SPA uses — it did,
 until 2026-08-26 — while the bearer path stayed correctly enforced.
 
+### Deploy requirement: flush existing sessions
+
+**Sessions created before the per-KB entitlement fix are not restricted by it.**
+The fix changed what `/auth/callback` *writes*; it did not change what already
+sits in Redis. A stored `SessionRecord` written by the old code has no
+`knowledge_base_ids` field, so it deserializes to `None` — which this design
+reads as "the IdP issued no claim", i.e. **unrestricted** — and that session
+stays fully unrestricted for its entire remaining TTL
+(`AuthConfig.session_ttl_seconds`), on every KB in the deployment, until the
+user re-logs in.
+
+Deploying the fix is therefore not sufficient on its own. As part of the
+rollout, delete the existing session keys from the Redis session store (or let
+`session_ttl_seconds` elapse before considering the control enforced, if a
+forced re-login is unacceptable). Verify afterwards by logging in and confirming
+`GET /auth/me` returns the expected `knowledge_base_ids`.
+
 ---
 
 ## Relevant Source Files

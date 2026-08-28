@@ -70,6 +70,17 @@ require a documented justification in this file.
   `knowledge_base_id`. Graph queries filter on `knowledge_base_id` at the
   protocol boundary (`graph/protocols.py`). Cross-KB reads are rejected at the
   service layer.
+- **Per-KB entitlement — deploy step required.** The cookie-session path
+  dropped the `knowledge_base_ids` claim until 2026-08-26, so the ten routers
+  gating on it granted every KB in the deployment on the only path the SPA
+  uses. The fix threads the claim through `SessionRecord`, but **it does not
+  invalidate sessions already in Redis**: a record written by the old code has
+  no `knowledge_base_ids` field, deserializes to `None` (read as "no claim
+  issued" = unrestricted), and stays unrestricted for its full remaining
+  `session_ttl_seconds`. Flush the session store as part of the rollout, or do
+  not consider the control enforced until the longest TTL has elapsed. See
+  [docs/wiki/flows/auth-flow.md](wiki/flows/auth-flow.md) § Deploy requirement:
+  flush existing sessions.
 - **Tested by.** `tests/api/test_*_router.py` (401/403 paths), plus the e2e
   suite that validates the public surface end-to-end
   (`tests/e2e/test_full_pipeline.py`).
