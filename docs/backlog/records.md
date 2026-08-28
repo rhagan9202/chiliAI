@@ -702,3 +702,36 @@
 - `chili_app/src/lib/apiClient.ts` (modify — threshold branch)
 - `chili_app/src/api/records.ts` (modify — presign + register calls)
 - `chili_app/e2e/` (create — presigned upload spec)
+
+## Story records.18: Make the publish-failure rollback atomic and stop masking the original error
+
+**ID:** records.18
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+
+**As an** operator whose event bus blipped during a records push,
+**I need** the rollback to either fully happen or fully not,
+**so that** a retry is a clean re-ingest instead of a permanent no-op.
+
+### Current State
+- Sprint 2026-35 made `RecordsService.register_records` roll back a failed publish so the client's retry is a clean first ingest, and scoped the row deletion to the rows that call actually persisted (a connector sync run reuses one correlation id across every page, so an unscoped delete removed already-published pages).
+- The rollback is still **two independent transactions**: `delete_batch` and `discard_submission` each open their own connection and commit separately (`backend/records/adapters/postgres.py:179-205`). A failure between them leaves the rows deleted and the submission hash retained — the client's retry then returns `duplicate=True, accepted=0` forever, with zero rows persisted and no event ever published.
+- The bare `raise` that re-surfaces the original publish error only runs if **both** rollback calls succeed. Otherwise a Redis outage is reported to the operator as HTTP 500 "Record storage failure", pointing at the wrong subsystem.
+- The adapter already has the right shape to copy: `delete_by_kb` does its work in one transaction.
+- Found by the sprint 2026-35 whole-branch review.
+
+### Acceptance Criteria
+- [ ] The rollback is one transaction: either both the row deletion and the hash discard commit, or neither does.
+- [ ] The original publish exception reaches the caller even when the rollback itself fails; the rollback failure is logged rather than substituted for it.
+- [ ] A test drives a rollback whose second step fails and asserts the client's retry still ingests cleanly.
+
+### Verification
+- Test asserting a mid-rollback failure cannot leave rows-deleted-but-hash-retained state.
+- Test asserting the surfaced error names the publish failure, not "Record storage failure".
+
+### Code touch points
+- `backend/records/service.py` (modify — rollback block, ~line 121)
+- `backend/records/adapters/postgres.py` (modify — one transaction, ~179-205)
+- `backend/records/adapters/in_memory.py` (modify — matching semantics)

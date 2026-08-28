@@ -762,3 +762,34 @@ so that failures are diagnosable and the lane can scale as coverage grows.
 - `playwright.config.*`
 
 ---
+
+## Story cicd.22: Gate every live-stack skip, not just the base-URL probe
+
+**ID:** cicd.22
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+
+**As a** reviewer trusting a green CI run,
+**I need** a live-stack test that cannot run to fail rather than skip,
+**so that** "green" means the end-to-end path was actually exercised.
+
+### Current State
+- Sprint 2026-35 added `CHILI_E2E_REQUIRE_STACK` and `backend/tests/e2e/stack_gate.py` so a missing stack fails loudly in CI instead of skipping green, and so the probe verifies it is talking to a chiliAI API rather than whatever holds port 8000.
+- The variable only gates that one decision. `stack_gate._unavailable` is consulted solely inside `resolve_stack`, and the same three e2e files retain **ungated** `pytest.skip` calls: a missing connector-imports directory, a failed `docker exec` into `chiliai-postgres-1` / `chiliai-worker-1`, and `test_approval_and_replay_flow.py:262` "No completed score run available to replay" — which skips in exactly the case where the feature under test did not work.
+- So a broken-but-listening stack still produces a green run. That is the same class of false confidence the audit's test-quality dimension named.
+- Related: the backend CI job that starts the app containers has never run to completion, so none of these paths has been exercised in CI yet.
+- Found by the sprint 2026-35 whole-branch review.
+
+### Acceptance Criteria
+- [ ] Every `pytest.skip` in `backend/tests/e2e/` routes through the same gate, so `CHILI_E2E_REQUIRE_STACK=1` turns each into a failure.
+- [ ] The score-run replay skip in particular fails under the flag, since it is indistinguishable from the feature being broken.
+- [ ] A test asserts the gate converts a representative non-base-URL skip into a failure when the flag is set.
+
+### Verification
+- Run the e2e suite with `CHILI_E2E_REQUIRE_STACK=1` against a deliberately incomplete stack and confirm failures rather than skips.
+
+### Code touch points
+- `backend/tests/e2e/stack_gate.py` (modify — expose the gate for non-probe skips)
+- `backend/tests/e2e/test_approval_and_replay_flow.py`, `test_connector_sync_flow.py`, `test_workflow_run_flow.py` (modify — route skips through it)

@@ -1103,3 +1103,37 @@ so that demo fixtures cannot mask missing persistence wiring.
 - `backend/tests/**`
 
 ---
+
+## Story api.30: Make entitlement-filtered pagination correct for both workflow-run stores
+
+**ID:** api.30
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+
+**As an** analyst paging a knowledge-base-scoped workflow list,
+**I need** each run to appear exactly once across consecutive pages,
+**so that** the list I act on is neither missing runs nor showing duplicates.
+
+### Current State
+- Sprint 2026-35 Task 9 fixed entitlement-filtered pagination dropping accessible runs when the limit filled mid-page. The fix returns `scan_offset + consumed` as the cursor (`backend/api/routers/workflows.py:77`), where `consumed` counts items in the **filtered** page.
+- That matches `InMemoryWorkflowRunStore`, whose `next_offset = offset + len(items)` is also filtered (`backend/agent/adapters/in_memory.py:101`).
+- It does **not** match `RedisWorkflowRunStore`, whose `next_offset = index_position + 1` is a position in the **unfiltered** ZSET scan (`backend/agent/adapters/redis_store.py:188`). Mixing a filtered count with an unfiltered offset base means a run can be returned on two consecutive pages, or skipped.
+- Redis is the production store. Every test in `tests/api/test_workflows_router.py` uses the in-memory store, so the divergence is invisible to the suite — the same "two adapters behind one protocol with divergent semantics, and the in-memory one is what tests see" pattern the 2026-08-25 audit named as its first recurring theme.
+- Found by the sprint 2026-35 whole-branch review; the fix as shipped is on `prod`.
+
+### Acceptance Criteria
+- [ ] The two stores agree on what an offset counts, or the router stops assuming they agree — decide deliberately and record which.
+- [ ] A run appears exactly once across consecutive pages under **both** stores, with some runs denied by entitlement so the mid-page fill branch is exercised.
+- [ ] The regression test runs against both adapters, not only the in-memory one.
+- [ ] `has_more` is correct under both stores when the limit fills mid-page.
+
+### Verification
+- Parity test over both stores asserting the union of two consecutive pages contains each accessible run exactly once.
+- Pre-fix RED under the Redis store showing the duplicate or the skip.
+
+### Code touch points
+- `backend/api/routers/workflows.py` (modify — cursor arithmetic, line ~77)
+- `backend/agent/adapters/redis_store.py` / `in_memory.py` (read — offset semantics)
+- `backend/tests/api/test_workflows_router.py` (modify — parametrise over both stores)

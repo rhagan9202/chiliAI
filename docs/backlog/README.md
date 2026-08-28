@@ -16,7 +16,7 @@
 <!-- BEGIN: status-rollup -->
 | File | Planned | In-progress | Done | Dropped | Total | % done |
 |------|---------|-------------|------|---------|-------|--------|
-| _cicd.md | 20 | 1 | 0 | 0 | 21 | 0% |
+| _cicd.md | 21 | 1 | 0 | 0 | 22 | 0% |
 | _infra.md | 19 | 0 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
@@ -24,8 +24,9 @@
 | _security.md | 9 | 0 | 3 | 0 | 12 | 25% |
 | agent.md | 21 | 0 | 1 | 0 | 22 | 4% |
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
-| api.md | 27 | 0 | 1 | 1 | 29 | 3% |
+| api.md | 28 | 0 | 1 | 1 | 30 | 3% |
 | config.md | 14 | 0 | 1 | 0 | 15 | 6% |
+| conversations.md | 1 | 0 | 0 | 0 | 1 | 0% |
 | database.md | 12 | 0 | 1 | 0 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 1 | 0 | 17 | 5% |
@@ -36,12 +37,12 @@
 | llm.md | 17 | 0 | 0 | 0 | 17 | 0% |
 | monitoring.md | 21 | 0 | 1 | 0 | 22 | 4% |
 | rag.md | 17 | 0 | 0 | 0 | 17 | 0% |
-| records.md | 14 | 2 | 1 | 0 | 17 | 5% |
+| records.md | 15 | 2 | 1 | 0 | 18 | 5% |
 | scorecards.md | 3 | 0 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 417 | 8 | 34 | 3 | 462 | 7% |
+| **Total** | 421 | 8 | 34 | 3 | 466 | 7% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -51,7 +52,11 @@
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
+- [api.30] api — size S — prereqs done
+- [cicd.22] _cicd — size S — prereqs done
+- [conversations.06] conversations — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
+- [records.18] records — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -73,11 +78,7 @@
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
-- [database.05] database — size M — prereqs done
-- [database.07] database — size M — prereqs done
-- [embeddings.01] embeddings — size M — prereqs done
-- [embeddings.06] embeddings — size M — prereqs done
-- …41 more
+- …45 more
 <!-- END: ready-set -->
 
 ## Critical path
@@ -144,6 +145,7 @@
 - [monitoring.md](monitoring.md) — claim stream consumer, alert generation
 - [rag.md](rag.md) — query → embed → search → graph expand → LLM
 - [records.md](records.md) — structured/tabular ingestion (CSV/JSONL/api-push + pull-based origins)
+- [conversations.md](conversations.md) — durable RAG chat persistence
 - [scorecards.md](scorecards.md) — durable scorecard templates, evaluation, export
 - [shared.md](shared.md) — domain types, protocols, utilities
 - [storage.md](storage.md) — object storage protocol + adapters
