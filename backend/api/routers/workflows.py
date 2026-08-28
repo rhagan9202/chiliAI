@@ -59,11 +59,22 @@ def _list_accessible_workflows(
             limit=limit,
             offset=scan_offset,
         )
-        for run in page.items:
+        consumed = 0
+        filled_early = False
+        for index, run in enumerate(page.items):
+            consumed = index + 1
             if _can_access_workflow(user, run.knowledge_base_id):
                 runs.append(run)
                 if len(runs) == limit:
+                    filled_early = consumed < len(page.items)
                     break
+
+        if filled_early:
+            # The limit was filled before the end of this page -- resume at
+            # the first item this page did not consume, not at the page
+            # boundary, or every accessible run in between would be skipped
+            # on the next request.
+            return runs, True, scan_offset + consumed
 
         has_more = page.has_more
         next_offset = page.next_offset if page.has_more else None
