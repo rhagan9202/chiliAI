@@ -825,3 +825,218 @@ class TestOrphanTerminalEventsDoNotFabricateHistory:
         assert completed == [], (
             "an orphan risk.scored event closed a run as a successful full pipeline"
         )
+
+
+def _risk_scored_fan_out_event(
+    *, correlation_id: str, entity_id: str
+) -> RiskScoredEvent:
+    return RiskScoredEvent(
+        correlation_id=correlation_id,
+        assessments=[
+            RiskScoredReference(
+                knowledge_base_id="kb-1",
+                request_id=f"risk:{correlation_id}:kb-1:{entity_id}",
+                entity_id=entity_id,
+                overall_score=0.9,
+                risk_level="high",
+                factor_count=1,
+                factors=[],
+            )
+        ],
+    )
+
+
+def _pipeline_run(
+    *,
+    correlation_id: str = "corr-fanout",
+    status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
+) -> WorkflowRun:
+    return WorkflowRun(
+        workflow_id="workflow-fanout",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        status=status,
+        steps=[
+            WorkflowStepState(step_name=step_name)
+            for step_name in default_steps_for_trigger("documents.uploaded")
+        ],
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def _vectors_indexed_event(*, correlation_id: str) -> VectorsIndexedEvent:
+    return VectorsIndexedEvent(
+        correlation_id=correlation_id,
+        documents=[
+            VectorsIndexedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extraction-1",
+                validation_report_id="validation-1",
+                vector_count=3,
+                embeddings_storage_key="embeddings.json",
+            )
+        ],
+    )
+
+
+class TestPerEntityRiskScoredFanOut:
+    """``risk.scored`` is emitted once per entity under one correlation id.
+
+    Analytics fans out one event per scored entity on the triggering
+    pipeline's correlation id, so the run they resolve to is shared by all of
+    them. A shared run must not be closed — nor its siblings gated — by any
+    single per-entity event.
+    """
+
+    def test_every_entity_in_a_fan_out_begins_not_only_the_first(self) -> None:
+        store = InMemoryWorkflowRunStore(runs=[_pipeline_run()])
+        tracker = WorkflowEventTracker(store)
+
+        began: list[bool] = []
+        for entity_id in ("provider:1", "provider:2", "provider:3"):
+            event = _risk_scored_fan_out_event(
+                correlation_id="corr-fanout", entity_id=entity_id
+            )
+            began.append(tracker.begin_event(event))
+            tracker.complete_event(event)
+
+        assert began == [True, True, True], (
+            "the first per-entity risk.scored closed the shared run, so every "
+            f"later entity was skipped: {began}"
+        )
+
+    def test_a_fan_out_event_completes_the_monitoring_step(self) -> None:
+        store = InMemoryWorkflowRunStore(runs=[_pipeline_run()])
+        tracker = WorkflowEventTracker(store)
+        event = _risk_scored_fan_out_event(
+            correlation_id="corr-fanout", entity_id="provider:1"
+        )
+
+        assert tracker.begin_event(event) is True
+        tracker.complete_event(event)
+
+        run = store.get_run("workflow-fanout")
+        monitoring = next(
+            step for step in run.steps if step.step_name == "monitoring"
+        )
+        assert monitoring.status is WorkflowStepStatus.COMPLETED
+
+    def test_a_fan_out_event_does_not_close_the_shared_pipeline_run(self) -> None:
+        store = InMemoryWorkflowRunStore(runs=[_pipeline_run()])
+        tracker = WorkflowEventTracker(store)
+        event = _risk_scored_fan_out_event(
+            correlation_id="corr-fanout", entity_id="provider:1"
+        )
+
+        tracker.begin_event(event)
+        tracker.complete_event(event)
+
+        assert store.get_run("workflow-fanout").status is WorkflowRunStatus.RUNNING
+
+    def test_a_fan_out_event_does_not_report_unrun_steps_as_completed(self) -> None:
+        store = InMemoryWorkflowRunStore(runs=[_pipeline_run()])
+        tracker = WorkflowEventTracker(store)
+        event = _risk_scored_fan_out_event(
+            correlation_id="corr-fanout", entity_id="provider:1"
+        )
+
+        tracker.begin_event(event)
+        tracker.complete_event(event)
+
+        statuses = {
+            step.step_name: step.status for step in store.get_run("workflow-fanout").steps
+        }
+        assert statuses["vector_index"] is WorkflowStepStatus.PENDING
+        assert statuses["ready"] is WorkflowStepStatus.PENDING
+
+    def test_the_run_still_completes_on_its_terminal_event_after_a_fan_out(
+        self,
+    ) -> None:
+        """The original defect must not come back: runs must not hang.
+
+        ``risk.scored`` reaches the worker before ``vectors.indexed`` (it is
+        published from the ``graph.updated`` handler), so the pipeline's own
+        terminal event has to survive the fan-out and still close the run.
+        """
+
+        store = InMemoryWorkflowRunStore(runs=[_pipeline_run()])
+        tracker = WorkflowEventTracker(store)
+        fan_out = _risk_scored_fan_out_event(
+            correlation_id="corr-fanout", entity_id="provider:1"
+        )
+        tracker.begin_event(fan_out)
+        tracker.complete_event(fan_out)
+
+        terminal = _vectors_indexed_event(correlation_id="corr-fanout")
+        assert tracker.begin_event(terminal) is True
+        tracker.complete_event(terminal)
+
+        run = store.get_run("workflow-fanout")
+        assert run.status is WorkflowRunStatus.COMPLETED
+        assert run.workflow_id not in [
+            stale.workflow_id
+            for stale in store.list_runs(status=WorkflowRunStatus.RUNNING).items
+        ]
+
+    def test_fan_out_after_a_records_run_completed_is_still_processed(self) -> None:
+        """``records.ingested`` closes its one-step run before its fan-out lands.
+
+        The records path publishes ``risk.scored`` from inside the
+        ``records.ingested`` handler, so every one of them arrives after that
+        run is already COMPLETED. They must still be handled.
+        """
+
+        store = InMemoryWorkflowRunStore(
+            runs=[
+                WorkflowRun(
+                    workflow_id="workflow-records",
+                    knowledge_base_id="kb-1",
+                    trigger_event_type="records.ingested",
+                    status=WorkflowRunStatus.RUNNING,
+                    steps=[WorkflowStepState(step_name="records_ingest")],
+                    metadata={"correlation_id": "corr-records"},
+                )
+            ]
+        )
+        tracker = WorkflowEventTracker(store)
+        records_event = RecordsIngestedEvent(
+            correlation_id="corr-records",
+            knowledge_base_id="kb-1",
+            feed_name="claims",
+            record_type="claim_record",
+            record_count=3,
+        )
+        tracker.begin_event(records_event)
+        tracker.complete_event(records_event)
+        assert store.get_run("workflow-records").status is WorkflowRunStatus.COMPLETED
+
+        began = [
+            tracker.begin_event(
+                _risk_scored_fan_out_event(
+                    correlation_id="corr-records", entity_id=entity_id
+                )
+            )
+            for entity_id in ("provider:1", "provider:2", "provider:3")
+        ]
+
+        assert began == [True, True, True], (
+            "every risk.scored from the records fan-out was dropped because the "
+            f"records run had already completed: {began}"
+        )
+
+    def test_a_cancelled_run_still_gates_the_fan_out(self) -> None:
+        store = InMemoryWorkflowRunStore(
+            runs=[_pipeline_run(status=WorkflowRunStatus.CANCELLED)]
+        )
+        tracker = WorkflowEventTracker(store)
+
+        assert (
+            tracker.begin_event(
+                _risk_scored_fan_out_event(
+                    correlation_id="corr-fanout", entity_id="provider:1"
+                )
+            )
+            is False
+        )
