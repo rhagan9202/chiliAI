@@ -275,7 +275,7 @@ from monitoring.adapters.protocols import (
     ObservationSourceProtocol,
     ObservationWriter,
 )
-from monitoring.exceptions import AlertLifecycleError
+from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
 from monitoring.models import AlertHistoryRecord, AlertTriageEvent
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
@@ -3346,8 +3346,28 @@ def build_alert_bulk_status_update_payload(
     payload: AlertBulkStatusUpdateRequest,
     store: AlertFeedStoreProtocol,
     actor: str,
+    on_transitioned: Callable[[AlertListItem], None] | None = None,
 ) -> AlertBulkStatusUpdateResponse:
-    """Transition each selected scoped alert where the lifecycle allows it."""
+    """Transition each selected scoped alert where the lifecycle allows it.
+
+    ``on_transitioned`` is invoked immediately after each successful
+    ``store.transition_status`` call, before moving on to the next alert.
+    Each transition commits on its own pooled connection independently of
+    the others, so the caller uses this hook to write that transition's
+    audit row right away rather than batching every audit write until after
+    the whole loop -- the batch-after approach leaves committed-but-unaudited
+    transitions behind if a later alert in the batch raises.
+
+    A ``MonitoringSourceError`` raised mid-loop (for example the durable
+    store's lost optimistic-concurrency race, or a genuine persistence
+    failure -- the store does not distinguish the two by exception type)
+    is not treated as a per-row rejection like ``AlertLifecycleError``.
+    Silently skipping it here could mask a real infrastructure outage as a
+    handful of ordinary skipped rows, so it aborts the batch as a 500
+    instead. Because ``on_transitioned`` already ran for every alert
+    committed before the failure, the audit invariant still holds: no
+    alert is ever committed as transitioned without its audit row.
+    """
     updated_alerts: list[AlertListItem] = []
     rejected_alerts: list[AlertBulkRejection] = []
     for alert_id in payload.alert_ids:
@@ -3370,12 +3390,19 @@ def build_alert_bulk_status_update_payload(
                 AlertBulkRejection(alert_id=alert_id, reason="invalid_transition")
             )
             continue
+        except MonitoringSourceError as exc:
+            raise HTTPException(
+                status_code=500, detail="Failed to update alert status."
+            ) from exc
         if updated is None:
             rejected_alerts.append(
                 AlertBulkRejection(alert_id=alert_id, reason="not_found")
             )
             continue
-        updated_alerts.append(_alert_record_to_list_item(updated))
+        item = _alert_record_to_list_item(updated)
+        if on_transitioned is not None:
+            on_transitioned(item)
+        updated_alerts.append(item)
     return AlertBulkStatusUpdateResponse(
         status="accepted",
         message=(
