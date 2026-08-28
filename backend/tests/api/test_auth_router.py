@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -61,6 +62,29 @@ class _FailingAuditRepository(InMemoryAuditLogRepository):
 def _install_audit_service(app: FastAPI, audit_service: AuditLogService) -> None:
     app.state.audit_log_service = audit_service
     app.dependency_overrides[get_audit_log_service] = lambda: audit_service
+
+
+def _client_with_oidc() -> tuple[TestClient, InMemorySessionStore]:
+    """Build a TestClient wired for the OIDC login/callback flow.
+
+    Standalone helper (no ``monkeypatch`` fixture) so login-CSRF tests can
+    build a client inline. Env vars are set directly rather than via
+    monkeypatch -- ``create_app()`` only reads them lazily through
+    dependency-overridden collaborators here, and the values are constant
+    test doubles, so leaking them across tests in the same process is
+    harmless (matches the values ``app_with_auth`` already sets).
+    """
+    os.environ.setdefault("OIDC_CLIENT_SECRET", "shh")
+    os.environ.setdefault("REDIS_URL", "redis://redis:6379/15")
+    app = create_app()
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_service(app, audit_service)
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+    client = TestClient(app, follow_redirects=False)
+    return client, store
 
 
 def test_me_returns_401_when_unauthenticated(app_with_auth) -> None:
@@ -240,6 +264,80 @@ def test_login_returns_404_when_auth_disabled(app_with_auth: FastAPI) -> None:
     assert response.json()["detail"] == "Auth is disabled."
 
 
+def test_a_callback_without_the_login_cookie_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Login CSRF / session fixation.
+
+    login() stores the PKCE state server-side and redirects with no cookie, and
+    callback() looks the state up in the process-wide store with no reference
+    to the requesting browser. An attacker who starts a login, captures their
+    own `code`+`state`, and induces a victim's browser to hit the callback logs
+    that victim into the ATTACKER's account -- the nonce binds the id_token to
+    the authorization request, not to the user agent, so it validates fine.
+
+    This drives the *entire* callback (mocked IdP token exchange + decode, as
+    in test_callback_exchanges_code_and_creates_session_cookie) so a failure
+    here means the attack fully succeeded end-to-end: a 307 with a minted
+    session cookie for the attacker's own identity, handed to a browser that
+    never touched /auth/login.
+    """
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    client, session_store = _client_with_oidc()
+    session_store.save_pkce_state(state="s-1", verifier="v-1", ttl_seconds=300, nonce="n-1")
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token="id-tok")), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "attacker", "nonce": "n-1"}),
+    )
+
+    response = client.get(
+        "/auth/callback?code=abc&state=s-1", follow_redirects=False
+    )
+
+    assert response.status_code == 400
+    assert "login" in response.json()["detail"].lower()
+
+
+def test_a_callback_whose_cookie_disagrees_with_the_state_is_rejected() -> None:
+    client, session_store = _client_with_oidc()
+    session_store.save_pkce_state(state="s-1", verifier="v-1", ttl_seconds=300, nonce="n-1")
+    client.cookies.set("chiliai_login_state", "s-other")
+
+    response = client.get(
+        "/auth/callback?code=abc&state=s-1", follow_redirects=False
+    )
+
+    assert response.status_code == 400
+
+
+def test_the_login_redirect_sets_the_binding_cookie() -> None:
+    client, _ = _client_with_oidc()
+
+    response = client.get("/auth/login", follow_redirects=False)
+
+    assert response.status_code == 307
+    cookie = response.headers["set-cookie"]
+    assert "chiliai_login_state=" in cookie
+    assert "HttpOnly" in cookie
+    # Starlette renders the attribute name capitalized but the value as
+    # passed ("samesite=lax" -> "SameSite=lax"); cookie attribute values are
+    # case-insensitive per RFC 6265bis, so compare case-insensitively --
+    # matching how test_callback_exchanges_code_and_creates_session_cookie
+    # checks the session cookie's SameSite in this same file.
+    assert "samesite=lax" in cookie.lower()
+
+
 def _stub_jwks_decoder(claims: dict[str, object]):  # type: ignore[no-untyped-def]
     """Build a fake decode_token replacement that returns the given claims."""
 
@@ -293,6 +391,7 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-1")
         response = client.get("/auth/callback?code=auth-code&state=state-1")
 
     assert response.status_code == 307
@@ -360,11 +459,17 @@ def test_callback_idp_response_missing_access_token_is_400(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-malformed")
         response = client.get("/auth/callback?code=c&state=state-malformed")
 
     assert response.status_code == 400
     assert response.json()["detail"] == "IdP token endpoint returned an invalid response."
-    assert "set-cookie" not in response.headers
+    # No session is minted on failure, but the login-state cookie set by
+    # /auth/login must still be cleared -- it should not outlive the flow.
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" not in set_cookie
+    assert "chiliai_login_state=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
 
 
 def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
@@ -376,6 +481,10 @@ def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        # Bound so the request clears the browser-binding gate and reaches
+        # pop_pkce_state -- this test is exercising the unknown_state branch
+        # specifically, not the login-CSRF guard.
+        client.cookies.set("chiliai_login_state", "unknown")
         response = client.get("/auth/callback?code=c&state=unknown")
 
     assert response.status_code == 400
@@ -416,6 +525,7 @@ def test_callback_propagates_idp_token_error(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-err")
         response = client.get("/auth/callback?code=bad&state=state-err")
 
     assert response.status_code == 400
@@ -464,6 +574,7 @@ def test_callback_returns_400_when_id_token_validation_fails(
     monkeypatch.setattr(auth_module, "decode_token", _raise_401)
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-bad-tok")
         response = client.get("/auth/callback?code=c&state=state-bad-tok")
 
     assert response.status_code == 400
@@ -518,11 +629,17 @@ def test_callback_rejects_nonce_mismatch(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-nonce-mismatch")
         response = client.get("/auth/callback?code=c&state=state-nonce-mismatch")
 
     assert response.status_code == 400
     assert "nonce" in response.json()["detail"].lower()
-    assert "set-cookie" not in response.headers
+    # No session is minted on failure, but the login-state cookie must still
+    # be cleared.
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" not in set_cookie
+    assert "chiliai_login_state=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
 
 
 def test_callback_rejects_missing_nonce_claim(
@@ -555,6 +672,7 @@ def test_callback_rejects_missing_nonce_claim(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-nonce-missing")
         response = client.get("/auth/callback?code=c&state=state-nonce-missing")
 
     assert response.status_code == 400
@@ -591,6 +709,7 @@ def test_callback_accepts_matching_nonce(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-nonce-match")
         response = client.get("/auth/callback?code=c&state=state-nonce-match")
 
     assert response.status_code == 307
@@ -629,6 +748,7 @@ def test_callback_access_token_fallback_skips_nonce(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-nonce-fallback")
         response = client.get("/auth/callback?code=c&state=state-nonce-fallback")
 
     assert response.status_code == 307
@@ -668,6 +788,7 @@ def test_callback_empty_string_id_token_uses_fallback_and_skips_nonce(
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_login_state", "state-empty-id-token")
         response = client.get("/auth/callback?code=c&state=state-empty-id-token")
 
     assert response.status_code == 307
