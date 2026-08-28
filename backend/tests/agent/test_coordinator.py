@@ -2249,7 +2249,121 @@ def test_run_handler_with_retry_does_not_retry_fatal_stage_exception() -> None:
     assert event_bus.dlq_entries[0].error.retry_count == 0
 
 
-def test_run_handler_with_retry_routes_timed_out_stage_attempt_to_dlq_without_retry() -> None:
+
+def test_drain_ingestion_events_does_not_ack_while_the_handler_thread_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stage overrun must never acknowledge work that is still in flight.
+
+    ``asyncio.to_thread`` submits to the default executor and a running thread
+    cannot be cancelled -- ``asyncio.wait_for`` abandons the *await*, not the
+    work. The old timeout branch marked the run FAILED, wrote a DLQ record and
+    returned 0, and ``drain_ingestion_events`` then unconditionally ACKed the
+    delivery -- while the handler thread was still running and about to write
+    its artifacts and publish the next event. The pipeline marched on under a
+    run permanently displaying FAILED, with a DLQ entry inviting a replay that
+    would duplicate the work.
+
+    The ACK must therefore land only after the handler has actually finished,
+    and a stage that overran but then succeeded must not be dead-lettered.
+    """
+
+    timeline: list[str] = []
+    started = threading.Event()
+    release = threading.Event()
+
+    class _AckRecordingEventBus(InMemoryEventBus):
+        def ack(self, deliveries: list[EventDelivery]) -> None:
+            timeline.append("ack")
+            super().ack(deliveries)
+
+    def _slow_handle_event(*_args: object, **_kwargs: object) -> int:
+        started.set()
+        release.wait(timeout=5.0)
+        timeline.append("handler-finished")
+        return 1
+
+    def _release_after_the_stage_overruns() -> None:
+        started.wait(timeout=5.0)
+        time.sleep(0.3)
+        release.set()
+
+    monkeypatch.setattr(coordinator, "handle_event", _slow_handle_event)
+
+    event_bus = _AckRecordingEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    event_bus.publish(
+        KnowledgeBaseReadyEvent(
+            correlation_id="corr-overrun",
+            knowledge_bases=[
+                KnowledgeBaseReadyReference(
+                    knowledge_base_id="kb-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    vector_count=0,
+                )
+            ],
+        )
+    )
+    registry = StagePolicyRegistry(
+        {
+            "kb.ready": StagePolicy(
+                retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+                timeout_seconds=0.05,
+            )
+        }
+    )
+
+    releaser = threading.Thread(target=_release_after_the_stage_overruns, daemon=True)
+    releaser.start()
+    try:
+        processed = asyncio.run(
+            drain_ingestion_events(
+                event_bus,
+                IngestionService(
+                    DocumentParsingOrchestrator(
+                        create_default_registry(),
+                        fetcher=HttpxRemoteDocumentFetcher(),
+                    ),
+                    object_store=object_store,
+                    event_bus=event_bus,
+                ),
+                create_document_chunker(),
+                create_document_extractor([]),
+                create_extraction_validator([], []),
+                graph_service,
+                object_store,
+                consumer_group="test-workers",
+                consumer_name="worker-1",
+                stage_policy_registry=registry,
+                sleep=_instant_sleep,
+            )
+        )
+    finally:
+        release.set()
+        releaser.join(timeout=5.0)
+
+    assert timeline == ["handler-finished", "ack"]
+    assert processed == 1
+    assert event_bus.dlq_entries == []
+
+
+def test_run_handler_with_retry_returns_the_real_result_of_an_overrunning_stage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A stage that overruns its timeout is reported on its real outcome.
+
+    The timeout is an alarm, not an abandonment: the worker thread keeps
+    running either way, so the retry/DLQ/ACK decision waits for it. The alarm
+    must still fire, or the budget is silently doing nothing at all.
+    """
+
+    caplog.set_level(logging.WARNING, logger="chili.worker")
     event_bus = InMemoryEventBus()
     calls = 0
     lock = threading.Lock()
@@ -2277,13 +2391,73 @@ def test_run_handler_with_retry_routes_timed_out_stage_attempt_to_dlq_without_re
         )
     )
 
-    assert result == 0
+    assert result == 99
     assert calls == 1
+    assert event_bus.dlq_entries == []
+    assert "Stage exceeded its timeout" in caplog.text
+    assert "Stage that exceeded its timeout finished" in caplog.text
+
+
+def test_run_handler_with_retry_dead_letters_an_overrunning_stage_that_then_fails() -> None:
+    """Overrunning does not exempt a stage from the normal retry/DLQ path."""
+
+    event_bus = InMemoryEventBus()
+    calls = 0
+    lock = threading.Lock()
+
+    def handler() -> int:
+        nonlocal calls
+        with lock:
+            calls += 1
+        time.sleep(0.05)
+        raise RuntimeError("stage blew up after overrunning")
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-overrun-fail", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            stage_policy=StagePolicy(
+                retry_policy=RetryPolicy(max_retries=1, base_delay_seconds=0.0),
+                timeout_seconds=0.01,
+            ),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 0
+    assert calls == 2
     assert len(event_bus.dlq_entries) == 1
-    entry = event_bus.dlq_entries[0]
-    assert entry.event.correlation_id == "corr-timeout"
-    assert entry.error.retry_count == 0
-    assert "TimeoutError" in entry.error.traceback
+    assert (
+        event_bus.dlq_entries[0].error.error_message
+        == "stage blew up after overrunning"
+    )
+
+
+def test_run_handler_with_retry_dlq_error_message_falls_back_to_the_exception_type() -> None:
+    """``str(RuntimeError())`` is ``''``; an empty DLQ message tells an operator nothing."""
+
+    event_bus = InMemoryEventBus()
+
+    def handler() -> int:
+        raise RuntimeError
+
+    asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-empty-message", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert len(event_bus.dlq_entries) == 1
+    assert event_bus.dlq_entries[0].error.error_message == "RuntimeError"
 
 
 def test_run_handler_with_retry_runs_handler_off_event_loop_thread() -> None:

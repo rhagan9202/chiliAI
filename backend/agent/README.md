@@ -48,6 +48,37 @@ stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
 when a database is configured, else `InMemorySourceDocumentStatusStore`
 (`ingestion/adapters/`).
 
+### Stage timeouts are an alarm, not a deadline
+
+`StagePolicy.timeout_seconds` (per event type, via `CHILI_STAGE_POLICY_JSON`)
+bounds how long `run_handler_with_retry` waits *quietly*, not how long the stage
+runs. Handlers are synchronous and run in the default executor via
+`asyncio.to_thread`; a running thread cannot be cancelled, so `asyncio.wait_for`
+would abandon only the *await*. On overrun the wrapper logs at `error`, keeps
+waiting, and makes the retry/DLQ decision — and with it the caller's ACK — on the
+stage's real outcome.
+
+Abandoning at the deadline is unsafe in both directions, which is why neither is
+done:
+
+- **ACK and dead-letter** (the pre-2026-08-28 behaviour) acknowledged a delivery
+  whose thread was still running. The run displayed `FAILED` permanently while
+  the orphaned thread finished its writes and published the successor event, and
+  the DLQ record invited a replay that would duplicate the work.
+- **Refuse the ACK** hands the entry back to `reclaim_stale_pending`
+  (`CHILI_EVENT_RECLAIM_MIN_IDLE_MS`, default 60s), which re-runs a stage that
+  may already have finished, or starts a second thread beside one that is
+  genuinely wedged — compounding every reclaim interval until the bounded default
+  executor (`min(32, cpu + 4)` threads) is exhausted and the worker wedges.
+
+Actually bounding a stage's wall clock needs cooperative cancellation inside the
+handlers (a deadline token they check between units of work). Until that exists,
+the timeout is an observability signal: grep the worker log for
+`Stage exceeded its timeout`. A genuinely wedged stage still surfaces
+operationally — it stalls `HealthState.last_event_processed_at`, so
+`GET :8001/health` flips to `degraded` past `degraded_after_seconds`, and the
+run it belongs to is picked up by `reconcile_stale_runs`.
+
 ### Durable DLQ record persistence (BL-023)
 
 `run_handler_with_retry` accepts an optional `dlq_record_store:

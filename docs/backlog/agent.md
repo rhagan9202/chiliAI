@@ -459,9 +459,10 @@
 ### Acceptance Criteria
 - [ ] `StagePolicy` model with `timeout_seconds`, `retry_policy`, `fatal_exception_types: tuple[type[BaseException], ...]`.
 - [ ] `StagePolicyRegistry` keyed by `event_type`, fed from `AgentConfig` (cross-edge to `agent.10`).
-- [ ] `run_handler_with_retry` enforces per-stage timeout via `asyncio.wait_for` and short-circuits to DLQ on declared fatal exception types.
+- [ ] `run_handler_with_retry` short-circuits to DLQ on declared fatal exception types.
+- [ ] A real per-stage deadline requires **cooperative cancellation** — a deadline token handlers check between units of work. `asyncio.wait_for` must NOT be used: handlers run in the default executor via `asyncio.to_thread` and a running thread cannot be cancelled, so it abandons only the await. Since 2026-08-28 `timeout_seconds` is therefore an alarm budget (log the overrun, keep waiting for the real outcome); see `backend/agent/README.md` § Stage timeouts are an alarm, not a deadline for why both abandon-and-ACK and abandon-and-refuse-to-ACK are unsafe.
 - [ ] Ad-hoc `try/except continue` blocks in handlers replaced with raised typed errors classified by the registry.
-- [ ] Tests: timeout exceeded → retry; fatal classification → straight to DLQ; retryable → respects per-stage retry count.
+- [ ] Tests: overrunning stage → logged, awaited to its real outcome, not dead-lettered; fatal classification → straight to DLQ; retryable → respects per-stage retry count.
 
 ### Verification
 - `pytest backend/tests/agent/test_coordinator.py -k policy` green.

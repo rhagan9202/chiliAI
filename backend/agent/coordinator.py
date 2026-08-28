@@ -4396,6 +4396,27 @@ async def run_handler_with_retry(
     while a long stage runs. ``drain_ingestion_events`` still awaits each
     delivery in turn, so this changes the execution thread, not the
     one-handler-at-a-time ordering.
+
+    Stage timeout (``StagePolicy.timeout_seconds``)
+    ----------------------------------------------
+    The timeout is an **alarm, not an abandonment**. A thread submitted to the
+    default executor cannot be cancelled, so ``asyncio.wait_for`` would only
+    abandon the *await* — the stage keeps running, keeps writing artifacts and
+    keeps publishing its successor event. This function therefore logs the
+    overrun and keeps waiting, so the retry/DLQ decision (and with it the
+    caller's ACK) is made on the stage's real outcome.
+
+    Abandoning is not merely lossy, it is unsafe. Returning at the deadline
+    would ACK a delivery whose handler is still running (marking the run FAILED
+    and writing a DLQ record whose replay would duplicate the work); refusing
+    the ACK instead is no better, because the un-ACKed entry is redelivered by
+    ``reclaim_stale_pending`` (``CHILI_EVENT_RECLAIM_MIN_IDLE_MS``, default
+    60s) — re-running a stage that already finished, or starting a second
+    thread alongside one that is genuinely wedged. The latter compounds every
+    reclaim interval until the bounded default executor
+    (``min(32, cpu + 4)`` threads) is exhausted and the whole worker wedges.
+    Bounding a stage's *wall clock* needs cooperative cancellation inside the
+    handlers; until that exists, the honest behaviour is to wait and shout.
     """
 
     policy = stage_policy or StagePolicy(retry_policy=retry_policy or RetryPolicy())
@@ -4404,16 +4425,35 @@ async def run_handler_with_retry(
     retries_attempted = 0
     for attempt in range(retry_policy.max_retries + 1):
         try:
-            handler_task = asyncio.to_thread(handler)
+            started_at = time.monotonic()
+            handler_task = asyncio.ensure_future(asyncio.to_thread(handler))
+            overran = False
             if policy.timeout_seconds is not None:
-                return await asyncio.wait_for(
-                    handler_task, timeout=policy.timeout_seconds
+                completed, _still_running = await asyncio.wait(
+                    {handler_task}, timeout=policy.timeout_seconds
                 )
-            return await handler_task
-        except asyncio.TimeoutError as exc:
-            last_exc = exc
-            retries_attempted = attempt
-            break
+                overran = not completed
+                if overran:
+                    logger.error(
+                        "Stage exceeded its timeout but its worker thread cannot be "
+                        "cancelled; still waiting rather than acking work in flight. "
+                        "event_type=%s correlation_id=%s attempt=%d "
+                        "timeout_seconds=%.3f",
+                        event.event_type,
+                        event.correlation_id,
+                        attempt + 1,
+                        policy.timeout_seconds,
+                    )
+            result = await handler_task
+            if overran:
+                logger.warning(
+                    "Stage that exceeded its timeout finished. event_type=%s "
+                    "correlation_id=%s elapsed_seconds=%.3f",
+                    event.event_type,
+                    event.correlation_id,
+                    time.monotonic() - started_at,
+                )
+            return result
         except Exception as exc:  # noqa: BLE001 - we route to DLQ
             last_exc = exc
             retries_attempted = attempt
@@ -4431,13 +4471,16 @@ async def run_handler_with_retry(
                 event.correlation_id,
                 attempt + 1,
                 delay,
-                str(exc),
+                str(exc) or type(exc).__name__,
             )
             await cast("asyncio.Future[None]", sleep(delay))
 
     assert last_exc is not None  # noqa: S101 - retry loop guarantees this
+    # ``str(RuntimeError())`` is ``''``. An empty DLQ message tells an operator
+    # triaging a replay nothing at all, so fall back to the exception type.
+    error_message = str(last_exc) or type(last_exc).__name__
     error_info = DlqErrorInfo(
-        error_message=str(last_exc),
+        error_message=error_message,
         traceback="".join(
             traceback.format_exception(type(last_exc), last_exc, last_exc.__traceback__)
         ),
@@ -4449,7 +4492,7 @@ async def run_handler_with_retry(
         event.event_type,
         event.correlation_id,
         retry_policy.max_retries,
-        str(last_exc),
+        error_message,
     )
     if on_failure is not None:
         on_failure(last_exc)

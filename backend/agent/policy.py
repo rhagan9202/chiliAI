@@ -27,7 +27,17 @@ _SUPPORTED_POLICY_FIELDS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class StagePolicy:
-    """Execution controls for a single worker stage."""
+    """Execution controls for a single worker stage.
+
+    ``timeout_seconds`` is an **alarm budget, not a deadline**. Handlers run in
+    the default executor and a running thread cannot be cancelled, so exceeding
+    the budget makes ``run_handler_with_retry`` log the overrun loudly and keep
+    waiting for the stage's real outcome. It does not abandon, dead-letter or
+    acknowledge work that is still in flight — doing either would let the
+    pipeline advance under a run marked FAILED, or hand the delivery back to
+    ``reclaim_stale_pending`` for a duplicate run. Bounding a stage's wall clock
+    requires cooperative cancellation inside the handler itself.
+    """
 
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     timeout_seconds: float | None = None
@@ -72,9 +82,10 @@ def load_stage_policy_registry_from_env(
 
     The JSON object maps event type strings to policy objects. Supported policy
     fields are ``max_retries``, ``backoff_seconds``/``base_delay_seconds``, and
-    ``timeout_seconds``. ``fatal_exception_types`` is intentionally rejected for
-    env configuration because resolving exception names safely requires an
-    explicit allowlist.
+    ``timeout_seconds`` (see :class:`StagePolicy` — an alarm budget, not a
+    deadline). ``fatal_exception_types`` is intentionally rejected for env
+    configuration because resolving exception names safely requires an explicit
+    allowlist.
     """
 
     source = os.environ if env is None else env
