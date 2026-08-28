@@ -76,14 +76,14 @@ _ALERT_GET_SCOPED_SQL = f"""
 _ALERT_ACK_SQL = f"""
     UPDATE alert_history
     SET status = 'acknowledged', updated_at = %s, triage_history = triage_history || %s::jsonb
-    WHERE alert_id = %s
+    WHERE alert_id = %s AND status = %s
     RETURNING {_ALERT_COLUMNS}
 """
 
 _ALERT_ACK_SCOPED_SQL = f"""
     UPDATE alert_history
     SET status = 'acknowledged', updated_at = %s, triage_history = triage_history || %s::jsonb
-    WHERE knowledge_base_id = %s AND alert_id = %s
+    WHERE knowledge_base_id = %s AND alert_id = %s AND status = %s
     RETURNING {_ALERT_COLUMNS}
 """
 
@@ -366,20 +366,45 @@ class PostgresAlertHistoryStore:
                         _encode_triage_history([event]),
                         knowledge_base_id,
                         alert_id,
+                        record.status,
                     )
                     if knowledge_base_id is not None
                     else (
                         event.occurred_at,
                         _encode_triage_history([event]),
                         alert_id,
+                        record.status,
                     ),
                 ).fetchone()
+                if row is None:
+                    # Someone changed this row between our read and our
+                    # write. Nothing has been written, so re-read and let the
+                    # lifecycle rules judge the request against reality.
+                    conn.commit()
+                    current = conn.execute(
+                        _ALERT_GET_SCOPED_SQL
+                        if knowledge_base_id is not None
+                        else _ALERT_GET_SQL,
+                        (knowledge_base_id, alert_id)
+                        if knowledge_base_id is not None
+                        else (alert_id,),
+                    ).fetchone()
+                    if current is None:
+                        return None
+                    validate_alert_transition(
+                        _row_to_alert_record(current).status, "acknowledged"
+                    )
+                    raise MonitoringSourceError(
+                        "Alert status changed concurrently; retry the transition."
+                    )
                 conn.commit()
         except AlertLifecycleError:
             raise
+        except MonitoringSourceError:
+            raise
         except Exception as exc:
             raise MonitoringSourceError("Failed to acknowledge alert.") from exc
-        return None if row is None else _row_to_alert_record(row)
+        return _row_to_alert_record(row)
 
     def assign(
         self,

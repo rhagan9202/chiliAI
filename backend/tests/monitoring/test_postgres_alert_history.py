@@ -354,6 +354,170 @@ def test_get_and_acknowledge_alert(database_url: str) -> None:
         provider.close()
 
 
+def test_acknowledging_a_resolved_alert_does_not_reopen_it(database_url: str) -> None:
+    """Acknowledge has the same unguarded WHERE as transition_status had.
+
+    'resolved' -> 'acknowledged' is not in ALERT_TRANSITIONS['resolved'], so
+    acknowledging an already-resolved alert must raise rather than silently
+    moving a closed alert back into the queue.
+    """
+    kb_id = "kb-alert-ack-resolved-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-ack-resolved-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="resolved",
+            title="Anomalous claim",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+        )
+        store.write_alerts([record])
+
+        with pytest.raises(AlertLifecycleError):
+            store.acknowledge(
+                "a-ack-resolved-1", knowledge_base_id=kb_id, actor="analyst-2"
+            )
+
+        row = store.get_alert("a-ack-resolved-1")
+        assert row is not None
+        assert row.status == "resolved"
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_concurrent_acknowledge_loses_instead_of_committing_over_a_dismissal(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An acknowledge racing a dismissal must not silently reopen the alert.
+
+    ALERT_TRANSITIONS['dismissed'] == {'open'}, so 'dismissed' -> 'acknowledged'
+    is forbidden. Both callers read the alert while it is still 'open' and both
+    pass validation against that snapshot. Without a compare-and-set on the
+    acknowledge UPDATE (WHERE knowledge_base_id AND alert_id only, no status
+    guard), the acknowledge writer's blind UPDATE still matches the row after
+    the dismiss writer commits, so it silently overwrites 'dismissed' with the
+    lifecycle-forbidden 'acknowledged' and appends a triage event claiming
+    from_status='open' -- a false audit trail, since the real prior status was
+    'dismissed'.
+
+    A ``threading.Barrier`` forces both threads' read-and-validate step
+    (inside the real ``acknowledge``/``transition_status`` calls, which share
+    the module-level ``validate_alert_transition``) to happen before either
+    writer proceeds, reproducing the interleave without touching production
+    code. The acknowledge writer is given a short additional delay after the
+    barrier so the dismiss writer reliably commits first.
+    """
+    kb_id = "kb-alert-ack-cas-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        store.write_alerts(
+            [
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="alert-ack-cas-1",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="open",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                )
+            ]
+        )
+
+        read_barrier = threading.Barrier(2)
+        thread_state = threading.local()
+
+        def synced_validate(current_status: str, new_status: str) -> None:
+            # Only the first call per thread is the "both callers read the
+            # alert" step being synchronized. A recovery validate() against
+            # fresh state after a lost race must run unsynchronized, or the
+            # losing thread would block on a barrier no other thread will
+            # reach.
+            if not getattr(thread_state, "synced", False):
+                thread_state.synced = True
+                read_barrier.wait(timeout=5)
+                if new_status == "acknowledged":
+                    time.sleep(0.2)
+            validate_alert_transition(current_status, new_status)
+
+        monkeypatch.setattr(
+            postgres_module, "validate_alert_transition", synced_validate
+        )
+
+        results: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+        def run_dismiss(actor: str) -> None:
+            try:
+                results[actor] = store.transition_status(
+                    "alert-ack-cas-1",
+                    knowledge_base_id=kb_id,
+                    status="dismissed",
+                    actor=actor,
+                )
+            except BaseException as exc:  # captured for the joining thread to assert on
+                results[actor] = exc
+
+        def run_acknowledge(actor: str) -> None:
+            try:
+                results[actor] = store.acknowledge(
+                    "alert-ack-cas-1",
+                    knowledge_base_id=kb_id,
+                    actor=actor,
+                )
+            except BaseException as exc:  # captured for the joining thread to assert on
+                results[actor] = exc
+
+        winner = threading.Thread(target=run_dismiss, args=("analyst-1",))
+        loser = threading.Thread(target=run_acknowledge, args=("analyst-2",))
+        winner.start()
+        loser.start()
+        winner.join(timeout=10)
+        loser.join(timeout=10)
+
+        assert isinstance(results["analyst-1"], AlertHistoryRecord)
+        assert results["analyst-1"].status == "dismissed"
+        assert isinstance(results["analyst-2"], AlertLifecycleError)
+
+        row = store.get_alert("alert-ack-cas-1")
+        assert row is not None
+        assert row.status == "dismissed"
+        assert [event.to_status for event in row.triage_history] == ["dismissed"]
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
 def test_assign_and_transition_alert_status(database_url: str) -> None:
     kb_id = "kb-alert-triage-test"
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
