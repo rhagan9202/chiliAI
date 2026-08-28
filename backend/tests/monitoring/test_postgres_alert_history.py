@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
 
+import monitoring.adapters.postgres as postgres_module
 from config.schema import DatabaseConfig
 from database.runtime import create_connection_provider
 from monitoring.adapters.postgres import PostgresAlertHistoryStore
+from monitoring.exceptions import AlertLifecycleError
+from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord
 from playbooks.models import PlaybookRef
 
@@ -498,6 +503,113 @@ def test_delete_by_kb_removes_alert_history(database_url: str) -> None:
 
         # Idempotent second call.
         assert store.delete_by_kb(kb_id) == 0
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_concurrent_transition_loses_instead_of_committing_a_forbidden_one(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two analysts transition one alert at once; the loser must not commit.
+
+    ALERT_TRANSITIONS['resolved'] == {'open'}, so 'resolved' -> 'dismissed' is
+    forbidden. Both analysts read the alert while it is still 'investigating'
+    and both pass validation against that snapshot. Without a compare-and-set
+    on the UPDATE, the second writer's blind UPDATE (WHERE knowledge_base_id
+    AND alert_id only) still matches the row after the first writer commits,
+    so it silently overwrites 'resolved' with the lifecycle-forbidden
+    'dismissed' and appends a triage event claiming from_status='investigating'
+    -- a false audit trail, since the real prior status was 'resolved'.
+
+    A ``threading.Barrier`` forces both threads' read-and-validate step
+    (inside the real ``transition_status`` call) to happen before either
+    writer proceeds, reproducing the interleave without touching production
+    code. The 'dismissed' writer is given a short additional delay after the
+    barrier so the 'resolved' writer reliably commits first -- matching the
+    "read happens for both, then the first commits" scenario this guards
+    against, without leaving the outcome to nondeterministic thread
+    scheduling.
+    """
+    kb_id = "kb-alert-cas-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        store.write_alerts(
+            [
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="alert-cas-1",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="investigating",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                )
+            ]
+        )
+
+        read_barrier = threading.Barrier(2)
+        thread_state = threading.local()
+
+        def synced_validate(current_status: str, new_status: str) -> None:
+            # Only the first call per thread is the "both analysts read the
+            # alert" step being synchronized. The compare-and-set fix issues
+            # a second, recovery validate() against fresh state after a lost
+            # race -- that call must run unsynchronized, or the losing
+            # thread would block on a barrier no other thread will reach.
+            if not getattr(thread_state, "synced", False):
+                thread_state.synced = True
+                read_barrier.wait(timeout=5)
+                if new_status == "dismissed":
+                    time.sleep(0.2)
+            validate_alert_transition(current_status, new_status)
+
+        monkeypatch.setattr(
+            postgres_module, "validate_alert_transition", synced_validate
+        )
+
+        results: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+        def run(actor: str, status: str) -> None:
+            try:
+                results[actor] = store.transition_status(
+                    "alert-cas-1",
+                    knowledge_base_id=kb_id,
+                    status=status,
+                    actor=actor,
+                )
+            except BaseException as exc:  # captured for the joining thread to assert on
+                results[actor] = exc
+
+        winner = threading.Thread(target=run, args=("analyst-1", "resolved"))
+        loser = threading.Thread(target=run, args=("analyst-2", "dismissed"))
+        winner.start()
+        loser.start()
+        winner.join(timeout=10)
+        loser.join(timeout=10)
+
+        assert isinstance(results["analyst-1"], AlertHistoryRecord)
+        assert results["analyst-1"].status == "resolved"
+        assert isinstance(results["analyst-2"], AlertLifecycleError)
+
+        row = store.get_alert("alert-cas-1")
+        assert row is not None
+        assert row.status == "resolved"
+        assert [event.to_status for event in row.triage_history] == ["resolved"]
     finally:
         with provider.connection() as conn:
             conn.execute(
