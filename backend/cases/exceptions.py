@@ -31,8 +31,21 @@ class AlertAlreadyAttachedError(CaseError):
         self.alert_id = alert_id
 
 
+class CaseConcurrentModificationError(CaseError):
+    """Raised when a case changed between the caller's read and its write."""
+
+    def __init__(self, knowledge_base_id: str, case_id: str) -> None:
+        super().__init__(
+            f"Case '{case_id}' in knowledge base '{knowledge_base_id}' was modified "
+            "concurrently; reload it and retry."
+        )
+        self.knowledge_base_id = knowledge_base_id
+        self.case_id = case_id
+
+
 __all__ = [
     "AlertAlreadyAttachedError",
+    "CaseConcurrentModificationError",
     "CaseError",
     "CaseNotFoundError",
     "CasePersistenceError",

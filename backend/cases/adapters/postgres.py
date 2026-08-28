@@ -11,7 +11,11 @@ import json
 from datetime import datetime
 from typing import cast
 
-from cases.exceptions import CaseNotFoundError, CasePersistenceError
+from cases.exceptions import (
+    CaseConcurrentModificationError,
+    CaseNotFoundError,
+    CasePersistenceError,
+)
 from cases.models import (
     AnalystFeedback,
     Case,
@@ -46,7 +50,7 @@ _UPDATE_SQL = """
         originating_alert_id = %s, evidence_pack_id = %s,
         alert_ids = %s::jsonb, timeline = %s::jsonb,
         feedback_history = %s::jsonb, playbook_ref = %s::jsonb, updated_at = %s
-    WHERE knowledge_base_id = %s AND case_id = %s
+    WHERE knowledge_base_id = %s AND case_id = %s AND updated_at = %s
 """
 
 _DELETE_BY_KB_SQL = "DELETE FROM cases WHERE knowledge_base_id = %s"
@@ -115,7 +119,7 @@ class PostgresCaseRepository:
             raise CasePersistenceError("Failed to list cases.") from exc
         return [_row_to_case(row) for row in rows], total
 
-    def update(self, case: Case) -> Case:
+    def update(self, case: Case, *, expected_updated_at: datetime) -> Case:
         try:
             with self._provider.connection() as conn:
                 cursor = conn.execute(
@@ -134,12 +138,25 @@ class PostgresCaseRepository:
                         case.updated_at,
                         case.knowledge_base_id,
                         case.id,
+                        expected_updated_at,
                     ),
                 )
                 if cursor.rowcount == 0:
-                    raise CaseNotFoundError(case.knowledge_base_id, case.id)
+                    # Either the row never existed, or another writer changed
+                    # it between our read and this write. Re-read (after
+                    # committing, so we see any concurrent writer's own
+                    # commit) to tell the two failures apart.
+                    conn.commit()
+                    existing = conn.execute(
+                        _GET_SQL, (case.knowledge_base_id, case.id)
+                    ).fetchone()
+                    if existing is None:
+                        raise CaseNotFoundError(case.knowledge_base_id, case.id)
+                    raise CaseConcurrentModificationError(
+                        case.knowledge_base_id, case.id
+                    )
                 conn.commit()
-        except CaseNotFoundError:
+        except (CaseNotFoundError, CaseConcurrentModificationError):
             raise
         except Exception as exc:
             raise CasePersistenceError("Failed to update case.") from exc

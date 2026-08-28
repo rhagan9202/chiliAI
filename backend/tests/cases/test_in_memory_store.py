@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 import pytest
 
 from cases.adapters.in_memory import InMemoryCaseRepository
-from cases.exceptions import CaseNotFoundError
+from cases.exceptions import CaseConcurrentModificationError, CaseNotFoundError
 from cases.models import Case, CasePriority, CaseStatus
+from shared.utils import utc_now
 
 
 def _case(
@@ -93,9 +94,11 @@ def test_list_paginates() -> None:
 
 def test_update_existing_case() -> None:
     repo = InMemoryCaseRepository()
-    repo.create(_case("c1", status="open"))
+    created = repo.create(_case("c1", status="open"))
 
-    updated = repo.update(_case("c1", status="closed"))
+    updated = repo.update(
+        _case("c1", status="closed"), expected_updated_at=created.updated_at
+    )
 
     assert updated.status == "closed"
     refetched = repo.get(knowledge_base_id="kb-1", case_id="c1")
@@ -107,7 +110,20 @@ def test_update_missing_raises() -> None:
     repo = InMemoryCaseRepository()
 
     with pytest.raises(CaseNotFoundError):
-        repo.update(_case("ghost"))
+        repo.update(_case("ghost"), expected_updated_at=utc_now())
+
+
+def test_update_raises_when_the_row_changed_concurrently() -> None:
+    repo = InMemoryCaseRepository()
+    created = repo.create(_case("c1", status="open"))
+
+    with pytest.raises(CaseConcurrentModificationError):
+        repo.update(_case("c1", status="closed"), expected_updated_at=utc_now())
+
+    refetched = repo.get(knowledge_base_id="kb-1", case_id="c1")
+    assert refetched is not None
+    assert refetched.status == "open"
+    assert refetched.updated_at == created.updated_at
 
 
 def test_delete_by_kb() -> None:

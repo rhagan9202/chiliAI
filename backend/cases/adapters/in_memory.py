@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from cases.exceptions import CaseNotFoundError
+from datetime import datetime
+
+from cases.exceptions import CaseConcurrentModificationError, CaseNotFoundError
 from cases.models import Case
 
 __all__ = ["InMemoryCaseRepository"]
@@ -43,10 +45,13 @@ class InMemoryCaseRepository:
             return [], total
         return matches[offset : offset + limit], total
 
-    def update(self, case: Case) -> Case:
+    def update(self, case: Case, *, expected_updated_at: datetime) -> Case:
         key = (case.knowledge_base_id, case.id)
-        if key not in self._cases:
+        existing = self._cases.get(key)
+        if existing is None:
             raise CaseNotFoundError(case.knowledge_base_id, case.id)
+        if existing.updated_at != expected_updated_at:
+            raise CaseConcurrentModificationError(case.knowledge_base_id, case.id)
         self._cases[key] = case
         return case
 
