@@ -1289,9 +1289,18 @@ def build_worker_dependencies() -> WorkerDependencies:
         cache=embedding_cache,
         cache_namespace=embedding_cache_ns,
     )
+    # The worker is what actually scores a batch, so it needs the pack's risk
+    # settings as much as the API does. It previously passed none of them and
+    # silently used library defaults: harmless while no pack overrode the
+    # thresholds, but the first one to do so would have got a different risk
+    # level from the worker than from the API for the same entity.
+    risk_analytics = config.analytics or AnalyticsConfig()
     risk_service = create_risk_service(
         build_risk_signal_source(connection_provider),
         event_bus=event_bus,
+        default_medium_risk_threshold=risk_analytics.medium_risk_threshold,
+        default_high_risk_threshold=risk_analytics.high_risk_threshold,
+        min_signals=risk_analytics.min_risk_signals,
     )
     explainability_service = create_explainability_service(
         build_explainability_context_source(config),
@@ -2356,6 +2365,9 @@ def handle_graph_updated_for_analytics(
             if risk_response is None:
                 continue
 
+            if risk_response.risk_level == "low":
+                continue
+
             alert_reference = _run_explainability_stage(
                 event=event,
                 explainability_service=explainability_service,
@@ -2680,6 +2692,8 @@ def build_explanation_context(
         factor.factor_name: factor.contribution for factor in risk_response.factors
     }
     scores["overall"] = risk_response.overall_score
+    scores["signal_count"] = float(risk_response.signal_count)
+    scores["min_risk_signals"] = float(risk_response.min_risk_signals)
 
     alert = Alert(
         id=alert_id,
@@ -2783,6 +2797,8 @@ def _write_analytics_properties_to_graph(
     if risk_response is not None:
         properties["risk_score"] = float(risk_response.overall_score)
         properties["risk_level"] = risk_response.risk_level
+        properties["risk_signal_count"] = risk_response.signal_count
+        properties["risk_min_signals"] = risk_response.min_risk_signals
         properties["risk_assessed_at"] = datetime.now(tz=timezone.utc).isoformat()
     centrality_score = _resolve_centrality_score(gnn_response, entity_id)
     if centrality_score is not None:
@@ -3191,7 +3207,7 @@ def assess_entities(
     persisted to risk_score_history under a deterministic request id derived from
     ``correlation_id`` + entity, so a retried ingest re-assesses idempotently
     instead of accumulating duplicate history rows. Only *expected* per-entity
-    conditions are swallowed (an entity below the >=2-signal floor, or a
+    conditions are swallowed (an entity below the configured signal floor, or a
     per-entity threshold misconfiguration) so one such entity never aborts the
     batch. Infrastructure failures (``RiskSourceError``/``RiskHistoryError``)
     deliberately propagate so a transient DB/source outage surfaces (logged with

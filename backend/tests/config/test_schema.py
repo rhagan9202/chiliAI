@@ -1333,6 +1333,11 @@ def test_analytics_config_rejects_non_positive_interval() -> None:
         AnalyticsConfig(metrics_recompute_min_interval_seconds=0)
 
 
+def test_analytics_config_rejects_non_positive_signal_floor() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(min_risk_signals=0)
+
+
 def test_analytics_config_risk_threshold_defaults() -> None:
     config = AnalyticsConfig()
     assert config.medium_risk_threshold == 0.5

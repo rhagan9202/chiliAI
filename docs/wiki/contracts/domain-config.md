@@ -187,7 +187,17 @@ class MonitoringConfig(BaseModel):
 ```python
 class AnalyticsConfig(BaseModel):
     metrics_recompute_min_interval_seconds: int = 300   # > 0
+    medium_risk_threshold: float = 0.5                  # 0.0 <= value <= 1.0
+    high_risk_threshold: float = 0.8                    # 0.0 <= value <= 1.0, > medium
+    min_risk_signals: int = 2                           # >= 1
 ```
+
+`min_risk_signals` is the domain-configured evidence floor before the risk
+service scores an entity. The default remains `2` for backward compatibility.
+Domain packs with sparse cross-feed overlap may opt into `1`; the CMS DE-SynPUF
+pack does so because carrier-provider metrics and inpatient-provider metrics use
+different claim files and provider NPI columns, so most Tennessee subset
+providers legitimately produce only one of those peer signals.
 
 ### `RagConfig`
 ```python

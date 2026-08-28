@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,12 +23,16 @@ from analytics.explainability.reviews import (
     InMemoryExplanationReviewRepository,
 )
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.models import RiskProfile, RiskSignal
+from analytics.risk.service import RiskService, create_risk_service
 from connectors.adapters.in_memory import InMemoryConnectorRepository
 from connectors.adapters.postgres import PostgresConnectorRepository
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 from analytics.score_runs.adapters.postgres import PostgresScoreRunRepository
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
@@ -241,6 +246,79 @@ def test_monitoring_service_uses_configured_rate_limit(
 
     assert response.alert_count == 1
     assert response.rate_limited_count == 1
+
+
+def test_get_risk_service_uses_configured_analytics_floor(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "analytics": AnalyticsConfig(
+                min_risk_signals=1,
+                medium_risk_threshold=0.4,
+                high_risk_threshold=0.7,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+    dependencies.get_risk_service.cache_clear()
+
+    service = cast(RiskService, dependencies.get_risk_service())
+
+    assert service.min_signals == 1
+    assert service.default_medium_risk_threshold == 0.4
+    assert service.default_high_risk_threshold == 0.7
+
+
+def test_get_risk_score_payload_exposes_signal_floor_metadata() -> None:
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-7",
+                    signals=[
+                        RiskSignal(
+                            signal_name="single_signal",
+                            value=0.5,
+                            weight=1.0,
+                        )
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+        min_signals=1,
+    )
+
+    payload = dependencies.get_risk_score_payload(
+        entity_id="provider-7",
+        kb_id="kb-1",
+        risk_service=risk_service,
+    )
+
+    assert payload.availability_status == "available"
+    assert payload.signal_count == 1
+    assert payload.min_risk_signals == 1
+
+
+def test_get_risk_score_payload_unavailable_uses_configured_signal_floor() -> None:
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(),
+        event_bus=InMemoryEventBus(),
+        min_signals=1,
+    )
+
+    payload = dependencies.get_risk_score_payload(
+        entity_id="provider-missing",
+        kb_id="kb-1",
+        risk_service=risk_service,
+    )
+
+    assert payload.availability_status == "unavailable"
+    assert payload.signal_count == 0
+    assert payload.min_risk_signals == 1
 
 
 def test_event_bus_falls_back_to_environment_when_config_section_absent(

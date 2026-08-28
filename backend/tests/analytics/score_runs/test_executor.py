@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import analytics.score_runs.executor as score_runs_executor
 from analytics.risk.exceptions import RiskInsufficientSignalsError
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.models import RiskProfile, RiskSignal
+from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
 from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
 import pytest
 
-from analytics.score_runs import executor as score_runs_executor
 from analytics.score_runs.executor import (
     handle_score_batch_queued,
     handle_score_run_queued,
@@ -19,7 +22,7 @@ from config.schema import DomainConfig
 from graph.adapters.in_memory import InMemoryGraphRepository
 from shared.types import Entity
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import ScoreBatchQueuedEvent, ScoreRunQueuedEvent
+from events.types import RiskScoredEvent, ScoreBatchQueuedEvent, ScoreRunQueuedEvent
 from execution.deps import ExecutionDeps
 from shared.utils import utc_now
 
@@ -42,7 +45,7 @@ class _StubRiskService:
                 f"entity {request.entity_id} has too few signals"
             )
         return RiskAssessmentResponse(
-            request_id=request.request_id,
+            request_id=request.request_id or "req-test",
             knowledge_base_id=request.knowledge_base_id,
             entity_id=request.entity_id,
             overall_score=0.5,
@@ -205,6 +208,43 @@ def test_entities_below_the_signal_floor_are_skipped_not_scored_or_failed() -> N
     assert run.scored_entities == 1
     assert run.skipped_entities == 1
     assert run.failed_entities == 0
+
+
+def test_score_run_counts_one_signal_entity_as_scored_with_configured_floor() -> None:
+    repository = InMemoryScoreRunRepository()
+    repository.save_run(_run())
+    repository.upsert_batch(_batch(0, ["e1"]))
+    repository.update_run(_RUN_ID, total_entities=1)
+    event_bus = InMemoryEventBus()
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id=_KB,
+                    entity_id="e1",
+                    signals=[RiskSignal(signal_name="carrier_billing", value=0.9, weight=1.0)],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+        min_signals=1,
+    )
+    base_deps = _deps(repository)
+    deps = ExecutionDeps(
+        event_bus=event_bus,
+        risk_service=risk_service,
+        score_run_repository=repository,
+        graph_repository=None,
+        domain_config=base_deps.domain_config,
+    )
+
+    handle_score_batch_queued(_event(), deps)
+
+    run = repository.get_run(_RUN_ID)
+    assert run is not None
+    assert run.scored_entities == 1
+    assert run.skipped_entities == 0
+    assert any(isinstance(event, RiskScoredEvent) for event in event_bus.published_events)
 
 
 def test_every_entity_lands_in_exactly_one_counter() -> None:

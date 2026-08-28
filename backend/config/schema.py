@@ -205,6 +205,13 @@ class AnalyticsConfig(BaseModel):
     high_risk_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     narrative_backend: Literal["deterministic", "llm"] = "deterministic"
     attribution_backend: Literal["none", "shap"] = "none"
+    # How many distinct signals an entity needs before it can be scored. This
+    # was hardcoded to 2, which silently zeroed the entire risk pipeline for any
+    # pack whose configured metrics outnumbered the ones its ingested data could
+    # actually produce: the CMS pack declares 2 peer metrics, only one had data,
+    # so every entity fell one short and `risk_score_history` stayed empty. How
+    # much evidence is enough is a domain judgement, so it is configured.
+    min_risk_signals: int = Field(default=2, ge=1)
 
     @model_validator(mode="after")
     def _validate_risk_thresholds(self) -> AnalyticsConfig:

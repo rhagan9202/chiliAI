@@ -89,7 +89,7 @@ export function EntityDossierHeader({
           </span>
           <span className="dossier-risk__label">{riskScore.risk_level} risk</span>
           <div
-            aria-label="Composite risk"
+            aria-label="Risk score"
             aria-valuemax={100}
             aria-valuemin={0}
             aria-valuenow={numeral}

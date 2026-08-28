@@ -517,7 +517,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 > - `get_timeseries_history_source()` (the separate graph-scope `/analytics/timeseries?metric=...` range route) now follows the same DI-switch pattern as `get_risk_signal_source`: `PostgresTimeSeriesHistorySource` over `entity_metric_history` when a DB is configured, else `InMemoryTimeSeriesHistorySource`.
 >
 > **Sprint 2026-25 additions (peer-group z-score risk signals).**
-> - **`analytics/peerstats/` (BL-013–BL-015).** Config-driven cross-sectional peer-group z-score analytics. For each `PeerMetricSpec` in `DomainConfig.peer_stats`, the module aggregates a `raw_records` JSONB column per entity over a config interval (`day`/`week`/`month`), z-scores each entity against its cohort, and upserts a `DerivedRiskSignal` to the new `entity_derived_signals` table (migration `0006_entity_derived_signals`). Gated on `capabilities.peer_stats`. The worker calls `run_peerstats_stage` best-effort on every `RecordsIngestedEvent`, then assesses affected entities through the risk service. `PostgresRiskSignalSource` in `analytics/risk/adapters/postgres.py` reads `entity_derived_signals` (one signal per metric) to assemble entity risk profiles — the risk module itself is unchanged. An entity needs at least two contributing specs (≥2 derived signals) to clear the risk service's ≥2-signal floor and be scored. The medicare default config ships with two provider billing specs (`weekly_provider_billing` and `weekly_provider_claim_count`).
+> - **`analytics/peerstats/` (BL-013–BL-015).** Config-driven cross-sectional peer-group z-score analytics. For each `PeerMetricSpec` in `DomainConfig.peer_stats`, the module aggregates a `raw_records` JSONB column per entity over a config interval (`day`/`week`/`month`), z-scores each entity against its cohort, and upserts a `DerivedRiskSignal` to the new `entity_derived_signals` table (migration `0006_entity_derived_signals`). Gated on `capabilities.peer_stats`. The worker calls `run_peerstats_stage` best-effort on every `RecordsIngestedEvent`, then assesses affected entities through the risk service. `PostgresRiskSignalSource` in `analytics/risk/adapters/postgres.py` reads `entity_derived_signals` (one signal per metric) to assemble entity risk profiles — the risk module itself is unchanged. An entity must meet the active pack's configured `analytics.min_risk_signals` floor before it is scored. The default floor is two signals; sparse packs such as CMS DE-SynPUF can explicitly set one signal when their metrics are not expected to co-produce for most entities.
 
 ### 5.2 Module responsibility matrix
 
@@ -1460,6 +1460,9 @@ monitoring:
   backend: in_memory             # in_memory | postgres (persists alerts + observations)
 
 analytics:
+  medium_risk_threshold: 0.5       # normalized score >= this is medium
+  high_risk_threshold: 0.8         # normalized score >= this is high
+  min_risk_signals: 2              # default evidence floor before scoring
   metrics_recompute_min_interval_seconds: 300  # MetricsRecomputeThrottle default
   timeseries:
     backend: in_memory           # in_memory | postgres

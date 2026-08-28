@@ -62,6 +62,8 @@ class RiskAssessmentResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
+    signal_count: int = Field(default=0, ge=0)
+    min_risk_signals: int = Field(default=2, ge=1)
     factors: list[RiskFactorScore] = Field(default_factory=list[RiskFactorScore])
     trend: RiskTrend | None = None
     previous_score: float | None = Field(default=None, ge=0.0, le=1.0)

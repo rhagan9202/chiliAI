@@ -47,6 +47,8 @@ const risk: RiskScoreResponse = {
   entity_id: 'provider:1',
   overall_score: 0.87,
   risk_level: 'high',
+  signal_count: 2,
+  min_risk_signals: 2,
   factors: [],
   availability_status: 'available',
   unavailable_reason: null,

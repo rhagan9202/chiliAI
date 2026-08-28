@@ -740,6 +740,15 @@ database:
   statement_timeout_ms: 30000
 
 analytics:
+  # DE-SynPUF's two peer metrics read *different* claim files via different NPI
+  # columns: weekly_carrier_billing uses PRF_PHYSN_NPI_1 from carrier claims,
+  # monthly_inpatient_billing uses AT_PHYSN_NPI from inpatient claims. In the TN
+  # subset only 147 of 32,948 carrier providers also appear in the inpatient
+  # file, so a floor of 2 leaves ~99.6% of providers permanently unscoreable —
+  # which is why risk_score_history was empty. One signal is the honest floor
+  # for this data; medicare_fraud.yaml keeps 2, since both of its metrics read
+  # the same records via the same id field and always fire together.
+  min_risk_signals: 1
   metrics_recompute_min_interval_seconds: 300
   narrative_backend: llm
   attribution_backend: shap

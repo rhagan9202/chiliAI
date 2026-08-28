@@ -208,10 +208,13 @@ The domain configuration YAML/JSON accepts an optional `analytics` section (type
 
 ```yaml
 analytics:
+  medium_risk_threshold: 0.5                  # default 0.5
+  high_risk_threshold: 0.8                    # default 0.8; must exceed medium
+  min_risk_signals: 2                         # default 2; valid range >= 1
   metrics_recompute_min_interval_seconds: 300  # default 300 s
 ```
 
-`metrics_recompute_min_interval_seconds` sets the minimum wall-clock interval between metric recomputes for a given knowledge base (Flow 2). The throttle is applied per-KB in the worker; bursts of `GraphUpdatedEvent`s do not trigger redundant recomputes within the window.
+`medium_risk_threshold` and `high_risk_threshold` classify the normalized risk score. `min_risk_signals` is the configured evidence floor before an entity can be scored; it defaults to `2` for existing packs, while sparse demo packs such as CMS DE-SynPUF may explicitly set `1` when their configured metrics are not expected to co-produce for most entities. `metrics_recompute_min_interval_seconds` sets the minimum wall-clock interval between metric recomputes for a given knowledge base (Flow 2). The throttle is applied per-KB in the worker; bursts of `GraphUpdatedEvent`s do not trigger redundant recomputes within the window.
 
 ### Setting the config path
 

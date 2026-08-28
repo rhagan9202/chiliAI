@@ -2352,6 +2352,7 @@ def get_risk_service() -> RiskServiceProtocol:
         event_bus=get_event_bus(),
         default_medium_risk_threshold=analytics_config.medium_risk_threshold,
         default_high_risk_threshold=analytics_config.high_risk_threshold,
+        min_signals=analytics_config.min_risk_signals,
     )
 
 
@@ -2383,10 +2384,16 @@ def get_risk_score_payload(
             RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id)
         )
     except (RiskConfigurationError, RiskInsufficientSignalsError, ValueError):
+        configured_min_signals = getattr(risk_service, "min_signals", 2)
+        min_risk_signals = (
+            configured_min_signals if isinstance(configured_min_signals, int) else 2
+        )
         return RiskScoreResponse(
             entity_id=entity_id,
             overall_score=0.0,
             risk_level="low",
+            signal_count=0,
+            min_risk_signals=min_risk_signals,
             factors=[],
             availability_status="unavailable",
             unavailable_reason="No risk profile has been generated for this entity.",
@@ -2395,6 +2402,8 @@ def get_risk_score_payload(
         entity_id=response.entity_id,
         overall_score=response.overall_score,
         risk_level=_normalize_risk_level(response.risk_level, response.overall_score),
+        signal_count=response.signal_count,
+        min_risk_signals=response.min_risk_signals,
         factors=[
             RiskFactorResponse(
                 factor_name=factor.factor_name,

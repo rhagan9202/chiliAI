@@ -598,6 +598,12 @@
             "title": "Metrics Recompute Min Interval Seconds",
             "type": "integer"
           },
+          "min_risk_signals": {
+            "default": 2,
+            "minimum": 1,
+            "title": "Min Risk Signals",
+            "type": "integer"
+          },
           "narrative_backend": {
             "default": "deterministic",
             "enum": [
@@ -10478,6 +10484,12 @@
             "title": "Factors",
             "type": "array"
           },
+          "min_risk_signals": {
+            "default": 2,
+            "minimum": 1.0,
+            "title": "Min Risk Signals",
+            "type": "integer"
+          },
           "overall_score": {
             "maximum": 1.0,
             "minimum": 0.0,
@@ -10493,6 +10505,12 @@
             ],
             "title": "Risk Level",
             "type": "string"
+          },
+          "signal_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Signal Count",
+            "type": "integer"
           },
           "unavailable_reason": {
             "anyOf": [

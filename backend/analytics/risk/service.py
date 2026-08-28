@@ -25,6 +25,10 @@ from events.types import RiskFactorReference, RiskScoredEvent, RiskScoredReferen
 from shared.utils import generate_id
 
 DEFAULT_TREND_DELTA_THRESHOLD = 0.05
+# Mirrors AnalyticsConfig.min_risk_signals. Kept here as the library default so
+# the service is usable without a DomainConfig; the API and worker both pass the
+# configured value.
+DEFAULT_MIN_RISK_SIGNALS = 2
 
 
 class RiskService:
@@ -39,7 +43,11 @@ class RiskService:
         delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
         default_medium_risk_threshold: float = 0.5,
         default_high_risk_threshold: float = 0.8,
+        min_signals: int = DEFAULT_MIN_RISK_SIGNALS,
     ) -> None:
+        if min_signals < 1:
+            raise ValueError("min_signals must be at least 1.")
+        self.min_signals = min_signals
         self._signal_source = signal_source
         self._event_bus = event_bus
         self._scoring_strategy: RiskScoringStrategyProtocol = (
@@ -60,9 +68,10 @@ class RiskService:
         except Exception as exc:
             raise RiskSourceError("Failed to load risk signals.") from exc
 
-        if len(profile.signals) < 2:
+        if len(profile.signals) < self.min_signals:
             raise RiskInsufficientSignalsError(
-                "Risk profile requires at least two signals for assessment."
+                f"Risk profile requires at least {self.min_signals} signals for "
+                f"assessment; found {len(profile.signals)}."
             )
 
         # Resolve per-request thresholds against the service-level defaults
@@ -116,6 +125,8 @@ class RiskService:
             overall_score=result.overall_score,
             risk_level=result.risk_level,
             factor_count=result.factor_count,
+            signal_count=len(profile.signals),
+            min_risk_signals=self.min_signals,
             factors=[
                 RiskFactorScore(
                     factor_name=factor.factor_name,
@@ -202,6 +213,7 @@ def create_risk_service(
     delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
     default_medium_risk_threshold: float = 0.5,
     default_high_risk_threshold: float = 0.8,
+    min_signals: int = DEFAULT_MIN_RISK_SIGNALS,
 ) -> RiskService:
     """Create the default risk service."""
 
@@ -212,6 +224,7 @@ def create_risk_service(
         delta_threshold=delta_threshold,
         default_medium_risk_threshold=default_medium_risk_threshold,
         default_high_risk_threshold=default_high_risk_threshold,
+        min_signals=min_signals,
     )
 
 
