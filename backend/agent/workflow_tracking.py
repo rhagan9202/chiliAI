@@ -186,7 +186,10 @@ class WorkflowEventTracker:
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
-        metadata["last_error"] = str(error)
+        # ``str(RuntimeError())`` is ``''``, and this is the string the UI shows
+        # on a failed run. Fall back to the exception type, matching the DLQ
+        # record's ``error_message`` for the same exception.
+        metadata["last_error"] = str(error) or type(error).__name__
         # CAS on non-terminal status: a user cancel takes precedence over a
         # retry-exhaustion failure rather than being overwritten by it.
         self._run_store.update_run_if_current(

@@ -451,10 +451,11 @@
 **so that** a flaky monitoring evaluation does not get the same retry budget as a flaky LLM call, and known fatal errors short-circuit to DLQ instead of looping.
 
 ### Current State
-- `RetryPolicy` is a single global model applied to every handler (`backend/agent/models.py:20-32`).
-- `handle_risk_scored` and `handle_graph_updated_for_analytics` use ad-hoc `except` blocks that swallow errors with no policy declaration (`backend/agent/coordinator.py:1429-1475`).
-- `run_handler_with_retry` always treats every `Exception` as retryable (`backend/agent/coordinator.py:2374-2381`).
-- No mapping from event_type → `StagePolicy`.
+(Refreshed 2026-08-28; the line references below had drifted by thousands of lines.)
+- `RetryPolicy` remains a single global model applied to every handler unless a stage policy overrides it (`backend/agent/models.py:21-33`).
+- `handle_risk_scored` (`backend/agent/coordinator.py:2836`) and `handle_graph_updated_for_analytics` (`backend/agent/coordinator.py:2268`) still use ad-hoc `except` blocks that swallow errors with no policy declaration.
+- Landed since this story was written: `StagePolicy`/`StagePolicyRegistry` (`backend/agent/policy.py`), fed from `CHILI_STAGE_POLICY_JSON` via `load_stage_policy_registry_from_env`, and `run_handler_with_retry` (`backend/agent/coordinator.py:4349`) short-circuits declared `fatal_exception_types` instead of retrying every `Exception`. `CHILI_STAGE_POLICY_JSON` is set in no compose file or shipped pack, so no deployment configures a stage policy today.
+- Still missing: the registry is not fed from `AgentConfig` (cross-edge to `agent.10`), and there is no real per-stage deadline — see the cooperative-cancellation criterion below.
 
 ### Acceptance Criteria
 - [ ] `StagePolicy` model with `timeout_seconds`, `retry_policy`, `fatal_exception_types: tuple[type[BaseException], ...]`.

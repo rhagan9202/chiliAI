@@ -73,11 +73,21 @@ done:
 
 Actually bounding a stage's wall clock needs cooperative cancellation inside the
 handlers (a deadline token they check between units of work). Until that exists,
-the timeout is an observability signal: grep the worker log for
-`Stage exceeded its timeout`. A genuinely wedged stage still surfaces
-operationally — it stalls `HealthState.last_event_processed_at`, so
-`GET :8001/health` flips to `degraded` past `degraded_after_seconds`, and the
-run it belongs to is picked up by `reconcile_stale_runs`.
+the timeout is an observability signal.
+
+**A genuinely wedged stage surfaces only as that `error` log line.** Grep the
+worker log for `Stage exceeded its timeout`; do not expect anything else to
+notice. `run_worker` calls `reconcile_stale_runs` (and the score-run and
+connector-sync reconcilers) at the top of its `while not shutdown_event.is_set()`
+body and awaits `_drain_once` later in the *same* iteration, so a handler that
+never returns blocks the very loop that would run them — the loop never comes
+back around, and the reconcilers never fire. Both compose files ship a single
+worker, so this is the shipped configuration. `GET :8001/health` is not a
+backstop either: it returns 200 for every payload, no probe inspects the body,
+and `HealthState.status()` reports `degraded` on staleness only once at least
+one event has been processed — a worker that wedges on its first event after a
+restart still reads `ok`. Making the wedge visible to a probe is tracked with
+cooperative cancellation on story `agent.12`.
 
 ### Durable DLQ record persistence (BL-023)
 

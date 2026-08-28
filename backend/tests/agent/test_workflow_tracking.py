@@ -340,6 +340,36 @@ def test_tracker_marks_run_failed_after_retry_exhaustion() -> None:
     assert run.metadata["last_error"] == "boom"
 
 
+def test_tracker_last_error_falls_back_to_the_exception_type() -> None:
+    """``str(RuntimeError())`` is ``''``; ``last_error`` is what the UI shows.
+
+    A failed run whose only explanation is an empty string tells an operator
+    nothing. This is the same exception, arriving via the same ``on_failure``
+    callback from the same failure block as the DLQ record's ``error_message``,
+    so the two must not disagree about what the failure was.
+    """
+
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-empty-error",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    tracker.fail_event(_uploaded_event(), RuntimeError())
+
+    run = run_store.get_run("workflow-empty-error")
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.metadata["last_error"] == "RuntimeError"
+
+
 def test_tracker_skips_cancelled_workflow() -> None:
     run_store = InMemoryWorkflowRunStore(
         runs=[
