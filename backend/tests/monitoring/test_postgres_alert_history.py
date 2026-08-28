@@ -13,7 +13,7 @@ import monitoring.adapters.postgres as postgres_module
 from config.schema import DatabaseConfig
 from database.runtime import create_connection_provider
 from monitoring.adapters.postgres import PostgresAlertHistoryStore
-from monitoring.exceptions import AlertLifecycleError
+from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
 from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord
 from playbooks.models import PlaybookRef
@@ -607,6 +607,122 @@ def test_concurrent_transition_loses_instead_of_committing_a_forbidden_one(
         assert isinstance(results["analyst-2"], AlertLifecycleError)
 
         row = store.get_alert("alert-cas-1")
+        assert row is not None
+        assert row.status == "resolved"
+        assert [event.to_status for event in row.triage_history] == ["resolved"]
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_concurrent_transition_to_the_same_status_signals_retry_not_forbidden(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The race-lost branch where the retried transition is still valid.
+
+    Sibling of ``test_concurrent_transition_loses_instead_of_committing_a_
+    forbidden_one``: there, the loser's transition became forbidden by the
+    time it lost the compare-and-set. Here, both analysts submit the *same*
+    target status, so after the loser re-reads and re-validates against the
+    now-current row, ``validate_alert_transition`` finds the transition
+    still valid (new_status == current_status) and does not raise -- the
+    code must fall through to the concurrent-retry signal instead of
+    silently returning a stale/duplicated result.
+
+    That signal must reach the caller as ``MonitoringSourceError`` with its
+    original message intact, not re-wrapped by the method's own broad
+    ``except Exception`` handler into the generic "Failed to transition
+    alert status." text -- which would bury the retry hint at
+    ``exc.__cause__.__cause__``, invisible to any caller that logs or
+    renders ``str(exc)``.
+    """
+    kb_id = "kb-alert-cas-retry-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        store.write_alerts(
+            [
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="alert-cas-retry-1",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="investigating",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                )
+            ]
+        )
+
+        read_barrier = threading.Barrier(2)
+        thread_state = threading.local()
+
+        def synced_validate(current_status: str, new_status: str) -> None:
+            # Only the first call per thread is the "both analysts read the
+            # alert" step being synchronized. The compare-and-set fix issues
+            # a second, recovery validate() against fresh state after a lost
+            # race -- that call must run unsynchronized, or the losing
+            # thread would block on a barrier no other thread will reach.
+            if not getattr(thread_state, "synced", False):
+                thread_state.synced = True
+                read_barrier.wait(timeout=5)
+                if getattr(thread_state, "delay_after_barrier", False):
+                    time.sleep(0.2)
+            validate_alert_transition(current_status, new_status)
+
+        monkeypatch.setattr(
+            postgres_module, "validate_alert_transition", synced_validate
+        )
+
+        results: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+        def run(actor: str, *, delay_after_barrier: bool) -> None:
+            thread_state.delay_after_barrier = delay_after_barrier
+            try:
+                results[actor] = store.transition_status(
+                    "alert-cas-retry-1",
+                    knowledge_base_id=kb_id,
+                    status="resolved",
+                    actor=actor,
+                )
+            except BaseException as exc:  # captured for the joining thread to assert on
+                results[actor] = exc
+
+        winner = threading.Thread(
+            target=run, args=("analyst-1",), kwargs={"delay_after_barrier": False}
+        )
+        loser = threading.Thread(
+            target=run, args=("analyst-2",), kwargs={"delay_after_barrier": True}
+        )
+        winner.start()
+        loser.start()
+        winner.join(timeout=10)
+        loser.join(timeout=10)
+
+        assert isinstance(results["analyst-1"], AlertHistoryRecord)
+        assert results["analyst-1"].status == "resolved"
+
+        loser_result = results["analyst-2"]
+        assert isinstance(loser_result, MonitoringSourceError)
+        assert not isinstance(loser_result, AlertLifecycleError)
+        assert str(loser_result) == (
+            "Alert status changed concurrently; retry the transition."
+        )
+
+        row = store.get_alert("alert-cas-retry-1")
         assert row is not None
         assert row.status == "resolved"
         assert [event.to_status for event in row.triage_history] == ["resolved"]

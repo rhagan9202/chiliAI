@@ -466,6 +466,8 @@ class PostgresAlertHistoryStore:
                 conn.commit()
         except AlertLifecycleError:
             raise
+        except MonitoringSourceError:
+            raise
         except Exception as exc:
             raise MonitoringSourceError("Failed to transition alert status.") from exc
         return _row_to_alert_record(row)
