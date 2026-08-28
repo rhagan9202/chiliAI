@@ -1,5 +1,40 @@
 # Sprint 2026-35 — Correctness and Security Implementation Plan
 
+## STATUS: EXECUTED — read this before the task bodies
+
+This plan was executed in full over commits `3aaddad1..a35c2640` (13 tasks,
+each reviewed independently; sprint close-out gates: 3549 backend tests
+passing at 96% coverage, pyright and ruff clean, `make check` green, no
+OpenAPI drift, frontend tsc/eslint/vitest clean).
+
+**The unchecked `- [ ]` boxes below are historical.** They record what was
+planned, not what remains. Do not work from them, and do not treat an
+unchecked box as an open item — the work is in git history.
+
+**Three of the approaches prescribed below were deliberately rejected during
+implementation, and the code does the opposite of what those task bodies
+say.** The task bodies are left intact on purpose: a plan is a record of what
+was planned, and the deviations are the interesting part.
+
+| Task | What this plan prescribes | What shipped, and why |
+|------|---------------------------|-----------------------|
+| **6** | Raise `StageStillRunningError` on timeout and have `drain_ingestion_events` **skip the ACK** so the delivery returns to the PEL. | **Rejected.** Redis `XAUTOCLAIM` claims entries idle past the threshold from *any* consumer in the group — it does not exclude the caller's own pending entries — and reclaim is now on by default at 60s in both compose files. An un-ACKed delivery would be reclaimed by the same worker ~60s later, spawning another `asyncio.to_thread` while the original thread still runs, repeating until the bounded executor is exhausted. Worse, a slow-but-healthy stage finishing at t=70s would be re-run at t=60s and **re-publish its successor event**, re-running the whole downstream pipeline. The prescription would have converted one orphaned thread into an unbounded thread leak plus a data-integrity hazard. What shipped: `timeout_seconds` is an alarm rather than a deadline — `asyncio.wait` (which does not cancel) applies the budget, an overrun logs at error, and the handler is awaited to completion so the retry/DLQ/ACK decision reflects the stage's real outcome. |
+| **8** | Check `Content-Length` **inside the handler** to bound the request body. | **Rejected.** FastAPI's `routing.py` reads and decodes the body (`await request.json()` / `request.form()`) *before* `solve_dependencies`, so with a Pydantic body param declared the body is fully buffered before any handler code runs. The check would have fired after the memory spike it was meant to prevent — a late rejection dressed up as a limit. What shipped: a custom `APIRoute` (`_SizeLimitedPushRoute`) wrapping the ASGI `receive()` channel so the cap applies as the body streams in, with `RecordPushRequest` kept as a bound param so the OpenAPI/frontend contract is preserved. It bounds a chunked body with no `Content-Length` identically. |
+| **12** | Migration `0020`'s downgrade **`DELETE`s** per-KB duplicate playbook snapshots (keeping the lowest `knowledge_base_id`) before `ADD CONSTRAINT`. | **Rejected.** Published playbook snapshots are documented as immutable (`docs/onboarding.md`, `backend/playbooks/repository.py`), and no migration in the tree contains a `DELETE FROM` — every other downgrade drops a table or a column, never rows. Silently destroying documented-immutable history to satisfy a constraint is exactly the failure class this sprint exists to close. What shipped: the downgrade `RAISE EXCEPTION`s first with an actionable message naming what to fix. Accepted trade-off: the downgrade now permanently refuses on genuine multi-KB duplicate data rather than ever succeeding unattended. |
+
+Two further corrections to this document's own content, recorded rather than
+edited into the task bodies:
+
+- Task 5 closes only the `documents.parsed` half of its audit finding. The
+  second writer (`handle_entities_validated`) accumulates across pipeline
+  stages by design, so the absolute setter there would trade a replay bug for
+  a data-loss bug. Tracked as backlog story `agent.22`.
+- Task 11's brief says the revision id is "31 characters"; it is 30.
+  Immaterial (the cap is 32), recorded because stale numbers are what this
+  sprint was watching for.
+
+---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the twelve audit findings whose failure mode is silent data corruption or a security hole — concurrent writes that lose data, event handlers that corrupt state on retry, a login flow an attacker can initiate, and three Postgres-layer defects.
