@@ -86,7 +86,8 @@ class RecordsService:
                 rejected=rejected,
             )
 
-        accepted = self._store.persist(raw_records)
+        inserted_keys = self._store.persist(raw_records)
+        accepted = len(inserted_keys)
         # Record the submission hash only after a successful persist, so a
         # persist failure does not poison the dedup set (a client retry must
         # not be falsely treated as a duplicate no-op).
@@ -116,11 +117,18 @@ class RecordsService:
                 # exist under the *original* correlation id.
                 #
                 # Roll the whole attempt back instead, so the retry is a clean
-                # first ingest. Only this attempt's rows are removed: rows that
-                # pre-existed this submission carry a different correlation id.
-                self._store.delete_batch(
+                # first ingest. The rollback is scoped to the keys ``persist``
+                # reports it actually inserted, never to the correlation id: a
+                # connector sync run assigns one correlation id and reuses it
+                # for every page (``connectors/executor``), so a
+                # correlation-scoped delete would take out the earlier pages of
+                # the same run — rows whose ``records.ingested`` events were
+                # already published and very likely already consumed. Rows this
+                # call did not insert (a record id an earlier page already
+                # landed) are likewise not ours to remove.
+                self._store.delete_records(
                     knowledge_base_id=knowledge_base_id,
-                    correlation_id=correlation_id,
+                    keys=inserted_keys,
                 )
                 self._store.discard_submission(
                     knowledge_base_id=knowledge_base_id,

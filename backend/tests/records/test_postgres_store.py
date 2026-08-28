@@ -7,7 +7,7 @@ import pytest
 from config.schema import DatabaseConfig
 from database.runtime import create_connection_provider
 from records.adapters.postgres import PostgresRawRecordStore
-from records.models import RawRecord, content_hash_for
+from records.models import RawRecord, RawRecordKey, content_hash_for
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +39,7 @@ def test_persist_and_load_round_trip(database_url: str) -> None:
             conn.commit()
 
         # Empty batch short-circuits before touching the DB.
-        assert store.persist([]) == 0
+        assert store.persist([]) == []
 
         inserted = store.persist(
             [
@@ -47,10 +47,13 @@ def test_persist_and_load_round_trip(database_url: str) -> None:
                 _record("claim-2", correlation_id=correlation_id),
             ]
         )
-        assert inserted == 2
+        assert inserted == [
+            RawRecordKey("claim_record", "claim-1"),
+            RawRecordKey("claim_record", "claim-2"),
+        ]
 
-        # Idempotent re-persist inserts nothing.
-        assert store.persist([_record("claim-1", correlation_id=correlation_id)]) == 0
+        # Idempotent re-persist inserts nothing, so RETURNING yields no key.
+        assert store.persist([_record("claim-1", correlation_id=correlation_id)]) == []
 
         loaded = store.load_batch(
             knowledge_base_id="kb-records-test", correlation_id=correlation_id
@@ -190,11 +193,17 @@ def test_delete_by_kb_clears_both_tables(database_url: str) -> None:
 def test_rollback_removes_only_this_batch_and_frees_the_submission(
     database_url: str,
 ) -> None:
-    """``delete_batch`` / ``discard_submission`` back out one failed attempt.
+    """``delete_records`` / ``discard_submission`` back out one failed attempt.
 
     The service calls these when a publish fails after the rows are committed.
-    Rows landed by an earlier run must survive, and the submission hash must
+    Rows landed by an earlier call must survive, and the submission hash must
     stop suppressing the client's retry.
+
+    The surviving rows here share the failed attempt's **correlation id** on
+    purpose: a connector sync run assigns one correlation id and reuses it for
+    every page, so giving each batch its own id would test a situation the
+    connector path never produces and would pass against a rollback that wipes
+    the whole run.
     """
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
     assert provider is not None
@@ -210,30 +219,30 @@ def test_rollback_removes_only_this_batch_and_frees_the_submission(
             )
             conn.commit()
 
-        store.persist([_record("keep-1", correlation_id="corr-keep")])
-        store.persist([_record("rollback-1", correlation_id="corr-rollback")])
+        run_correlation_id = "corr-sync-run"
+        store.persist([_record("keep-1", correlation_id=run_correlation_id)])
+        failed_page = store.persist(
+            [_record("rollback-1", correlation_id=run_correlation_id)]
+        )
         store.record_submission(
             knowledge_base_id="kb-records-test",
             submission_hash="hash-rollback",
-            correlation_id="corr-rollback",
+            correlation_id=run_correlation_id,
         )
         assert store.was_submitted(
             knowledge_base_id="kb-records-test", submission_hash="hash-rollback"
         )
 
-        removed = store.delete_batch(
-            knowledge_base_id="kb-records-test", correlation_id="corr-rollback"
+        removed = store.delete_records(
+            knowledge_base_id="kb-records-test", keys=failed_page
         )
         store.discard_submission(
             knowledge_base_id="kb-records-test", submission_hash="hash-rollback"
         )
 
         assert removed == 1
-        assert store.load_batch(
-            knowledge_base_id="kb-records-test", correlation_id="corr-rollback"
-        ) == []
         surviving = store.load_batch(
-            knowledge_base_id="kb-records-test", correlation_id="corr-keep"
+            knowledge_base_id="kb-records-test", correlation_id=run_correlation_id
         )
         assert [record.record_id for record in surviving] == ["keep-1"]
         assert not store.was_submitted(

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from records.models import RawRecord
+from collections.abc import Sequence
+
+from records.models import RawRecord, RawRecordKey
 
 __all__ = ["InMemoryRawRecordStore"]
 
@@ -14,14 +16,15 @@ class InMemoryRawRecordStore:
         self._records: dict[tuple[str, str, str], RawRecord] = {}
         self._submissions: set[tuple[str, str]] = set()
 
-    def persist(self, records: list[RawRecord]) -> int:
-        inserted = 0
+    def persist(self, records: list[RawRecord]) -> list[RawRecordKey]:
+        """Insert rows idempotently; return the keys this call actually created."""
+        inserted: list[RawRecordKey] = []
         for record in records:
             key = (record.knowledge_base_id, record.record_type, record.record_id)
             if key in self._records:
                 continue
             self._records[key] = record
-            inserted += 1
+            inserted.append(RawRecordKey(record.record_type, record.record_id))
         return inserted
 
     def load_batch(
@@ -91,14 +94,13 @@ class InMemoryRawRecordStore:
         """Forget a submission hash so an identical retry is not a duplicate."""
         self._submissions.discard((knowledge_base_id, submission_hash))
 
-    def delete_batch(self, *, knowledge_base_id: str, correlation_id: str) -> int:
-        """Delete the rows landed under one ingest run; return the count removed."""
-        keys = [
-            key
-            for key, record in self._records.items()
-            if record.knowledge_base_id == knowledge_base_id
-            and record.correlation_id == correlation_id
-        ]
+    def delete_records(
+        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
+    ) -> int:
+        """Delete exactly the named rows; return the count removed."""
+        removed = 0
         for key in keys:
-            del self._records[key]
-        return len(keys)
+            stored_key = (knowledge_base_id, key.record_type, key.record_id)
+            if self._records.pop(stored_key, None) is not None:
+                removed += 1
+        return removed

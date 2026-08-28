@@ -426,3 +426,117 @@ def test_a_successful_publish_still_dedupes_an_identical_retry() -> None:
     assert second.accepted_count == 0
     published = [e for e in bus.published_events if isinstance(e, RecordsIngestedEvent)]
     assert len(published) == 1
+
+
+class _PublishFailsOnNthCall:
+    """Event bus that rejects one nominated publish and accepts the rest."""
+
+    def __init__(self, *, fail_on_call: int) -> None:
+        self.published_events: list[object] = []
+        self._fail_on_call = fail_on_call
+        self._calls = 0
+
+    def publish(self, event: object) -> None:
+        self._calls += 1
+        if self._calls == self._fail_on_call:
+            raise RuntimeError("event bus unavailable")
+        self.published_events.append(event)
+
+    def subscribe(self, event_type: str, handler: object) -> None:
+        return None
+
+
+def test_a_failed_page_does_not_delete_the_pages_already_published() -> None:
+    """A connector sync run reuses one correlation id across every page.
+
+    ``connectors/executor`` assigns the correlation id once per run and passes
+    it to every ``register_records`` call, so a rollback keyed on the
+    correlation id alone deletes the rows of every earlier page in the run —
+    pages whose ``records.ingested`` events were already published and very
+    likely already consumed.
+    """
+    store = InMemoryRawRecordStore()
+    bus = _PublishFailsOnNthCall(fail_on_call=2)
+    service = create_records_service(
+        store, event_bus=cast(EventBus, bus), records_config=_records_config()
+    )
+    run_correlation_id = "corr-sync-run-1"
+
+    service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "page1-a", "amount": "10"}],
+            source_type="api_push",
+            source_ref="connector:c1:run:r1",
+        ),
+        correlation_id=run_correlation_id,
+    )
+    with pytest.raises(RuntimeError):
+        service.register_records(
+            "kb-1",
+            RecordSubmission(
+                feed_name="claims_feed",
+                rows=[{"claim_id": "page2-a", "amount": "20"}],
+                source_type="api_push",
+                source_ref="connector:c1:run:r1",
+            ),
+            correlation_id=run_correlation_id,
+        )
+
+    surviving = {
+        record.record_id
+        for record in store.load_batch(
+            knowledge_base_id="kb-1", correlation_id=run_correlation_id
+        )
+    }
+    assert surviving == {"page1-a"}, (
+        "the failed page's rollback deleted rows from an already-published page: "
+        f"{surviving}"
+    )
+
+
+def test_a_rollback_keeps_a_row_the_failed_call_did_not_insert() -> None:
+    """persist() dedupes by record id, so a re-sent row is not this call's.
+
+    A page that re-sends a record id an earlier page already landed inserts
+    nothing for it. Rolling that row back would delete the earlier page's row,
+    which is not this attempt's to remove.
+    """
+    store = InMemoryRawRecordStore()
+    bus = _PublishFailsOnNthCall(fail_on_call=2)
+    service = create_records_service(
+        store, event_bus=cast(EventBus, bus), records_config=_records_config()
+    )
+    run_correlation_id = "corr-sync-run-2"
+
+    service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "shared", "amount": "10"}],
+            source_type="api_push",
+        ),
+        correlation_id=run_correlation_id,
+    )
+    with pytest.raises(RuntimeError):
+        service.register_records(
+            "kb-1",
+            RecordSubmission(
+                feed_name="claims_feed",
+                rows=[
+                    {"claim_id": "shared", "amount": "10"},
+                    {"claim_id": "page2-only", "amount": "20"},
+                ],
+                source_type="api_push",
+            ),
+            correlation_id=run_correlation_id,
+        )
+
+    surviving = {
+        record.record_id
+        for record in store.load_batch(
+            knowledge_base_id="kb-1", correlation_id=run_correlation_id
+        )
+    }
+    assert surviving == {"shared"}

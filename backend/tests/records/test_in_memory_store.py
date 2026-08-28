@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.protocols import RawRecordStore
-from records.models import RawRecord, content_hash_for
+from records.models import RawRecord, RawRecordKey, content_hash_for
 
 
 def _record(record_id: str, *, correlation_id: str = "corr-1") -> RawRecord:
@@ -23,14 +23,36 @@ def _record(record_id: str, *, correlation_id: str = "corr-1") -> RawRecord:
 
 def test_store_satisfies_protocol() -> None:
     store: RawRecordStore = InMemoryRawRecordStore()
-    assert store.persist([]) == 0
+    assert store.persist([]) == []
 
 
-def test_persist_counts_only_new_rows() -> None:
+def test_persist_returns_only_the_keys_it_inserted() -> None:
     store = InMemoryRawRecordStore()
-    assert store.persist([_record("c1"), _record("c2")]) == 2
-    # Re-persisting the same primary keys inserts nothing (idempotency).
-    assert store.persist([_record("c1")]) == 0
+    assert store.persist([_record("c1"), _record("c2")]) == [
+        RawRecordKey("claim_record", "c1"),
+        RawRecordKey("claim_record", "c2"),
+    ]
+    # Re-persisting the same primary keys inserts nothing (idempotency), so
+    # those rows are not this call's to roll back.
+    assert store.persist([_record("c1")]) == []
+
+
+def test_delete_records_removes_only_the_named_keys() -> None:
+    store = InMemoryRawRecordStore()
+    store.persist([_record("c1", correlation_id="corr-shared")])
+    store.persist([_record("c2", correlation_id="corr-shared")])
+
+    removed = store.delete_records(
+        knowledge_base_id="kb-1", keys=[RawRecordKey("claim_record", "c2")]
+    )
+
+    assert removed == 1
+    assert [
+        record.record_id
+        for record in store.load_batch(
+            knowledge_base_id="kb-1", correlation_id="corr-shared"
+        )
+    ] == ["c1"]
 
 
 def test_load_batch_filters_by_correlation_id() -> None:
