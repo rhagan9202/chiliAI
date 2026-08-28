@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import httpx
@@ -64,27 +63,35 @@ def _install_audit_service(app: FastAPI, audit_service: AuditLogService) -> None
     app.dependency_overrides[get_audit_log_service] = lambda: audit_service
 
 
-def _client_with_oidc() -> tuple[TestClient, InMemorySessionStore]:
+@pytest.fixture
+def oidc_client() -> Iterator[tuple[TestClient, InMemorySessionStore]]:
     """Build a TestClient wired for the OIDC login/callback flow.
 
-    Standalone helper (no ``monkeypatch`` fixture) so login-CSRF tests can
-    build a client inline. Env vars are set directly rather than via
-    monkeypatch -- ``create_app()`` only reads them lazily through
-    dependency-overridden collaborators here, and the values are constant
-    test doubles, so leaking them across tests in the same process is
-    harmless (matches the values ``app_with_auth`` already sets).
+    A yield fixture (not a plain helper) specifically so the env vars can go
+    through ``pytest.MonkeyPatch.context()`` rather than leaking into
+    ``os.environ`` for the rest of the process: control stays paused at
+    ``yield`` -- inside the ``with`` block -- for the whole test, including a
+    real HTTP request the test makes after this fixture "returns", and only
+    unwinds (reverting the env) at teardown. ``app_with_auth`` uses the
+    ``monkeypatch`` fixture directly for the same two vars; this exists
+    because these particular tests build their own app + overrides inline
+    rather than taking `app_with_auth` and configuring it further.
     """
-    os.environ.setdefault("OIDC_CLIENT_SECRET", "shh")
-    os.environ.setdefault("REDIS_URL", "redis://redis:6379/15")
-    app = create_app()
-    store = InMemorySessionStore()
-    domain = _domain_with_auth()
-    audit_service = AuditLogService(InMemoryAuditLogRepository())
-    _install_audit_service(app, audit_service)
-    app.dependency_overrides[get_session_store] = lambda: store
-    app.dependency_overrides[get_domain_config] = lambda: domain
-    client = TestClient(app, follow_redirects=False)
-    return client, store
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("OIDC_CLIENT_SECRET", "shh")
+        # REDIS_URL is required by get_session_store's factory branch when
+        # auth.enabled=True, but these tests override get_session_store
+        # below, so its value never actually matters -- only its presence.
+        mp.setenv("REDIS_URL", "redis://redis:6379/15")
+        app = create_app()
+        store = InMemorySessionStore()
+        domain = _domain_with_auth()
+        audit_service = AuditLogService(InMemoryAuditLogRepository())
+        _install_audit_service(app, audit_service)
+        app.dependency_overrides[get_session_store] = lambda: store
+        app.dependency_overrides[get_domain_config] = lambda: domain
+        client = TestClient(app, follow_redirects=False)
+        yield client, store
 
 
 def test_me_returns_401_when_unauthenticated(app_with_auth) -> None:
@@ -265,6 +272,7 @@ def test_login_returns_404_when_auth_disabled(app_with_auth: FastAPI) -> None:
 
 
 def test_a_callback_without_the_login_cookie_is_rejected(
+    oidc_client: tuple[TestClient, InMemorySessionStore],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Login CSRF / session fixation.
@@ -285,7 +293,7 @@ def test_a_callback_without_the_login_cookie_is_rejected(
     from api.middleware import auth as auth_module
     from api.routers import _oidc_client
 
-    client, session_store = _client_with_oidc()
+    client, session_store = oidc_client
     session_store.save_pkce_state(state="s-1", verifier="v-1", ttl_seconds=300, nonce="n-1")
 
     monkeypatch.setattr(
@@ -307,10 +315,21 @@ def test_a_callback_without_the_login_cookie_is_rejected(
 
     assert response.status_code == 400
     assert "login" in response.json()["detail"].lower()
+    # No login ever happened in this browser, so there is no login-state
+    # cookie to clear on the wire -- but the rejection must still not mint a
+    # session, and must still actively expire the cookie name so any stale
+    # chiliai_login_state a client happens to hold (e.g. reused from a prior,
+    # different login attempt) doesn't linger.
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" not in set_cookie
+    assert "chiliai_login_state=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
 
 
-def test_a_callback_whose_cookie_disagrees_with_the_state_is_rejected() -> None:
-    client, session_store = _client_with_oidc()
+def test_a_callback_whose_cookie_disagrees_with_the_state_is_rejected(
+    oidc_client: tuple[TestClient, InMemorySessionStore],
+) -> None:
+    client, session_store = oidc_client
     session_store.save_pkce_state(state="s-1", verifier="v-1", ttl_seconds=300, nonce="n-1")
     client.cookies.set("chiliai_login_state", "s-other")
 
@@ -319,10 +338,19 @@ def test_a_callback_whose_cookie_disagrees_with_the_state_is_rejected() -> None:
     )
 
     assert response.status_code == 400
+    # The mismatched cookie itself must be cleared on rejection, not just
+    # not-honored -- an attacker-supplied login-state cookie must not
+    # survive the failed attempt.
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" not in set_cookie
+    assert "chiliai_login_state=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
 
 
-def test_the_login_redirect_sets_the_binding_cookie() -> None:
-    client, _ = _client_with_oidc()
+def test_the_login_redirect_sets_the_binding_cookie(
+    oidc_client: tuple[TestClient, InMemorySessionStore],
+) -> None:
+    client, _ = oidc_client
 
     response = client.get("/auth/login", follow_redirects=False)
 
@@ -330,6 +358,7 @@ def test_the_login_redirect_sets_the_binding_cookie() -> None:
     cookie = response.headers["set-cookie"]
     assert "chiliai_login_state=" in cookie
     assert "HttpOnly" in cookie
+    assert "Secure" in cookie
     # Starlette renders the attribute name capitalized but the value as
     # passed ("samesite=lax" -> "SameSite=lax"); cookie attribute values are
     # case-insensitive per RFC 6265bis, so compare case-insensitively --
@@ -401,6 +430,11 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     assert "HttpOnly" in set_cookie
     assert "Secure" in set_cookie
     assert "samesite=lax" in set_cookie.lower()
+    # The login-state cookie set by /auth/login must be cleared on success
+    # too -- its job (binding this one authorization request to this
+    # browser) is done, and it should not linger past a successful login.
+    assert "chiliai_login_state=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
 
     # Extract the session id from the cookie and verify the SessionRecord was saved.
     import re
