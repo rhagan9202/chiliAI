@@ -40,8 +40,13 @@ passes the `updated_at` it read (not the new one it is writing), and the write
 only lands if the stored row still has that value. In Postgres the CAS is a
 single `WHERE ... AND updated_at = %s` UPDATE (`rowcount == 0` is
 disambiguated by a re-read: row missing → `CaseNotFoundError`, row present but
-changed → `CaseConcurrentModificationError`); the in-memory adapter compares
-directly against the stored `Case.updated_at`. This closes a data-loss bug
+changed → `CaseConcurrentModificationError`); Postgres gets true atomicity for
+free from row-level locking on that `UPDATE`. The in-memory adapter has no
+such guarantee for free — its compare and its write are three separate Python
+steps — so `InMemoryCaseRepository.update` holds a `threading.Lock` across
+all three; without it, two threads can both pass the compare against the same
+stale value and both write, the second silently discarding the first. This
+closes a data-loss bug
 where two concurrent writers (e.g. two analysts calling `attach_alert` on the
 same case) would both read the same `alert_ids`/`timeline` snapshot and both
 write their own full copy — the second writer silently discarding the first's
@@ -85,7 +90,7 @@ query param:
 
 ## Tests
 
-- `tests/cases/test_in_memory_store.py` — repository CRUD, KB isolation, filters, pagination, and the optimistic-lock guard (`CaseConcurrentModificationError` on a stale `expected_updated_at`).
+- `tests/cases/test_in_memory_store.py` — repository CRUD, KB isolation, filters, pagination, the optimistic-lock guard (`CaseConcurrentModificationError` on a stale `expected_updated_at`), and an atomicity test that deliberately widens the compare-to-write window (a patched, sleeping dict `__setitem__`) to prove the lock — not GIL luck — is what prevents a lost write.
 - `tests/cases/test_postgres_store.py` — `@pytest.mark.integration` (skipped without `DATABASE_URL`); includes the same CAS guard plus a `threading.Barrier`-synchronized concurrent-`attach_alert` test proving two racing writers can no longer silently drop each other's data.
 - `tests/cases/test_service.py` — service + promote-from-alert; includes a `threading`-based concurrent `attach_alert` test against `InMemoryCaseRepository` for the same regression.
 - `tests/api/test_phase5_stateful_routes.py`, `tests/api/test_read_model_routers.py` — KB-scoped routes + promote flow.
