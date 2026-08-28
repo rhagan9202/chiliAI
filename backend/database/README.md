@@ -52,11 +52,16 @@ operations, `0015` alert generation metadata, `0016` `audit_log`, `0017`
 `governance_eval_runs.dataset_source_refs`. `0024` adds `score_runs` and
 `score_batches`, making score-all runs durable across a restart. `0025` adds
 `connectors` + `connector_sync_runs`, `0026` a stale-sync index, `0027`
-`score_runs.skipped_entities`, and `0028` re-points
+`score_runs.skipped_entities`, `0028` re-points
 `ix_entity_derived_signals_latest` at `interval_start DESC, computed_at DESC`
-so the risk-scoring freshness lookup stays index-backed.
+so the risk-scoring freshness lookup stays index-backed, and `0029` adds a
+unique index on `alert_history (alert_id)` so the unscoped alert detail read
+and triage actions (`_ALERT_GET_SQL`, `_ALERT_ACK_SQL` in
+`monitoring/adapters/postgres.py`, which match on `alert_id` alone) stop
+sequentially scanning the table — every other index on it leads with
+`knowledge_base_id`.
 
-**Head is `0028_derived_signal_interval_ix` — 27 tables.** Derive both rather than
+**Head is `0029_alert_history_alert_id_ix` — 27 tables.** Derive both rather than
 trusting this line: `ls database/migrations/versions/` for the head, and
 `grep -c 'CREATE TABLE' database/migrations/snapshots/head.sql` for the table
 count. This sentence previously read "Head is `0013` — 16 tables total" for ten

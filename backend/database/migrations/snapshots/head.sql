@@ -462,6 +462,7 @@ ALTER TABLE ONLY public.workflow_definition_snapshots
 ALTER TABLE ONLY public.workflow_definition_snapshots
     ADD CONSTRAINT workflow_definition_snapshots_pkey PRIMARY KEY (snapshot_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
+CREATE UNIQUE INDEX ix_alert_history_alert_id ON public.alert_history USING btree (alert_id);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
 CREATE INDEX ix_audit_log_actor_occurred_at ON public.audit_log USING btree (actor_user_id, occurred_at DESC);
