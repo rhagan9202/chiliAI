@@ -26,7 +26,7 @@ Two further corrections to this document's own content, recorded rather than
 edited into the task bodies:
 
 - Task 5 closes only the `documents.parsed` half of its audit finding. The
-  second writer (`handle_entities_validated`) accumulates across pipeline
+  second writer (`handle_entities_extracted`) accumulates across pipeline
   stages by design, so the absolute setter there would trade a replay bug for
   a data-loss bug. Tracked as backlog story `agent.22`.
 - Task 11's brief says the revision id is "31 characters"; it is 30.
