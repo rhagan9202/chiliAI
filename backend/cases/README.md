@@ -15,8 +15,8 @@ case read model.
 | `adapters/protocols.py` | `CaseRepository` protocol — `create / get / list / update / delete_by_kb`. |
 | `adapters/in_memory.py` | `InMemoryCaseRepository` (dict keyed by `(kb_id, case_id)`) for tests/dev. |
 | `adapters/postgres.py` | `PostgresCaseRepository` over `database.ConnectionProvider` (psycopg-free); jsonb `alert_ids`/`timeline`/`feedback_history`; idempotent `create` (`ON CONFLICT DO NOTHING`). |
-| `service.py` | `CaseService` — orchestration, durable `add_feedback`, `promote_from_alert` (severity→priority mapping, timeline capture), and `attach_alert` (adds an alert to an existing case; leaves `evidence_pack_id` alone). |
-| `exceptions.py` | `CaseError`, `CasePersistenceError`, `CaseNotFoundError`. |
+| `service.py` | `CaseService` — orchestration, durable `add_feedback`, `promote_from_alert` (severity→priority mapping, timeline capture), and `attach_alert` (adds an alert to an existing case; leaves `evidence_pack_id` alone). Every write reloads the case first and passes its `updated_at` back to `update` as the optimistic-lock token. |
+| `exceptions.py` | `CaseError`, `CasePersistenceError`, `CaseNotFoundError`, `CaseConcurrentModificationError`. |
 
 ## Contract
 
@@ -27,9 +27,33 @@ def create(self, case: Case) -> Case: ...
 def get(self, *, knowledge_base_id: str, case_id: str) -> Case | None: ...
 def list(self, *, knowledge_base_id: str, limit: int, offset: int,
          status: str | None = None, priority: str | None = None) -> tuple[list[Case], int]: ...
-def update(self, case: Case) -> Case: ...          # raises CaseNotFoundError if absent
+def update(self, case: Case, *, expected_updated_at: datetime) -> Case: ...
+    # raises CaseNotFoundError if absent, CaseConcurrentModificationError if
+    # `expected_updated_at` no longer matches the stored row (optimistic lock)
 def delete_by_kb(self, knowledge_base_id: str) -> int: ...
 ```
+
+### Optimistic locking
+
+`update` is compare-and-set on `updated_at`, not a blind overwrite: the caller
+passes the `updated_at` it read (not the new one it is writing), and the write
+only lands if the stored row still has that value. In Postgres the CAS is a
+single `WHERE ... AND updated_at = %s` UPDATE (`rowcount == 0` is
+disambiguated by a re-read: row missing → `CaseNotFoundError`, row present but
+changed → `CaseConcurrentModificationError`); Postgres gets true atomicity for
+free from row-level locking on that `UPDATE`. The in-memory adapter has no
+such guarantee for free — its compare and its write are three separate Python
+steps — so `InMemoryCaseRepository.update` holds a `threading.Lock` across
+all three; without it, two threads can both pass the compare against the same
+stale value and both write, the second silently discarding the first. This
+closes a data-loss bug
+where two concurrent writers (e.g. two analysts calling `attach_alert` on the
+same case) would both read the same `alert_ids`/`timeline` snapshot and both
+write their own full copy — the second writer silently discarding the first's
+change while still returning 200. Every `CaseService` write site
+(`update`, `add_feedback`, `attach_alert`) threads the freshly-loaded
+`existing.updated_at` through as `expected_updated_at`; a caller that hits
+`CaseConcurrentModificationError` should reload and retry.
 
 ## Persistence
 
@@ -66,7 +90,7 @@ query param:
 
 ## Tests
 
-- `tests/cases/test_in_memory_store.py` — repository CRUD, KB isolation, filters, pagination.
-- `tests/cases/test_postgres_store.py` — `@pytest.mark.integration` (skipped without `DATABASE_URL`).
-- `tests/cases/test_service.py` — service + promote-from-alert.
+- `tests/cases/test_in_memory_store.py` — repository CRUD, KB isolation, filters, pagination, the optimistic-lock guard (`CaseConcurrentModificationError` on a stale `expected_updated_at`), and an atomicity test that deliberately widens the compare-to-write window (a patched, sleeping dict `__setitem__`) to prove the lock — not GIL luck — is what prevents a lost write.
+- `tests/cases/test_postgres_store.py` — `@pytest.mark.integration` (skipped without `DATABASE_URL`); includes the same CAS guard plus a `threading.Barrier`-synchronized concurrent-`attach_alert` test proving two racing writers can no longer silently drop each other's data.
+- `tests/cases/test_service.py` — service + promote-from-alert; includes a `threading`-based concurrent `attach_alert` test against `InMemoryCaseRepository` for the same regression.
 - `tests/api/test_phase5_stateful_routes.py`, `tests/api/test_read_model_routers.py` — KB-scoped routes + promote flow.

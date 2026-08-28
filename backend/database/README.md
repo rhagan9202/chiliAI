@@ -50,14 +50,57 @@ operations, `0015` alert generation metadata, `0016` `audit_log`, `0017`
 (+ `cases.playbook_ref`), `0020` playbook-snapshot KB scoping, `0021`
 `workflow_definition_snapshots`, `0022` `governance_eval_runs`, `0023`
 `governance_eval_runs.dataset_source_refs`. `0024` adds `score_runs` and
-`score_batches`, making score-all runs durable across a restart.
+`score_batches`, making score-all runs durable across a restart. `0025` adds
+`connectors` + `connector_sync_runs`, `0026` a stale-sync index, `0027`
+`score_runs.skipped_entities`, `0028` re-points
+`ix_entity_derived_signals_latest` at `interval_start DESC, computed_at DESC`
+so the risk-scoring freshness lookup stays index-backed, and `0029` adds a
+unique index on `alert_history (alert_id)` so the unscoped alert detail read
+and triage actions (`_ALERT_GET_SQL`, `_ALERT_ACK_SQL` in
+`monitoring/adapters/postgres.py`, which match on `alert_id` alone) stop
+sequentially scanning the table — every other index on it leads with
+`knowledge_base_id`.
 
-**Head is `0024_score_runs` — 24 tables.** Derive both rather than
+**Head is `0029_alert_history_alert_id_ix` — 27 tables.** Derive both rather than
 trusting this line: `ls database/migrations/versions/` for the head, and
 `grep -c 'CREATE TABLE' database/migrations/snapshots/head.sql` for the table
 count. This sentence previously read "Head is `0013` — 16 tables total" for ten
 revisions after it stopped being true, which is exactly how a new migration gets
 authored as `0014_*` on top of an existing one.
+
+## Pre-deploy requirements
+
+Migrations that add a constraint can fail on a populated database even though
+they applied cleanly in CI. Check these before running `alembic upgrade head`
+against an environment that already holds data.
+
+### `0029` — unique index on `alert_history (alert_id)`
+
+`0029_alert_history_alert_id_ix` issues `CREATE UNIQUE INDEX` and was validated
+only against an empty `alert_history` (0 rows in `chili_test`). If the target
+database holds duplicate `alert_id` values, the migration **fails** — loudly,
+transactionally, with no data loss, but the upgrade stops.
+
+Run this first and resolve anything it returns:
+
+```sql
+SELECT alert_id, count(*)
+FROM alert_history
+GROUP BY alert_id
+HAVING count(*) > 1;
+```
+
+Duplicates are not a reason to weaken the index to a non-unique one. The
+unscoped read and triage paths (`_ALERT_GET_SQL`, `_ALERT_ACK_SQL` in
+`monitoring/adapters/postgres.py`) already match on `alert_id` alone, so
+duplicates mean those queries are **already** returning an arbitrary row. A
+failing migration reveals that latent bug; a plain index would keep it hidden.
+Deduplicate the rows (keep the newest per `alert_id`, or the one the audit log
+references), then re-run the upgrade.
+
+The index build is non-concurrent and takes a table lock for its duration,
+consistent with every other index migration here (`0026`, `0028`). Size the
+maintenance window accordingly on a large `alert_history`.
 
 ## Commands
 

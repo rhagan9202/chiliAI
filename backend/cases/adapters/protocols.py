@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from cases.models import Case
@@ -31,8 +32,13 @@ class CaseRepository(Protocol):
         """Return a page of cases (newest first) plus the total match count."""
         ...
 
-    def update(self, case: Case) -> Case:
-        """Update an existing case; raise ``CaseNotFoundError`` if absent."""
+    def update(self, case: Case, *, expected_updated_at: datetime) -> Case:
+        """Update an existing case, failing if it changed since it was read.
+
+        ``expected_updated_at`` is the ``updated_at`` the caller loaded, not the
+        new one it is writing. Raises ``CaseNotFoundError`` if absent and
+        ``CaseConcurrentModificationError`` if another writer got there first.
+        """
         ...
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:

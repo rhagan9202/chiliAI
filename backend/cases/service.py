@@ -102,7 +102,9 @@ class CaseService:
             changes["priority"] = priority
         if assignee is not None:
             changes["assignee"] = assignee
-        return self._repository.update(existing.model_copy(update=changes))
+        return self._repository.update(
+            existing.model_copy(update=changes), expected_updated_at=existing.updated_at
+        )
 
     def add_feedback(
         self,
@@ -133,7 +135,8 @@ class CaseService:
                     "feedback_history": [*existing.feedback_history, feedback],
                     "updated_at": utc_now(),
                 }
-            )
+            ),
+            expected_updated_at=existing.updated_at,
         )
 
     def attach_alert(
@@ -173,7 +176,8 @@ class CaseService:
                     "timeline": [*existing.timeline, event],
                     "updated_at": event.occurred_at,
                 }
-            )
+            ),
+            expected_updated_at=existing.updated_at,
         )
 
     def promote_from_alert(

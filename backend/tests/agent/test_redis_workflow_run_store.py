@@ -26,12 +26,16 @@ class _FakeRedis:
         self.zrevrange_calls: list[tuple[str, int, int]] = []
         self.ping_error: RedisError | None = None
         self.ping_count = 0
+        self.close_calls = 0
 
     def ping(self) -> bool:
         self.ping_count += 1
         if self.ping_error is not None:
             raise self.ping_error
         return True
+
+    def close(self) -> None:
+        self.close_calls += 1
 
     def set(self, key: str, value: str, nx: bool = False) -> bool:
         if nx and key in self.values:
@@ -149,6 +153,18 @@ def test_redis_workflow_run_store_saves_and_loads_detached_run() -> None:
     loaded = store.get_run("workflow-1")
     assert loaded == run
     assert "mutated" not in loaded.metadata
+
+
+def test_redis_workflow_run_store_close_closes_the_underlying_client() -> None:
+    client = _FakeRedis()
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+
+    store.close()
+
+    assert client.close_calls == 1
 
 
 def test_redis_workflow_run_store_health_pings_client() -> None:

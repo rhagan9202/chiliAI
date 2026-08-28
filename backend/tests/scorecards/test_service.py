@@ -490,3 +490,66 @@ def test_snapshot_hash_reflects_evaluated_records() -> None:
     assert data_run.id != empty_run.id
     assert repeat_run.id == data_run.id
     assert repeat_run.source_snapshot_hash == data_run.source_snapshot_hash
+
+
+def _config_with_supply_pass_min(pass_min: float) -> DomainConfig:
+    """``_test_config()`` with the UH supply-ratio pass threshold moved."""
+    config = _test_config()
+    template = config.scorecards.templates[0]
+    supply_section = template.sections[0]
+    metric = supply_section.metrics[0]
+    retuned_metric = metric.model_copy(
+        update={
+            "thresholds": ScorecardThresholdConfig(
+                pass_min=pass_min, warn_min=0.9, fail_max=0.89
+            )
+        }
+    )
+    retuned_template = template.model_copy(
+        update={
+            "sections": [
+                supply_section.model_copy(update={"metrics": [retuned_metric]}),
+                *template.sections[1:],
+            ]
+        }
+    )
+    return config.model_copy(
+        update={"scorecards": ScorecardsConfig(templates=[retuned_template])}
+    )
+
+
+def test_retuning_a_threshold_produces_a_fresh_run_over_unchanged_records() -> None:
+    """A template change must not be served the previous run's grades.
+
+    Run reuse is keyed on the source snapshot, so an operator who tightens a
+    threshold and re-runs over identical records would otherwise be handed the
+    row computed under the old thresholds — the grade the change was meant to
+    alter.
+    """
+    records = _uh_records(available_units=1100, demand=1000, observed=date.today())
+    lenient, repo = _service(
+        StubRecordLoader(records), config=_config_with_supply_pass_min(1.0)
+    )
+    first = lenient.generate(_fresh_request())
+    assert first.overall_health == "pass"
+
+    strict = ScorecardService(
+        config=_config_with_supply_pass_min(1.2),
+        repository=repo,
+        record_source=StubRecordLoader(records),
+    )
+    second = strict.generate(_fresh_request())
+
+    assert second.id != first.id
+    assert second.overall_health == "warn"
+
+
+def test_identical_template_and_records_still_reuse_the_run() -> None:
+    """The fingerprint must not defeat idempotency for an unchanged template."""
+    records = _uh_records(observed=date.today())
+    service, _repo = _service(StubRecordLoader(records), config=_test_config())
+
+    first = service.generate(_fresh_request())
+    second = service.generate(_fresh_request())
+
+    assert second.id == first.id

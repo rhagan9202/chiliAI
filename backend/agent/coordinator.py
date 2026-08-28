@@ -38,6 +38,7 @@ from agent.policy import (
 )
 from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
+from config.feature_typology_index import build_feature_typology_index
 from config.display import entity_display_label
 from config.loader import load_active_config
 from config.schema import (
@@ -512,6 +513,37 @@ class WorkerDependencies:
     workflow_definition_repository: WorkflowDefinitionRepository | None = None
     capability_registry: CapabilityRegistryService | None = None
     audit_service: AuditLogService | None = None
+    connection_provider: ConnectionProvider | None = None
+
+    def close(self) -> None:
+        """Release every resource this dependency set owns.
+
+        Each call is suppressed independently so a half-built set -- one
+        whose factory raised partway through -- is still fully releasable:
+        a resource that never got constructed simply isn't in this tuple,
+        and one whose ``close()`` itself raises doesn't stop the rest from
+        being released.
+
+        Limitation: this can only close resources that made it into a
+        constructed ``WorkerDependencies`` instance. If
+        ``build_worker_dependencies`` opens a resource (e.g. a Neo4j driver)
+        and then raises before returning, that resource is a bare local
+        variable at the point of failure -- it was never attached to any
+        instance, so no ``WorkerDependencies.close()`` call can ever reach
+        it. That is a real gap in this approach, not covered here.
+        """
+        for closeable in (
+            self.connection_provider,
+            self.graph_repository,
+            self.vector_store,
+            self.event_bus,
+            self.workflow_run_store,
+        ):
+            close = getattr(closeable, "close", None)
+            if close is None:
+                continue
+            with contextlib.suppress(Exception):
+                close()
 
 
 # ---------------------------------------------------------------------------
@@ -1447,6 +1479,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         ),
         capability_registry=capability_registry,
         audit_service=build_audit_log_service(connection_provider),
+        connection_provider=connection_provider,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -1552,6 +1585,12 @@ def apply_pending_config_updates(
             )
     # Ack on the bus the deliveries came from (the *old* deps' bus).
     deps.event_bus.ack(deliveries)
+    if current is not deps:
+        # The swap succeeded (`current` was rebound to `rebuilt` above).
+        # Close the replaced set now -- after the ack, since the ack still
+        # has to go out on the outgoing bus. Nothing to close on the
+        # `except` path: the factory raised, so `rebuilt` never existed.
+        deps.close()
     return current
 
 
@@ -1585,10 +1624,13 @@ def handle_documents_parsed(
     for document in event.documents:
         started_at = time.perf_counter()
         if kb_repository is not None and document.warning_count > 0:
-            kb_repository.record_document_warnings(
+            # Absolute, not additive: this handler body is re-entered on retry
+            # and on at-least-once redelivery, and the event already carries
+            # the document's total.
+            kb_repository.set_document_warnings(
                 document.knowledge_base_id,
                 document.source_document_id,
-                additional_count=document.warning_count,
+                count=document.warning_count,
                 reasons=list(document.warning_samples),
             )
         if document.parsed_document_storage_key is None:
@@ -2520,6 +2562,7 @@ def _run_risk_stage(
             RiskAssessmentRequest(
                 knowledge_base_id=knowledge_base_id,
                 entity_id=entity_id,
+                correlation_id=event.correlation_id,
                 request_id=_risk_request_id(
                     correlation_id=event.correlation_id,
                     knowledge_base_id=knowledge_base_id,
@@ -2970,10 +3013,7 @@ def _entity_type_from_id(entity_id: str) -> str:
 def _feature_typology_index(config: DomainConfig | None) -> dict[str, list[str]]:
     if config is None:
         return {}
-    return {
-        feature.id: list(feature.typology_ids)
-        for feature in config.feature_catalog.features
-    }
+    return build_feature_typology_index(config)
 
 
 def handle_alerts_created_for_graph(
@@ -3222,6 +3262,7 @@ def assess_entities(
                 RiskAssessmentRequest(
                     knowledge_base_id=knowledge_base_id,
                     entity_id=entity_id,
+                    correlation_id=correlation_id,
                     request_id=_risk_request_id(
                         correlation_id=correlation_id,
                         knowledge_base_id=knowledge_base_id,
@@ -4409,6 +4450,27 @@ async def run_handler_with_retry(
     while a long stage runs. ``drain_ingestion_events`` still awaits each
     delivery in turn, so this changes the execution thread, not the
     one-handler-at-a-time ordering.
+
+    Stage timeout (``StagePolicy.timeout_seconds``)
+    ----------------------------------------------
+    The timeout is an **alarm, not an abandonment**. A thread submitted to the
+    default executor cannot be cancelled, so ``asyncio.wait_for`` would only
+    abandon the *await* — the stage keeps running, keeps writing artifacts and
+    keeps publishing its successor event. This function therefore logs the
+    overrun and keeps waiting, so the retry/DLQ decision (and with it the
+    caller's ACK) is made on the stage's real outcome.
+
+    Abandoning is not merely lossy, it is unsafe. Returning at the deadline
+    would ACK a delivery whose handler is still running (marking the run FAILED
+    and writing a DLQ record whose replay would duplicate the work); refusing
+    the ACK instead is no better, because the un-ACKed entry is redelivered by
+    ``reclaim_stale_pending`` (``CHILI_EVENT_RECLAIM_MIN_IDLE_MS``, default
+    60s) — re-running a stage that already finished, or starting a second
+    thread alongside one that is genuinely wedged. The latter compounds every
+    reclaim interval until the bounded default executor
+    (``min(32, cpu + 4)`` threads) is exhausted and the whole worker wedges.
+    Bounding a stage's *wall clock* needs cooperative cancellation inside the
+    handlers; until that exists, the honest behaviour is to wait and shout.
     """
 
     policy = stage_policy or StagePolicy(retry_policy=retry_policy or RetryPolicy())
@@ -4417,16 +4479,35 @@ async def run_handler_with_retry(
     retries_attempted = 0
     for attempt in range(retry_policy.max_retries + 1):
         try:
-            handler_task = asyncio.to_thread(handler)
+            started_at = time.monotonic()
+            handler_task = asyncio.ensure_future(asyncio.to_thread(handler))
+            overran = False
             if policy.timeout_seconds is not None:
-                return await asyncio.wait_for(
-                    handler_task, timeout=policy.timeout_seconds
+                completed, _still_running = await asyncio.wait(
+                    {handler_task}, timeout=policy.timeout_seconds
                 )
-            return await handler_task
-        except asyncio.TimeoutError as exc:
-            last_exc = exc
-            retries_attempted = attempt
-            break
+                overran = not completed
+                if overran:
+                    logger.error(
+                        "Stage exceeded its timeout but its worker thread cannot be "
+                        "cancelled; still waiting rather than acking work in flight. "
+                        "event_type=%s correlation_id=%s attempt=%d "
+                        "timeout_seconds=%.3f",
+                        event.event_type,
+                        event.correlation_id,
+                        attempt + 1,
+                        policy.timeout_seconds,
+                    )
+            result = await handler_task
+            if overran:
+                logger.warning(
+                    "Stage that exceeded its timeout finished. event_type=%s "
+                    "correlation_id=%s elapsed_seconds=%.3f",
+                    event.event_type,
+                    event.correlation_id,
+                    time.monotonic() - started_at,
+                )
+            return result
         except Exception as exc:  # noqa: BLE001 - we route to DLQ
             last_exc = exc
             retries_attempted = attempt
@@ -4444,13 +4525,16 @@ async def run_handler_with_retry(
                 event.correlation_id,
                 attempt + 1,
                 delay,
-                str(exc),
+                str(exc) or type(exc).__name__,
             )
             await cast("asyncio.Future[None]", sleep(delay))
 
     assert last_exc is not None  # noqa: S101 - retry loop guarantees this
+    # ``str(RuntimeError())`` is ``''``. An empty DLQ message tells an operator
+    # triaging a replay nothing at all, so fall back to the exception type.
+    error_message = str(last_exc) or type(last_exc).__name__
     error_info = DlqErrorInfo(
-        error_message=str(last_exc),
+        error_message=error_message,
         traceback="".join(
             traceback.format_exception(type(last_exc), last_exc, last_exc.__traceback__)
         ),
@@ -4462,7 +4546,7 @@ async def run_handler_with_retry(
         event.event_type,
         event.correlation_id,
         retry_policy.max_retries,
-        str(last_exc),
+        error_message,
     )
     if on_failure is not None:
         on_failure(last_exc)
@@ -4933,6 +5017,9 @@ async def run_worker(
     except asyncio.CancelledError:
         logger.info("Worker shutting down")
     finally:
+        # `deps` is assigned unconditionally before this try/finally begins,
+        # so it is always bound here -- no None guard needed.
+        deps.close()
         if health_server is not None:
             health_server.close()
             with contextlib.suppress(Exception):

@@ -451,17 +451,19 @@
 **so that** a flaky monitoring evaluation does not get the same retry budget as a flaky LLM call, and known fatal errors short-circuit to DLQ instead of looping.
 
 ### Current State
-- `RetryPolicy` is a single global model applied to every handler (`backend/agent/models.py:20-32`).
-- `handle_risk_scored` and `handle_graph_updated_for_analytics` use ad-hoc `except` blocks that swallow errors with no policy declaration (`backend/agent/coordinator.py:1429-1475`).
-- `run_handler_with_retry` always treats every `Exception` as retryable (`backend/agent/coordinator.py:2374-2381`).
-- No mapping from event_type → `StagePolicy`.
+(Refreshed 2026-08-28; the line references below had drifted by thousands of lines.)
+- `RetryPolicy` remains a single global model applied to every handler unless a stage policy overrides it (`backend/agent/models.py:21-33`).
+- `handle_risk_scored` (`backend/agent/coordinator.py:2836`) and `handle_graph_updated_for_analytics` (`backend/agent/coordinator.py:2268`) still use ad-hoc `except` blocks that swallow errors with no policy declaration.
+- Landed since this story was written: `StagePolicy`/`StagePolicyRegistry` (`backend/agent/policy.py`), fed from `CHILI_STAGE_POLICY_JSON` via `load_stage_policy_registry_from_env`, and `run_handler_with_retry` (`backend/agent/coordinator.py:4349`) short-circuits declared `fatal_exception_types` instead of retrying every `Exception`. `CHILI_STAGE_POLICY_JSON` is set in no compose file or shipped pack, so no deployment configures a stage policy today.
+- Still missing: the registry is not fed from `AgentConfig` (cross-edge to `agent.10`), and there is no real per-stage deadline — see the cooperative-cancellation criterion below.
 
 ### Acceptance Criteria
 - [ ] `StagePolicy` model with `timeout_seconds`, `retry_policy`, `fatal_exception_types: tuple[type[BaseException], ...]`.
 - [ ] `StagePolicyRegistry` keyed by `event_type`, fed from `AgentConfig` (cross-edge to `agent.10`).
-- [ ] `run_handler_with_retry` enforces per-stage timeout via `asyncio.wait_for` and short-circuits to DLQ on declared fatal exception types.
+- [ ] `run_handler_with_retry` short-circuits to DLQ on declared fatal exception types.
+- [ ] A real per-stage deadline requires **cooperative cancellation** — a deadline token handlers check between units of work. `asyncio.wait_for` must NOT be used: handlers run in the default executor via `asyncio.to_thread` and a running thread cannot be cancelled, so it abandons only the await. Since 2026-08-28 `timeout_seconds` is therefore an alarm budget (log the overrun, keep waiting for the real outcome); see `backend/agent/README.md` § Stage timeouts are an alarm, not a deadline for why both abandon-and-ACK and abandon-and-refuse-to-ACK are unsafe.
 - [ ] Ad-hoc `try/except continue` blocks in handlers replaced with raised typed errors classified by the registry.
-- [ ] Tests: timeout exceeded → retry; fatal classification → straight to DLQ; retryable → respects per-stage retry count.
+- [ ] Tests: overrunning stage → logged, awaited to its real outcome, not dead-lettered; fatal classification → straight to DLQ; retryable → respects per-stage retry count.
 
 ### Verification
 - `pytest backend/tests/agent/test_coordinator.py -k policy` green.
@@ -805,3 +807,47 @@
 ### Code touch points
 - `backend/agent/service.py` (modify — `start_workflow`'s `except ValueError` handler)
 - `backend/tests/agent/test_service.py` (modify)
+
+---
+
+## Story agent.22: Make the extract-stage document warning counter replay-safe with per-stage accounting
+
+**ID:** agent.22
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+
+**As an** operator reading a document's warning count,
+**I need** the number to stay correct when a pipeline handler is retried,
+**so that** a transient failure does not inflate a document's warnings and make a clean document look problematic.
+
+### Current State
+- Sprint 2026-35 Task 5 closed **half** of its audit finding ("retrying a `documents.parsed` / `entities.validated` handler re-applies the non-idempotent document warning counter"). `handle_documents_parsed` now calls an absolute setter (`set_document_warnings`) so a replay overwrites rather than accumulates.
+- The second writer, `handle_entities_validated` (`backend/agent/coordinator.py`, near the per-document warning write), still does an additive `record_document_warnings`. A retry of that handler still inflates the count.
+- This was left deliberately, not overlooked: that call site is additive **across pipeline stages by design** — parse-stage warnings and extract-stage warnings accumulate into one total. Converting it to the absolute setter would make the extract stage overwrite the parse stage's warnings, trading a replay bug for a data-loss bug.
+- A correct fix needs per-stage accounting: an absolute setter keyed by stage, with the total derived as the sum across stages. That is a schema/API design decision that was never specced and is larger than a fix round.
+- Related API asymmetry noted at the time: `set_document_warnings` returns `None` while its sibling `record_document_warnings` returns the updated record.
+
+### Acceptance Criteria
+- [ ] `KnowledgeBaseRepository` gains per-stage warning accounting — an absolute setter keyed by (document, stage) — with the document's total derived as the sum across stages rather than stored as a running counter.
+- [ ] `handle_entities_validated` writes its stage's warnings absolutely, so re-entering the handler for the same document leaves the count unchanged.
+- [ ] The parse stage keeps its warnings when the extract stage writes: no stage can overwrite another's contribution.
+- [ ] Both real adapters (`in_memory.py` and `object_store.py`) implement it with identical guard order and the same shared reasons cap; there is no Postgres adapter for this repository.
+- [ ] The `set_document_warnings` / `record_document_warnings` return-shape asymmetry is resolved one way or the other.
+- [ ] `backend/knowledgebases/README.md` and `backend/agent/README.md` record the per-stage model.
+
+### Verification
+- [ ] A replay test re-enters `handle_entities_validated` for the same document and asserts the warning count and reasons are unchanged (the pre-fix RED is an inflated count, e.g. `assert 4 == 2` with duplicated reasons).
+- [ ] A cross-stage test writes parse-stage warnings then extract-stage warnings and asserts the total is the sum and neither stage's reasons were lost.
+- [ ] Both adapters are covered by the same parametrized tests.
+- [ ] `backend/.venv/bin/pytest tests/agent tests/knowledgebases -q` green; `pyright` (bare) and `ruff check --no-cache .` clean.
+
+### Code touch points
+- `backend/knowledgebases/adapters/protocols.py` (modify — per-stage setter)
+- `backend/knowledgebases/adapters/in_memory.py`, `backend/knowledgebases/adapters/object_store.py` (modify)
+- `backend/agent/coordinator.py` (modify — `handle_entities_validated` warning write)
+- `backend/knowledgebases/README.md`, `backend/agent/README.md` (modify)
+- `backend/tests/agent/**`, `backend/tests/knowledgebases/**` (modify/new)
+
+---

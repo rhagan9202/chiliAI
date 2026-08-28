@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, Field
 
@@ -73,8 +73,21 @@ class RecordBatch(BaseModel):
     records: list[RawRecord] = Field(default_factory=lambda: [])
 
 
+class RawRecordKey(NamedTuple):
+    """Identity of one ``raw_records`` row within a knowledge base.
+
+    ``persist`` returns the keys it actually inserted so a caller can undo
+    exactly its own writes. The correlation id is not that discriminator: a
+    connector sync run reuses one correlation id across every page.
+    """
+
+    record_type: str
+    record_id: str
+
+
 __all__ = [
     "RawRecord",
+    "RawRecordKey",
     "RecordBatch",
     "RejectedRow",
     "content_hash_for",

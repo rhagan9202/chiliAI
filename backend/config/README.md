@@ -5,6 +5,26 @@ pack" retargets the whole platform — entities, relationships, records feeds,
 policy rules, alert thresholds, UI navigation/labels, and infra backend
 selection — with **zero code changes**.
 
+
+## `feature_typology_index.py`
+
+`build_feature_typology_index(config)` maps every name a scored `RiskFactor`
+can arrive under to the typology ids it evidences.
+
+The feature catalog keys entries by feature id (`weekly_provider_billing_zscore`),
+but a factor is named after the *signal* that produced it — the peer metric
+name (`weekly_provider_billing`), the derived-signal name, or
+`timeseries_anomaly:<spec>` as `run_timeseries_stage` writes it. Indexing by
+feature id alone missed every lookup, so `top_typology_ids` was empty for every
+entity in every shipped pack and
+`GET /analytics/{kb}/risk-queue?typology_id=...` returned nothing for every
+typology.
+
+The index therefore carries each feature id *and* the signal names derived from
+its `source_mappings`. `agent/coordinator.py` and `api/dependencies.py` both
+call this one builder — they previously kept separate private copies that
+drifted together into the same bug.
+
 ## Layout
 
 - `schema.py` — `DomainConfig` (Pydantic) and all section sub-models. The

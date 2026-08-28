@@ -10,12 +10,13 @@ needed.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal, cast
 
 from database.protocols import ConnectionProvider, Row
 from records.exceptions import RecordPersistenceError
-from records.models import RawRecord
+from records.models import RawRecord, RawRecordKey
 
 _INSERT_SQL = """
     INSERT INTO raw_records (
@@ -23,6 +24,7 @@ _INSERT_SQL = """
         source_type, source_ref, correlation_id, content_hash, ingested_at
     ) VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
     ON CONFLICT (knowledge_base_id, record_type, record_id) DO NOTHING
+    RETURNING record_type, record_id
 """
 
 _SELECT_SQL = """
@@ -63,6 +65,16 @@ _RECORD_SUBMISSION_SQL = """
     ON CONFLICT (knowledge_base_id, submission_hash) DO NOTHING
 """
 
+_DISCARD_SUBMISSION_SQL = """
+    DELETE FROM record_submissions
+    WHERE knowledge_base_id = %s AND submission_hash = %s
+"""
+
+_DELETE_RECORDS_SQL = """
+    DELETE FROM raw_records
+    WHERE knowledge_base_id = %s AND record_type = %s AND record_id = %s
+"""
+
 
 class PostgresRawRecordStore:
     """A ``RawRecordStore`` backed by the ``raw_records`` table."""
@@ -70,14 +82,21 @@ class PostgresRawRecordStore:
     def __init__(self, provider: ConnectionProvider) -> None:
         self._provider = provider
 
-    def persist(self, records: list[RawRecord]) -> int:
+    def persist(self, records: list[RawRecord]) -> list[RawRecordKey]:
+        """Insert rows idempotently; return the keys this call actually created.
+
+        ``RETURNING`` yields no row for a key the ``ON CONFLICT`` clause
+        skipped, which is exactly the distinction the rollback path needs: a
+        row that already existed belongs to whoever inserted it, not to this
+        call.
+        """
         if not records:
-            return 0
-        inserted = 0
+            return []
+        inserted: list[RawRecordKey] = []
         try:
             with self._provider.connection() as conn:
                 for record in records:
-                    cursor = conn.execute(
+                    row = conn.execute(
                         _INSERT_SQL,
                         (
                             record.knowledge_base_id,
@@ -90,8 +109,9 @@ class PostgresRawRecordStore:
                             record.content_hash,
                             record.ingested_at,
                         ),
-                    )
-                    inserted += cursor.rowcount
+                    ).fetchone()
+                    if row is not None:
+                        inserted.append(RawRecordKey(str(row[0]), str(row[1])))
                 conn.commit()
         except Exception as exc:
             raise RecordPersistenceError("Failed to persist raw records.") from exc
@@ -165,6 +185,41 @@ class PostgresRawRecordStore:
             raise RecordPersistenceError(
                 "Failed to record submission hash."
             ) from exc
+
+    def discard_submission(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> None:
+        """Forget a submission hash so an identical retry is not a duplicate."""
+        try:
+            with self._provider.connection() as conn:
+                conn.execute(
+                    _DISCARD_SUBMISSION_SQL, (knowledge_base_id, submission_hash)
+                )
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError(
+                "Failed to discard submission hash."
+            ) from exc
+
+    def delete_records(
+        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
+    ) -> int:
+        """Delete exactly the named rows; return the count removed."""
+        if not keys:
+            return 0
+        removed = 0
+        try:
+            with self._provider.connection() as conn:
+                for key in keys:
+                    cursor = conn.execute(
+                        _DELETE_RECORDS_SQL,
+                        (knowledge_base_id, key.record_type, key.record_id),
+                    )
+                    removed += cursor.rowcount
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError("Failed to delete raw records.") from exc
+        return removed
 
 
 def _row_to_record(row: Row) -> RawRecord:

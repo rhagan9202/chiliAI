@@ -302,6 +302,124 @@ def test_list_workflows_uses_store_cursor_for_scoped_second_page() -> None:
     assert second_body["next_offset"] is None
 
 
+def test_pagination_does_not_drop_accessible_runs_inside_a_page() -> None:
+    """The inner scan loop breaks as soon as the limit is filled, which can
+    happen partway through an underlying store page. next_offset must resume
+    at the first unconsumed item in that page, not at the page's end -- else
+    every accessible run between the two is silently skipped.
+
+    Two denied runs occupy all of the first store page (limit=3), so the scan
+    has to fetch a second page to fill the limit. That second page holds
+    three items but only the first two are needed to reach the limit --
+    "wf-D" is the unconsumed third item that the bug drops.
+    """
+    app = _app_with_workflows_and_scoped_user(
+        roles=["viewer"],
+        runs=[
+            WorkflowRun(
+                workflow_id="denied-0",
+                knowledge_base_id="kb-2",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="denied-1",
+                knowledge_base_id="kb-2",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 9, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="wf-a",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="wf-b",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 7, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="wf-c",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 6, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="wf-d",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="wf-e",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+
+    first_response = TestClient(app).get(
+        "/workflows", params={"limit": 3, "offset": 0}
+    )
+
+    assert first_response.status_code == 200
+    first_body = first_response.json()
+    assert [item["id"] for item in first_body["items"]] == ["wf-a", "wf-b", "wf-c"]
+    assert first_body["has_more"] is True
+
+    second_response = TestClient(app).get(
+        "/workflows", params={"limit": 3, "offset": first_body["next_offset"]}
+    )
+
+    assert second_response.status_code == 200
+    second_body = second_response.json()
+    # "wf-d" is the run the buggy cursor skips -- it must be the first item
+    # on the next page, not "wf-e".
+    assert [item["id"] for item in second_body["items"]] == ["wf-d", "wf-e"]
+
+
+def test_list_workflows_with_limit_zero_returns_no_items() -> None:
+    """limit=0 is allowed by the route (`ge=0`) and takes a dedicated branch
+    that never calls the entitlement-scan loop -- confirm it still behaves
+    sanely for an entitled user rather than erroring or scanning forever.
+    """
+    app = _app_with_workflows_and_scoped_user(
+        roles=["viewer"],
+        runs=[
+            WorkflowRun(
+                workflow_id="wf-a",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+            )
+        ],
+    )
+
+    response = TestClient(app).get("/workflows", params={"limit": 0, "offset": 0})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+
+
 def test_get_workflow_returns_run_for_viewer() -> None:
     app = _app_with_workflows_and_auth()
 

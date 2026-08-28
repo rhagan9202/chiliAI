@@ -667,3 +667,47 @@ so that replay and purge operations can be reviewed after incident response.
 - `docs/wiki/modules/events.md`
 
 ---
+
+## Story events.17: Bound stage runtime against the reclaim threshold so a slow handler is not re-run
+
+**ID:** events.17
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+
+**As an** operator running more than one worker replica,
+**I need** a slow-but-healthy pipeline stage to finish once,
+**so that** a stage that outlives the reclaim threshold does not get re-run by another replica and re-publish its successor event, re-running the whole downstream pipeline.
+
+### Current State
+- Sprint 2026-35 defaulted `reclaim_min_idle_ms` to 60s and set `CHILI_EVENT_RECLAIM_MIN_IDLE_MS=60000` explicitly in **both** compose files, closing the "a worker killed mid-batch strands its in-flight entries forever" gap.
+- `reclaim_stale_pending` is the tree's only `XAUTOCLAIM` (`backend/events/adapters/redis_streams.py`), and Redis `XAUTOCLAIM` claims entries idle past the threshold from **any** consumer in the group — it does not exclude entries still being worked. `agent/coordinator.py` invokes it from the drain loop.
+- Consequence: a delivery whose handler is still running at t=60s is eligible for reclaim. A slow-but-healthy stage finishing at t=70s can be re-run from t=60s and **re-publish its successor event**, re-running the whole downstream pipeline. This is a data-integrity hazard, not just wasted work.
+- Single-replica deployments are partly shielded because the drain loop is what calls the reclaimers and a blocking handler also blocks them; multi-replica deployments have no such coupling, and neither compose file nor the k8s/helm manifests pin replicas to 1 as a safety property.
+- Related gap deferred with this one: worker health has no automated consequence — `/health` returns `200 OK` for every payload and `status()` never leaves `"ok"` if the first event wedges, so a wedged stage is invisible to a probe. Changing that spans compose + k8s + helm probe configuration.
+- Also open from the same task: a handler-raised `TimeoutError` is now retried rather than short-circuiting to the DLQ, and the `asyncio.ensure_future` + `asyncio.wait` shape no longer propagates cancellation to the handler task on an outer `CancelledError` (unreachable on the normal path).
+
+### Acceptance Criteria
+- [ ] Reclaim can no longer claim a delivery whose handler is still in flight in this process — for example an in-flight registry consulted before claiming, or a periodic `XCLAIM`-style liveness touch that keeps the entry's idle timer below the threshold while work continues.
+- [ ] The guarantee is documented as holding across replicas, not only within one process, and the mechanism chosen is stated with why it holds (Redis semantics, not process-local bookkeeping, where replicas are involved).
+- [ ] The relationship between a stage's expected runtime and `reclaim_min_idle_ms` is documented in `backend/events/README.md`, with the failure it prevents named.
+- [ ] Cooperative cancellation for a genuinely wedged stage is added or explicitly scoped out with a stated reason.
+- [ ] Worker health gains an automated consequence: a wedged drain loop is visible to a probe (`status()` leaves `"ok"`), and the probe configuration is updated in compose and the k8s/helm manifests together.
+- [ ] The `TimeoutError`-is-retried behaviour change is re-examined and either kept with a stated rationale or reverted to a DLQ short-circuit.
+
+### Verification
+- [ ] A test drives a handler that outlives the reclaim threshold and asserts the delivery is not re-dispatched and its successor event is published exactly once.
+- [ ] A test with two consumers in the group proves the guarantee holds across replicas, not only within one process.
+- [ ] A test asserts the health surface reports degraded when the drain loop has not progressed.
+- [ ] `backend/.venv/bin/pytest tests/events tests/agent -q` green, plus the `-m integration` Redis subset; `pyright` (bare) and `ruff check --no-cache .` clean.
+
+### Code touch points
+- `backend/events/adapters/redis_streams.py` (modify — reclaim eligibility / liveness touch)
+- `backend/events/runtime.py` (modify — settings and defaults)
+- `backend/agent/coordinator.py` (modify — drain loop, in-flight bookkeeping, health status)
+- `backend/events/README.md`, `backend/agent/README.md` (modify)
+- `docker-compose.dev.yaml`, `docker-compose.yaml`, `infra/` k8s/helm manifests (modify — probes)
+- `backend/tests/events/**`, `backend/tests/agent/**` (modify/new)
+
+---

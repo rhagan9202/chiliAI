@@ -56,6 +56,42 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The upgrade widened uniqueness to include knowledge_base_id, so a
+    # populated database can legitimately hold one row per knowledge base for
+    # the same (domain_name, playbook_id, version) -- the pre-0020 schema has
+    # no column to disambiguate those rows. Silently deleting the extras to
+    # force the narrower PRIMARY KEY back on would destroy playbook
+    # snapshots the playbooks module treats as immutable published history,
+    # with no visible signal beyond a clean exit code. Fail loudly instead so
+    # an operator resolves the duplicates deliberately before retrying.
+    op.execute(
+        """
+        DO $$
+        DECLARE
+            duplicate_count integer;
+        BEGIN
+            SELECT count(*) INTO duplicate_count
+            FROM (
+                SELECT domain_name, playbook_id, version
+                FROM fraud_playbook_snapshots
+                GROUP BY domain_name, playbook_id, version
+                HAVING count(*) > 1
+            ) AS duplicated_keys;
+
+            IF duplicate_count > 0 THEN
+                RAISE EXCEPTION
+                    'Cannot downgrade fraud_playbook_snapshots: % '
+                    '(domain_name, playbook_id, version) group(s) hold '
+                    'snapshots from more than one knowledge_base_id. The '
+                    'pre-0020 schema cannot represent per-knowledge-base '
+                    'snapshots. Resolve the duplicates manually (export, '
+                    'reassign, or delete the extra knowledge_base_id rows) '
+                    'before retrying this downgrade.',
+                    duplicate_count;
+            END IF;
+        END $$;
+        """
+    )
     op.execute("DROP INDEX IF EXISTS ix_fraud_playbook_snapshots_domain_status")
     op.execute(
         """

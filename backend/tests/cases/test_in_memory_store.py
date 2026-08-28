@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
 
 from cases.adapters.in_memory import InMemoryCaseRepository
-from cases.exceptions import CaseNotFoundError
+from cases.exceptions import CaseConcurrentModificationError, CaseNotFoundError
 from cases.models import Case, CasePriority, CaseStatus
+from shared.utils import utc_now
 
 
 def _case(
@@ -93,9 +96,11 @@ def test_list_paginates() -> None:
 
 def test_update_existing_case() -> None:
     repo = InMemoryCaseRepository()
-    repo.create(_case("c1", status="open"))
+    created = repo.create(_case("c1", status="open"))
 
-    updated = repo.update(_case("c1", status="closed"))
+    updated = repo.update(
+        _case("c1", status="closed"), expected_updated_at=created.updated_at
+    )
 
     assert updated.status == "closed"
     refetched = repo.get(knowledge_base_id="kb-1", case_id="c1")
@@ -107,7 +112,90 @@ def test_update_missing_raises() -> None:
     repo = InMemoryCaseRepository()
 
     with pytest.raises(CaseNotFoundError):
-        repo.update(_case("ghost"))
+        repo.update(_case("ghost"), expected_updated_at=utc_now())
+
+
+def test_update_raises_when_the_row_changed_concurrently() -> None:
+    repo = InMemoryCaseRepository()
+    created = repo.create(_case("c1", status="open"))
+
+    with pytest.raises(CaseConcurrentModificationError):
+        repo.update(_case("c1", status="closed"), expected_updated_at=utc_now())
+
+    refetched = repo.get(knowledge_base_id="kb-1", case_id="c1")
+    assert refetched is not None
+    assert refetched.status == "open"
+    assert refetched.updated_at == created.updated_at
+
+
+def test_update_is_atomic_under_a_widened_compare_and_write_window() -> None:
+    """The compare-and-set in ``update`` must not lose a write to a race.
+
+    ``update`` reads the existing row, compares its ``updated_at``, then
+    writes -- three separate steps. Without a lock held across all three, two
+    threads can interleave: both compare against the same stored value, then
+    both write, with the second write silently discarding the first (the
+    same defect this task exists to close, one layer down, since Postgres
+    gets true atomicity for free from row-level locking and the in-memory
+    adapter does not).
+
+    A real race would only hit this on an unlucky GIL interleave, which makes
+    a test that relies on it timing-lucky rather than a real guard. Instead,
+    the private ``_cases`` dict is swapped for one whose ``__setitem__``
+    sleeps before writing, deliberately widening the compare-to-write window
+    so two barrier-synchronized threads reliably overlap inside it. With the
+    lock in place, the second thread cannot even begin its compare until the
+    first has finished writing, so it correctly loses via
+    ``CaseConcurrentModificationError`` instead of silently overwriting.
+    """
+    repo = InMemoryCaseRepository()
+    created = repo.create(_case("c1", status="open"))
+
+    class _SlowWriteDict(dict[tuple[str, str], Case]):
+        def __setitem__(self, key: tuple[str, str], value: Case) -> None:
+            time.sleep(0.05)
+            super().__setitem__(key, value)
+
+    repo._cases = _SlowWriteDict(repo._cases)  # pyright: ignore[reportPrivateUsage]
+
+    start = threading.Barrier(2)
+    results: dict[str, Case | BaseException] = {}
+
+    def write(label: str, status: CaseStatus) -> None:
+        start.wait(timeout=5)
+        candidate = created.model_copy(update={"status": status, "updated_at": utc_now()})
+        try:
+            results[label] = repo.update(candidate, expected_updated_at=created.updated_at)
+        except BaseException as exc:  # captured for the joining thread to assert on
+            results[label] = exc
+
+    thread_closed = threading.Thread(target=write, args=("closed", "closed"))
+    thread_review = threading.Thread(target=write, args=("in_review", "in_review"))
+    thread_closed.start()
+    thread_review.start()
+    thread_closed.join(timeout=10)
+    thread_review.join(timeout=10)
+
+    successes = {
+        label: result for label, result in results.items() if isinstance(result, Case)
+    }
+    failures = {
+        label: result
+        for label, result in results.items()
+        if isinstance(result, BaseException)
+    }
+    assert len(successes) == 1 and len(failures) == 1, (
+        "expected exactly one writer to win and the other to raise "
+        f"CaseConcurrentModificationError under a widened compare-and-write "
+        f"window; got results={results!r}"
+    )
+    [failure] = failures.values()
+    assert isinstance(failure, CaseConcurrentModificationError)
+
+    winner_label = next(iter(successes))
+    refetched = repo.get(knowledge_base_id="kb-1", case_id="c1")
+    assert refetched is not None
+    assert refetched.status == winner_label
 
 
 def test_delete_by_kb() -> None:

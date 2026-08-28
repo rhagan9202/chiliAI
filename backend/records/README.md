@@ -7,6 +7,36 @@ rows against a config-declared feed schema, lands canonical rows in the
 worker's Flow 1 handler then fans each batch out to the knowledge graph and
 the `observations` table.
 
+
+## Publish failure rolls the whole attempt back
+
+`RecordsService.register_records` persists rows, records the submission hash,
+then publishes `records.ingested`. If the publish raises (Redis briefly
+unavailable), the rows are committed but no event references them — and
+`handle_records_ingested` loads strictly by `correlation_id` from the event, so
+nothing will ever read them.
+
+Leaving the submission hash behind compounded that: the client's identical
+retry hit `was_submitted` and short-circuited to `duplicate=True`,
+`accepted_count=0`, publishing nothing, and returned HTTP 200. Re-persisting
+could not help either, because `persist()` dedupes by `record_id` and the rows
+already existed under the *original* correlation id.
+
+The publish is therefore wrapped: on failure the service calls
+`delete_records(keys=...)` and `discard_submission(...)` before re-raising, so
+the client's retry is a clean first ingest.
+
+The rollback is scoped to **row identity, never the correlation id**.
+`persist()` returns the `RawRecordKey`s it actually inserted (Postgres gets
+them from `RETURNING`, which yields nothing for a row `ON CONFLICT` skipped)
+and only those are deleted. A correlation-scoped delete would be wrong on the
+connector path: `connectors/executor` assigns one correlation id per sync run
+and reuses it for every page, so rolling back page N would also delete pages
+1..N-1 — rows whose `records.ingested` events were already published and very
+likely already consumed. Rows this call did not insert (a record id an earlier
+page already landed) are equally not its to remove. Both store adapters
+implement the two methods.
+
 ## Layout
 
 - `models.py` — `RawRecord`, `RecordBatch`, `RejectedRow`, `content_hash_for`

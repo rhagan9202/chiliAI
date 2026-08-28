@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import pathlib
+
 from datetime import datetime, timezone
 
 from analytics.features.models import FeatureValueRecord
+from config.feature_typology_index import build_feature_typology_index
+from config.loader import load_config
 from analytics.risk.projection_service import (
     RiskProjectionService,
     RiskProjectionWriteRequest,
@@ -295,3 +299,47 @@ def test_rebuild_knowledge_base_replaces_stale_rows() -> None:
     assert result.upserted == 1
     assert repository.get("kb-1", "provider:123") is None
     assert repository.get("kb-1", "provider:456") == replacement
+
+
+def test_a_real_peer_metric_factor_gets_typologies_under_the_shipped_pack() -> None:
+    """End-to-end over the real catalog, not a hand-written index.
+
+    The factor name is what ``PostgresRiskSignalSource`` actually produces for
+    a peer signal — the metric name, not the catalog feature id. Building the
+    index straight off feature ids made every lookup miss and left
+    ``top_typology_ids`` empty for every entity in every shipped pack.
+    """
+    config_path = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "config"
+        / "defaults"
+        / "medicare_fraud.yaml"
+    )
+    assessment = _assessment().model_copy(
+        update={
+            "factors": [
+                RiskFactorReference(
+                    factor_name="weekly_provider_billing",
+                    raw_value=0.95,
+                    weight=1.0,
+                    contribution=0.91,
+                    rationale="Provider billing is above peer norm.",
+                )
+            ]
+        }
+    )
+    request = _request().model_copy(
+        update={
+            "assessment": assessment,
+            "feature_values": [],
+            "feature_typology_index": build_feature_typology_index(
+                load_config(config_path)
+            ),
+        }
+    )
+
+    result = RiskProjectionService(InMemoryRiskProjectionRepository()).project_assessment(
+        request
+    )
+
+    assert result.row.top_typology_ids == ["billing_spike", "peer_outlier"]

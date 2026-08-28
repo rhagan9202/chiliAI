@@ -29,6 +29,7 @@ services:
       - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
+      - CHILI_EVENT_RECLAIM_MIN_IDLE_MS=${CHILI_EVENT_RECLAIM_MIN_IDLE_MS:-60000}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
       # API and worker must agree so worker-persisted document metadata
       # (status, warning counts/reasons) is visible to API reads.
@@ -58,6 +59,7 @@ services:
       - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
+      - CHILI_EVENT_RECLAIM_MIN_IDLE_MS=${CHILI_EVENT_RECLAIM_MIN_IDLE_MS:-60000}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
       # API and worker must agree so worker-persisted document metadata
       # (status, warning counts/reasons) is visible to API reads.

@@ -74,6 +74,7 @@ class _FakeQdrantClient:
         self.count_response = _FakeCountResponse(count=0)
         self.delete_collection_response = True
         self.collection_exists_error: Exception | None = None
+        self.close_calls = 0
 
     def collection_exists(self, collection_name: str, **_: object) -> bool:
         if self.collection_exists_error is not None:
@@ -162,6 +163,21 @@ class _FakeQdrantClient:
         if self.delete_collection_response:
             self.existing_collections.discard(collection_name)
         return self.delete_collection_response
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+def test_qdrant_vector_store_close_closes_the_underlying_client() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    store.close()
+
+    assert client.close_calls == 1
 
 
 def test_qdrant_vector_store_uses_http_client_by_default(

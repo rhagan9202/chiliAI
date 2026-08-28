@@ -10,7 +10,13 @@ import pytest
 from docx import Document
 from openpyxl import Workbook
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, SourceType
+from ingestion.models import (
+    DocumentFormat,
+    ParsedDocument,
+    ParserWarning,
+    SourceDocument,
+    SourceType,
+)
 from ingestion.parsers.csv import CsvParser
 from ingestion.parsers.docx import DocxParser
 from ingestion.parsers.exceptions import ParserError
@@ -600,3 +606,69 @@ def test_tesseract_adapter_raises_clear_error_without_ocr_extra() -> None:
     adapter = TesseractOcrAdapter()
     with pytest.raises(ImportError, match="optional OCR dependencies"):
         adapter.recognize_page(b"pdf bytes", 1)
+
+
+class TestHtmlUnclosedTagsDoNotTruncateTheDocument:
+    """``html.parser`` performs no implicit tag closing.
+
+    An unclosed ``<a>`` or ``<table>`` routes every later text node into a
+    buffer that is never drained, so the tail of the document is dropped.
+    Nothing surfaced the loss: the document was marked PARSED with an empty
+    warnings list, and chunking, extraction and graph build all ran on the
+    truncated text.
+    """
+
+    warnings: list[ParserWarning] = []
+
+    def _parse(self, body: bytes) -> str:
+        """Parse and return the rendered text, asserting it is present."""
+        parsed = HtmlParser().parse(
+            _source("doc-html-unclosed", DocumentFormat.HTML), body
+        )
+        self.warnings = parsed.warnings
+        assert parsed.text_content is not None
+        return parsed.text_content
+
+    def test_text_after_an_unclosed_anchor_survives(self) -> None:
+        text = self._parse(
+            b"<html><body><p>Before the link.</p>"
+            b'<a href="https://example.com">Link text'
+            b"<p>NPI 1234567890 billed 42000 dollars.</p>"
+            b"</body></html>"
+        )
+
+        assert "1234567890" in text
+        assert "42000" in text
+
+    def test_text_after_an_unclosed_table_survives(self) -> None:
+        text = self._parse(
+            b"<html><body><p>Before the table.</p>"
+            b"<table><tr><td>Cell</td></tr>"
+            b"<p>NPI 1234567890 billed 42000 dollars.</p>"
+            b"</body></html>"
+        )
+
+        assert "1234567890" in text
+        assert "42000" in text
+
+    def test_an_unclosed_tag_is_reported_as_a_warning(self) -> None:
+        """Truncation risk must reach DocumentsParsedEvent.warning_count."""
+        self._parse(
+            b"<html><body><p>Before.</p>"
+            b"<table><tr><td>Cell</td></tr>"
+            b"<p>After.</p></body></html>"
+        )
+
+        assert [w.code for w in self.warnings if w.code == "html.unclosed_tag"] == [
+            "html.unclosed_tag"
+        ]
+
+    def test_well_formed_html_reports_no_unclosed_warning(self) -> None:
+        text = self._parse(
+            b"<html><body><p>Before.</p>"
+            b"<table><tr><td>Cell</td></tr></table>"
+            b"<p>After.</p></body></html>"
+        )
+
+        assert [w for w in self.warnings if w.code == "html.unclosed_tag"] == []
+        assert "After." in text

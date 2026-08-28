@@ -51,7 +51,9 @@ class RiskService:
         self._signal_source = signal_source
         self._event_bus = event_bus
         self._scoring_strategy: RiskScoringStrategyProtocol = (
-            scoring_strategy if scoring_strategy is not None else LinearScoringStrategy()
+            scoring_strategy
+            if scoring_strategy is not None
+            else LinearScoringStrategy()
         )
         self._delta_threshold = delta_threshold
         self.default_medium_risk_threshold = default_medium_risk_threshold
@@ -140,30 +142,33 @@ class RiskService:
             trend=trend,
             previous_score=previous_score,
         )
-        self._event_bus.publish(
-            RiskScoredEvent(
-                assessments=[
-                    RiskScoredReference(
-                        knowledge_base_id=response.knowledge_base_id,
-                        request_id=response.request_id,
-                        entity_id=response.entity_id,
-                        overall_score=response.overall_score,
-                        risk_level=response.risk_level,
-                        factor_count=response.factor_count,
-                        factors=[
-                            RiskFactorReference(
-                                factor_name=factor.factor_name,
-                                raw_value=factor.raw_value,
-                                weight=factor.weight,
-                                contribution=factor.contribution,
-                                rationale=factor.rationale,
-                            )
-                            for factor in response.factors
-                        ],
-                    )
-                ]
-            )
+        risk_scored = RiskScoredEvent(
+            assessments=[
+                RiskScoredReference(
+                    knowledge_base_id=response.knowledge_base_id,
+                    request_id=response.request_id,
+                    entity_id=response.entity_id,
+                    overall_score=response.overall_score,
+                    risk_level=response.risk_level,
+                    factor_count=response.factor_count,
+                    factors=[
+                        RiskFactorReference(
+                            factor_name=factor.factor_name,
+                            raw_value=factor.raw_value,
+                            weight=factor.weight,
+                            contribution=factor.contribution,
+                            rationale=factor.rationale,
+                        )
+                        for factor in response.factors
+                    ],
+                )
+            ]
         )
+        if request.correlation_id is not None:
+            risk_scored = risk_scored.model_copy(
+                update={"correlation_id": request.correlation_id}
+            )
+        self._event_bus.publish(risk_scored)
         return response
 
     def list_scores(self, request: RiskScoreListRequest) -> RiskScoreListResponse:

@@ -2,6 +2,22 @@
 
 `ingestion/` handles document parsing, chunking, entity/relationship extraction, and registration for the chiliAI platform. It is the document-pipeline counterpart to `records/` (tabular feeds).
 
+
+## `html.unclosed_tag`
+
+`html.parser` performs no implicit tag closing, so an unclosed `<a>` or
+`<table>` routed every later text node into a buffer nothing drained: the whole
+tail of the document was discarded, `warnings` came back empty, the document
+was marked PARSED, and chunking, extraction and graph build all ran on the
+truncated text. NPIs and dollar amounts after the unclosed tag never reached
+the graph and nothing surfaced the loss.
+
+`_StructuredHtmlParser.text()` now drains any open anchor and table state
+before the final flush, and the parser emits a `html.unclosed_tag` warning so
+the recovery is visible on `DocumentsParsedEvent.warning_count`. The recovered
+tail keeps its text but its structure may be wrong, which is what the warning
+says.
+
 ## Extractors
 
 ### PatternDocumentExtractor (default for the `local` LLM stub)

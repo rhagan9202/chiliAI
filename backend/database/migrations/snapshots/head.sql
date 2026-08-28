@@ -462,6 +462,7 @@ ALTER TABLE ONLY public.workflow_definition_snapshots
 ALTER TABLE ONLY public.workflow_definition_snapshots
     ADD CONSTRAINT workflow_definition_snapshots_pkey PRIMARY KEY (snapshot_id);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
+CREATE UNIQUE INDEX ix_alert_history_alert_id ON public.alert_history USING btree (alert_id);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
 CREATE INDEX ix_audit_log_actor_occurred_at ON public.audit_log USING btree (actor_user_id, occurred_at DESC);
@@ -474,7 +475,7 @@ CREATE INDEX ix_connector_sync_runs_connector_status ON public.connector_sync_ru
 CREATE INDEX ix_connector_sync_runs_status_updated ON public.connector_sync_runs USING btree (status, updated_at);
 CREATE INDEX ix_connectors_kb ON public.connectors USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
-CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);
+CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, interval_start DESC, computed_at DESC);
 CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_history USING btree (knowledge_base_id, metric_name, observed_at);
 CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
 CREATE INDEX ix_explanation_reviews_kb_pack_updated ON public.explanation_reviews USING btree (knowledge_base_id, evidence_pack_id, updated_at DESC);

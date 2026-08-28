@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.coordinator import handle_event, handle_risk_scored_for_graph
+from agent.models import (
+    WorkflowRun,
+    WorkflowRunStatus,
+    WorkflowStepState,
+    WorkflowStepStatus,
+)
+from agent.workflow_tracking import WorkflowEventTracker
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter
 from analytics.risk.projection_service import RiskProjectionService
 from analytics.risk.projections import (
@@ -171,3 +179,100 @@ def test_risk_scored_replay_does_not_refresh_projection() -> None:
 
     assert first is not None
     assert projection_repository.get("kb-1", "claim:c1") == first
+
+
+def _fan_out_event(*, entity_id: str) -> RiskScoredEvent:
+    return RiskScoredEvent(
+        correlation_id="corr-records",
+        occurred_at=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+        assessments=[
+            RiskScoredReference(
+                knowledge_base_id="kb-1",
+                request_id=f"risk:corr-records:kb-1:{entity_id}",
+                entity_id=entity_id,
+                overall_score=0.82,
+                risk_level="high",
+                factor_count=1,
+                factors=[
+                    RiskFactorReference(
+                        factor_name="claim_amount_threshold_exposure",
+                        raw_value=0.9,
+                        weight=1.0,
+                        contribution=0.82,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_every_entity_of_a_fan_out_reaches_the_risk_handlers() -> None:
+    """A completed shared run must not swallow the rest of the fan-out.
+
+    ``records.ingested`` closes its one-step run before the per-entity
+    ``risk.scored`` events it published are consumed. When the run gates them,
+    the projection and history write-back happen for no entity at all.
+    """
+
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
+    )
+    entity_ids = ["claim:c1", "claim:c2", "claim:c3"]
+    graph_service.upsert_records_graph(
+        "kb-1",
+        [Entity(id=entity_id, type="claim", properties={}) for entity_id in entity_ids],
+        [],
+    )
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-records",
+                knowledge_base_id="kb-1",
+                trigger_event_type="records.ingested",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[
+                    WorkflowStepState(
+                        step_name="records_ingest", status=WorkflowStepStatus.COMPLETED
+                    )
+                ],
+                metadata={"correlation_id": "corr-records"},
+            )
+        ]
+    )
+    projection_repository = InMemoryRiskProjectionRepository()
+    writer = InMemoryRiskHistoryWriter()
+
+    for entity_id in entity_ids:
+        handle_event(
+            EventDelivery(
+                event=_fan_out_event(entity_id=entity_id),
+                stream="risk.scored",
+                event_id="1-0",
+            ),
+            None,  # type: ignore[arg-type]
+            document_chunker=None,  # type: ignore[arg-type]
+            document_extractor=None,  # type: ignore[arg-type]
+            extraction_validator=None,  # type: ignore[arg-type]
+            graph_service=graph_service,
+            object_store=InMemoryObjectStore(),
+            event_bus=InMemoryEventBus(),
+            risk_history_writer=writer,
+            risk_projection_service=RiskProjectionService(projection_repository),
+            workflow_tracker=WorkflowEventTracker(run_store),
+            domain_config=load_config(
+                Path(__file__).resolve().parents[2]
+                / "config/defaults/medicare_fraud.yaml"
+            ),
+        )
+
+    projected = sorted(
+        row.entity_id
+        for row in projection_repository.list(
+            RiskProjectionQuery(knowledge_base_id="kb-1")
+        ).items
+    )
+    assert projected == entity_ids, (
+        f"the fan-out was dropped after the shared run closed: {projected}"
+    )

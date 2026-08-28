@@ -797,3 +797,48 @@ so that rule updates do not require a full service redeploy.
 - `backend/tests/monitoring/**`, `backend/tests/api/**`, `backend/tests/database/**` (modify/new)
 
 ---
+
+## Story monitoring.22: Signal a lost write race instead of returning 500
+
+**ID:** monitoring.22
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+
+**As a** fraud analyst acknowledging an alert someone else is also acting on,
+**I need** a losing concurrent write to come back as a retryable conflict rather than a server error,
+**so that** the UI can say "someone changed this, reload" instead of showing a 500 that looks like an outage.
+
+### Current State
+- Sprint 2026-35 added compare-and-set to the alert transition writes, so a lost race no longer silently overwrites. It raises `MonitoringSourceError("...retry the transition.")` (`backend/monitoring/adapters/postgres.py`).
+- `cases/` already has the shape this needs: `CaseConcurrentModificationError` (`backend/cases/exceptions.py:34`) makes a lost race structurally distinguishable from a database failure. `monitoring/exceptions.py` has no equivalent — one exception type covers both a lost CAS and a genuine outage, separable only by message text.
+- `InMemoryCaseRepository.update` was given a `threading.Lock` around its compare-and-write; the monitoring in-memory adapter has no CAS at all, so the two backends do not have the semantics they are documented to share and a concurrency test against the in-memory adapter cannot reproduce the race.
+- No caller anywhere converts a lost race into a `409`. A grep of `api/` returns no handler for `MonitoringSourceError`, and the bulk alert route catches only `AlertLifecycleError` — so a lost race escapes as a generic 500 partway through a batch.
+- Consequence recorded at the time (Ruling D11): with no distinguishable exception, skip-and-continue inside a bulk update would silently misreport a real outage as ordinary skipped rows, so aborting the batch is currently the only safe choice. The exception gap is what forces that.
+- `InMemoryCaseRepository.delete_by_kb` still does an unlocked read-then-delete loop (uncontended today, same class of gap).
+
+### Acceptance Criteria
+- [ ] `monitoring/exceptions.py` gains a dedicated concurrency exception (mirroring `CaseConcurrentModificationError`) raised only when a CAS matched zero rows, with `MonitoringSourceError` left for genuine store failures.
+- [ ] Every monitoring CAS write raises the new type on a lost race; no caller has to inspect message text to tell the two apart.
+- [ ] The monitoring in-memory adapter implements compare-and-set under a `threading.Lock` spanning compare AND write, so both adapters have the semantics they are documented to share.
+- [ ] `InMemoryCaseRepository.delete_by_kb` takes the same lock as `update`, closing the unlocked read-then-delete loop.
+- [ ] The alert routes (single and bulk) map the concurrency exception to `409` with a body that names the alert, distinct from the `500` a store failure still produces.
+- [ ] The bulk route's behaviour on a lost race is re-decided now that the two causes are separable — skip-and-continue with a per-row "skipped" result, rather than aborting the batch, provided the audit invariant still holds on every exit path.
+- [ ] `docs/wiki/flows/` and `backend/monitoring/README.md` record the 409 contract.
+
+### Verification
+- [ ] A threaded test (barrier-synchronised, widened window — not GIL luck) proves a lost race raises the concurrency exception and not `MonitoringSourceError`, against BOTH adapters.
+- [ ] A route test proves a lost race returns `409` and a store failure still returns `500`.
+- [ ] A bulk-update test proves the audit invariant holds when one row loses a race mid-batch.
+- [ ] `backend/.venv/bin/pytest tests/monitoring tests/cases tests/api -q` green; `pyright` (bare) and `ruff check --no-cache .` clean.
+
+### Code touch points
+- `backend/monitoring/exceptions.py` (modify — new concurrency exception)
+- `backend/monitoring/adapters/postgres.py`, `backend/monitoring/adapters/in_memory.py` (modify — raise it; add in-memory CAS under a lock)
+- `backend/cases/adapters/in_memory.py` (modify — lock `delete_by_kb`)
+- `backend/api/routers/alerts.py` (modify — 409 mapping, bulk-loop decision)
+- `backend/monitoring/README.md`, `docs/wiki/flows/` (modify)
+- `backend/tests/monitoring/**`, `backend/tests/cases/**`, `backend/tests/api/**` (modify/new)
+
+---

@@ -131,6 +131,7 @@ class _StructuredHtmlParser(HTMLParser):
         self._anchor_href: str | None = None
         self._anchor_text: list[str] | None = None
         self._table_stack: list[_TableState] = []
+        self.unclosed_tags: list[str] = []
         self.heading_count = 0
         self.link_count = 0
         self.table_count = 0
@@ -250,8 +251,42 @@ class _StructuredHtmlParser(HTMLParser):
             self._route_text(text)
 
     def text(self) -> str:
+        self._drain_unclosed()
         self._flush_block()
         return "\n\n".join(block for block in self._blocks if block)
+
+    def _drain_unclosed(self) -> None:
+        """Emit buffered state left open by tags the document never closed.
+
+        ``html.parser`` does no implicit closing, so an unclosed ``<a>`` or
+        ``<table>`` keeps swallowing every later text node into a buffer that
+        nothing drains. Without this, the whole tail of the document is
+        silently discarded and the parse still reports success.
+        """
+        if self._anchor_text is not None:
+            text = " ".join(self._anchor_text).strip()
+            href = self._anchor_href
+            self._anchor_text = None
+            self._anchor_href = None
+            self.unclosed_tags.append("a")
+            if text and href:
+                self.link_count += 1
+                self._route_inline(f"[{text}]({href})")
+            elif text:
+                self._route_inline(text)
+        while self._table_stack:
+            self.unclosed_tags.append("table")
+            state = self._table_stack.pop()
+            state.end_cell()
+            state.end_row()
+            if self._table_stack:
+                flattened = state.flatten_text()
+                if flattened:
+                    self._route_inline(flattened)
+            else:
+                markdown = state.render_markdown()
+                if markdown:
+                    self._blocks.append(markdown)
 
 
 class HtmlParser:
@@ -274,6 +309,17 @@ class HtmlParser:
         charset = charset_fallback_warning("html", encoding)
         if charset is not None:
             warnings.append(charset)
+        if html_parser.unclosed_tags:
+            unclosed = ", ".join(sorted(set(html_parser.unclosed_tags)))
+            warnings.append(
+                ParserWarning(
+                    code="html.unclosed_tag",
+                    message=(
+                        f"Document left {unclosed} tag(s) unclosed; the trailing "
+                        "content was recovered but its structure may be wrong."
+                    ),
+                )
+            )
 
         return ParsedDocument(
             id=f"parsed-{source.id}",

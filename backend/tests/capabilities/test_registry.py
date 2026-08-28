@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import pathlib
 from typing import cast
 
 import pytest
+import yaml
 
 from capabilities.models import (
     CapabilityManifest,
     CapabilityPermission,
     CapabilityQuery,
 )
+from capabilities.registry import create_default_capability_registry
 from capabilities.service import (
     CapabilityRegistryService,
     create_default_capability_registry_service,
@@ -361,3 +364,41 @@ def test_every_shipped_capability_is_usable_in_local_development() -> None:
             f"'{manifest.capability_id}' cannot be invoked locally: "
             f"{envelope.error_code}"
         )
+
+
+def test_every_declared_domain_matches_a_shipped_pack() -> None:
+    """Domain gates are matched against ``DomainConfig.name`` by string equality.
+
+    A name that matches no pack is not a no-op — it silently denies the
+    capability for every domain, which is indistinguishable from the
+    capability not existing. ``af_housing`` did exactly that to the shipped
+    Air Force housing pack, whose real name is ``department_air_force_housing``.
+    """
+    defaults = pathlib.Path(__file__).resolve().parents[2] / "config" / "defaults"
+    shipped = {
+        yaml.safe_load(path.read_text())["domain"]["name"]
+        for path in defaults.glob("*.yaml")
+    }
+
+    declared = {
+        domain
+        for capability in create_default_capability_registry().list()
+        for domain in capability.domain_compatibility.supported_domains
+    }
+
+    assert declared <= shipped, (
+        f"capability manifests name domains that no pack defines: {sorted(declared - shipped)}; "
+        f"shipped packs are {sorted(shipped)}"
+    )
+
+
+def test_the_housing_pack_has_usable_capabilities() -> None:
+    """The shipped housing pack must not resolve to an empty capability list."""
+    supported = [
+        capability.capability_id
+        for capability in create_default_capability_registry().list()
+        if "department_air_force_housing"
+        in capability.domain_compatibility.supported_domains
+    ]
+
+    assert supported, "the housing pack resolves to zero capabilities"

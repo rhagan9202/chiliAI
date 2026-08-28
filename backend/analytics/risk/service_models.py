@@ -29,6 +29,16 @@ class RiskAssessmentRequest(BaseModel):
             "duplicates. Falls back to a generated id when omitted."
         ),
     )
+    correlation_id: str | None = Field(
+        default=None,
+        description=(
+            "Correlation id of the event that triggered this assessment. It is "
+            "carried onto the published RiskScoredEvent so the worker can "
+            "resolve the pipeline run the assessment belongs to. Left unset, "
+            "the event gets a fresh id, matches no run, and the run's "
+            "monitoring step is never completed."
+        ),
+    )
     medium_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     high_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 

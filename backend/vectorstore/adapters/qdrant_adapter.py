@@ -93,6 +93,8 @@ class QdrantClientProtocol(Protocol):
 
     def delete_collection(self, collection_name: str, **kwargs: object) -> bool: ...
 
+    def close(self) -> None: ...
+
 
 class QdrantModelsProtocol(Protocol):
     Distance: type[Distance]
@@ -237,6 +239,10 @@ class QdrantVectorStore:
             return False
         self.delete_records(knowledge_base_id, [record_id])
         return True
+
+    def close(self) -> None:
+        """Release the underlying Qdrant client's HTTP/gRPC connections."""
+        self._client.close()
 
     def delete_namespace(self, knowledge_base_id: str) -> int:
         collection_name = self._collection_name(knowledge_base_id)

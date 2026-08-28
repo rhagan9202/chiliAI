@@ -278,6 +278,10 @@ class RedisStreamsEventBus(EventBus):
         for (stream, consumer_group), event_ids in by_stream.items():
             self._client.xack(stream, consumer_group, *event_ids)
 
+    def close(self) -> None:
+        """Release the underlying Redis client's connection pool."""
+        self._client.close()
+
     def publish_to_dlq(
         self,
         event: AnyEvent,

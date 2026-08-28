@@ -70,6 +70,17 @@ require a documented justification in this file.
   `knowledge_base_id`. Graph queries filter on `knowledge_base_id` at the
   protocol boundary (`graph/protocols.py`). Cross-KB reads are rejected at the
   service layer.
+- **Per-KB entitlement — deploy step required.** The cookie-session path
+  dropped the `knowledge_base_ids` claim until 2026-08-26, so the ten routers
+  gating on it granted every KB in the deployment on the only path the SPA
+  uses. The fix threads the claim through `SessionRecord`, but **it does not
+  invalidate sessions already in Redis**: a record written by the old code has
+  no `knowledge_base_ids` field, deserializes to `None` (read as "no claim
+  issued" = unrestricted), and stays unrestricted for its full remaining
+  `session_ttl_seconds`. Flush the session store as part of the rollout, or do
+  not consider the control enforced until the longest TTL has elapsed. See
+  [docs/wiki/flows/auth-flow.md](wiki/flows/auth-flow.md) § Deploy requirement:
+  flush existing sessions.
 - **Tested by.** `tests/api/test_*_router.py` (401/403 paths), plus the e2e
   suite that validates the public surface end-to-end
   (`tests/e2e/test_full_pipeline.py`).
@@ -95,7 +106,15 @@ require a documented justification in this file.
   DomainConfig-driven `validation.max_file_size_mb` (default 512 MB,
   pack-overridable), enforced incrementally with HTTP 413 by the
   `read_upload_file_with_limit` readers in `api/routers/knowledgebases.py`
-  and `api/routers/records.py`. nginx body-size checking is deliberately
+  and `api/routers/records.py`. The JSON api-push route
+  (`POST /records/{kb}/push`) is bounded by the same setting: its
+  `_SizeLimitedPushRoute` (`api/routers/records.py`) wraps the ASGI
+  `receive()` channel to enforce the budget against the body while it is
+  still streaming in, before FastAPI's automatic Pydantic body parsing would
+  otherwise buffer it whole, plus a `RecordPushRequest.rows` `max_length`
+  bound on row count. Neither check depends on a trustworthy
+  Content-Length — the running byte count is authoritative regardless of
+  whether the header is present. nginx body-size checking is deliberately
   disabled (`client_max_body_size 0; Helm/k8s ingress proxy-body-size "0"`) so
   the config gate is the single authority — a fixed nginx number silently
   contradicted per-pack limits (it defaulted to 1 MB). Multi-GB uploads

@@ -65,6 +65,22 @@ class KnowledgeBaseRepository(Protocol):
         reasons: list[str],
     ) -> DocumentRecord | None: ...
 
+    def set_document_warnings(
+        self,
+        knowledge_base_id: str,
+        document_id: str,
+        *,
+        count: int,
+        reasons: list[str],
+    ) -> None:
+        """Set a document's warning count and reasons to exactly these values.
+
+        Absolute rather than additive so that replaying the event that
+        carries them -- a retry, or an at-least-once redelivery -- converges
+        instead of accumulating.
+        """
+        ...
+
     def delete_document(
         self,
         knowledge_base_id: str,

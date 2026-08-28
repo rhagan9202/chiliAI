@@ -31,6 +31,17 @@ worker keeps consuming the stream it subscribed to, so a pack must **not**
 change the `events` backend/URI across a hot-swap (transport changes require a
 restart). See `docs/architecture.md` §9.3.
 
+Each rebuild opens a fresh connection pool, graph driver, vector store client,
+and two Redis clients. On a successful swap `apply_pending_config_updates`
+calls `WorkerDependencies.close()` on the replaced set (after the old
+transport acks its deliveries) so those connections are released instead of
+leaked; `run_worker` calls it again on shutdown. `close()` is best-effort per
+resource (`contextlib.suppress`) and safe on a partially built set, but it can
+only close a resource that made it into a constructed `WorkerDependencies` —
+if `build_worker_dependencies` opens something and then raises before
+returning, that resource is never attached to any instance and `close()`
+cannot reach it.
+
 ## Pipeline Handlers
 
 ### Document status projection (BL-041)
@@ -47,6 +58,47 @@ so replayed/redelivered events are no-ops rather than regressing status.
 stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
 when a database is configured, else `InMemorySourceDocumentStatusStore`
 (`ingestion/adapters/`).
+
+### Stage timeouts are an alarm, not a deadline
+
+`StagePolicy.timeout_seconds` (per event type, via `CHILI_STAGE_POLICY_JSON`)
+bounds how long `run_handler_with_retry` waits *quietly*, not how long the stage
+runs. Handlers are synchronous and run in the default executor via
+`asyncio.to_thread`; a running thread cannot be cancelled, so `asyncio.wait_for`
+would abandon only the *await*. On overrun the wrapper logs at `error`, keeps
+waiting, and makes the retry/DLQ decision — and with it the caller's ACK — on the
+stage's real outcome.
+
+Abandoning at the deadline is unsafe in both directions, which is why neither is
+done:
+
+- **ACK and dead-letter** (the pre-2026-08-28 behaviour) acknowledged a delivery
+  whose thread was still running. The run displayed `FAILED` permanently while
+  the orphaned thread finished its writes and published the successor event, and
+  the DLQ record invited a replay that would duplicate the work.
+- **Refuse the ACK** hands the entry back to `reclaim_stale_pending`
+  (`CHILI_EVENT_RECLAIM_MIN_IDLE_MS`, default 60s), which re-runs a stage that
+  may already have finished, or starts a second thread beside one that is
+  genuinely wedged — compounding every reclaim interval until the bounded default
+  executor (`min(32, cpu + 4)` threads) is exhausted and the worker wedges.
+
+Actually bounding a stage's wall clock needs cooperative cancellation inside the
+handlers (a deadline token they check between units of work). Until that exists,
+the timeout is an observability signal.
+
+**A genuinely wedged stage surfaces only as that `error` log line.** Grep the
+worker log for `Stage exceeded its timeout`; do not expect anything else to
+notice. `run_worker` calls `reconcile_stale_runs` (and the score-run and
+connector-sync reconcilers) at the top of its `while not shutdown_event.is_set()`
+body and awaits `_drain_once` later in the *same* iteration, so a handler that
+never returns blocks the very loop that would run them — the loop never comes
+back around, and the reconcilers never fire. Both compose files ship a single
+worker, so this is the shipped configuration. `GET :8001/health` is not a
+backstop either: it returns 200 for every payload, no probe inspects the body,
+and `HealthState.status()` reports `degraded` on staleness only once at least
+one event has been processed — a worker that wedges on its first event after a
+restart still reads `ok`. Making the wedge visible to a probe is tracked with
+cooperative cancellation on story `agent.12`.
 
 ### Durable DLQ record persistence (BL-023)
 
@@ -168,6 +220,7 @@ Because a run is created synchronously at submit, the KB is **busy** (`ensure_kb
 `POST /workflows/{id}/cancel` (analyst role) marks a non-terminal run `CANCELLED`; `GET /workflows/{id}` returns a single run; `GET /workflows` lists them (viewer role). Cancellation is **cooperative**:
 
 - The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps). A **`FAILED`** run does *not* gate processing: a per-document `documents.failed` event marks the run failed while sibling documents in the same batch are still in flight, and their successor events keep processing with the run record frozen at `FAILED` (BL-041 failure isolation). Only `CANCELLED` (user intent) and `COMPLETED` (replay safety) skip.
+- **Per-entity fan-out events are exempt from the `COMPLETED` gate.** Analytics emits one `risk.scored` per scored entity under the *triggering pipeline's* correlation id, so a single run is shared by an unbounded number of them. `risk.scored` is therefore not a terminal-success event (it completes the `monitoring` step and leaves the run `RUNNING`; `vectors.indexed` still closes a document run) and is not gated by an already-`COMPLETED` run — the records path publishes its whole fan-out from inside the `records.ingested` handler, so every one of them lands after that one-step run has legitimately closed. Re-running the handler is safe: monitoring, the `risk_score_history` write-back and the risk projection all key on a deterministic `request_id`. See `_FAN_OUT_EVENT_TYPES` in `agent/workflow_tracking.py`.
 - Long handlers (`handle_graph_updated_for_analytics`, `handle_records_ingested`) re-check `WorkflowEventTracker.is_run_cancelled` at loop/stage boundaries and stop early — a single in-flight synchronous stage still finishes.
 - Tracker writes use a status-only compare-and-set (`update_run_if_current` with `expected_statuses={QUEUED, RUNNING}`), so a concurrent cancel is never clobbered back to `RUNNING`/`COMPLETED`.
 

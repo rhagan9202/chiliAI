@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 import time
 from types import SimpleNamespace
-from typing import Literal
+from typing import Literal, TypedDict
 
 from collections.abc import Sequence
 
@@ -70,7 +70,7 @@ from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
 from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
 from events.codec import encode_event
 from events.dlq_models import DlqRecord
-from events.protocols import DlqErrorInfo, EventDelivery
+from events.protocols import DlqErrorInfo, EventBus, EventDelivery
 from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
@@ -107,7 +107,7 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
 from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
-from ingestion.chunker import ChunkingResult, create_document_chunker
+from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.models import (
     CandidateEntity,
@@ -124,6 +124,7 @@ from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import (
     Entity,
     EntityDefinition,
@@ -134,6 +135,7 @@ from shared.types import (
 )
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.models import StoredObject
+from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
 
@@ -2247,7 +2249,121 @@ def test_run_handler_with_retry_does_not_retry_fatal_stage_exception() -> None:
     assert event_bus.dlq_entries[0].error.retry_count == 0
 
 
-def test_run_handler_with_retry_routes_timed_out_stage_attempt_to_dlq_without_retry() -> None:
+
+def test_drain_ingestion_events_does_not_ack_while_the_handler_thread_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stage overrun must never acknowledge work that is still in flight.
+
+    ``asyncio.to_thread`` submits to the default executor and a running thread
+    cannot be cancelled -- ``asyncio.wait_for`` abandons the *await*, not the
+    work. The old timeout branch marked the run FAILED, wrote a DLQ record and
+    returned 0, and ``drain_ingestion_events`` then unconditionally ACKed the
+    delivery -- while the handler thread was still running and about to write
+    its artifacts and publish the next event. The pipeline marched on under a
+    run permanently displaying FAILED, with a DLQ entry inviting a replay that
+    would duplicate the work.
+
+    The ACK must therefore land only after the handler has actually finished,
+    and a stage that overran but then succeeded must not be dead-lettered.
+    """
+
+    timeline: list[str] = []
+    started = threading.Event()
+    release = threading.Event()
+
+    class _AckRecordingEventBus(InMemoryEventBus):
+        def ack(self, deliveries: list[EventDelivery]) -> None:
+            timeline.append("ack")
+            super().ack(deliveries)
+
+    def _slow_handle_event(*_args: object, **_kwargs: object) -> int:
+        started.set()
+        release.wait(timeout=5.0)
+        timeline.append("handler-finished")
+        return 1
+
+    def _release_after_the_stage_overruns() -> None:
+        started.wait(timeout=5.0)
+        time.sleep(0.3)
+        release.set()
+
+    monkeypatch.setattr(coordinator, "handle_event", _slow_handle_event)
+
+    event_bus = _AckRecordingEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    event_bus.publish(
+        KnowledgeBaseReadyEvent(
+            correlation_id="corr-overrun",
+            knowledge_bases=[
+                KnowledgeBaseReadyReference(
+                    knowledge_base_id="kb-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    vector_count=0,
+                )
+            ],
+        )
+    )
+    registry = StagePolicyRegistry(
+        {
+            "kb.ready": StagePolicy(
+                retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+                timeout_seconds=0.05,
+            )
+        }
+    )
+
+    releaser = threading.Thread(target=_release_after_the_stage_overruns, daemon=True)
+    releaser.start()
+    try:
+        processed = asyncio.run(
+            drain_ingestion_events(
+                event_bus,
+                IngestionService(
+                    DocumentParsingOrchestrator(
+                        create_default_registry(),
+                        fetcher=HttpxRemoteDocumentFetcher(),
+                    ),
+                    object_store=object_store,
+                    event_bus=event_bus,
+                ),
+                create_document_chunker(),
+                create_document_extractor([]),
+                create_extraction_validator([], []),
+                graph_service,
+                object_store,
+                consumer_group="test-workers",
+                consumer_name="worker-1",
+                stage_policy_registry=registry,
+                sleep=_instant_sleep,
+            )
+        )
+    finally:
+        release.set()
+        releaser.join(timeout=5.0)
+
+    assert timeline == ["handler-finished", "ack"]
+    assert processed == 1
+    assert event_bus.dlq_entries == []
+
+
+def test_run_handler_with_retry_returns_the_real_result_of_an_overrunning_stage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A stage that overruns its timeout is reported on its real outcome.
+
+    The timeout is an alarm, not an abandonment: the worker thread keeps
+    running either way, so the retry/DLQ/ACK decision waits for it. The alarm
+    must still fire, or the budget is silently doing nothing at all.
+    """
+
+    caplog.set_level(logging.WARNING, logger="chili.worker")
     event_bus = InMemoryEventBus()
     calls = 0
     lock = threading.Lock()
@@ -2275,13 +2391,73 @@ def test_run_handler_with_retry_routes_timed_out_stage_attempt_to_dlq_without_re
         )
     )
 
-    assert result == 0
+    assert result == 99
     assert calls == 1
+    assert event_bus.dlq_entries == []
+    assert "Stage exceeded its timeout" in caplog.text
+    assert "Stage that exceeded its timeout finished" in caplog.text
+
+
+def test_run_handler_with_retry_dead_letters_an_overrunning_stage_that_then_fails() -> None:
+    """Overrunning does not exempt a stage from the normal retry/DLQ path."""
+
+    event_bus = InMemoryEventBus()
+    calls = 0
+    lock = threading.Lock()
+
+    def handler() -> int:
+        nonlocal calls
+        with lock:
+            calls += 1
+        time.sleep(0.05)
+        raise RuntimeError("stage blew up after overrunning")
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-overrun-fail", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            stage_policy=StagePolicy(
+                retry_policy=RetryPolicy(max_retries=1, base_delay_seconds=0.0),
+                timeout_seconds=0.01,
+            ),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 0
+    assert calls == 2
     assert len(event_bus.dlq_entries) == 1
-    entry = event_bus.dlq_entries[0]
-    assert entry.event.correlation_id == "corr-timeout"
-    assert entry.error.retry_count == 0
-    assert "TimeoutError" in entry.error.traceback
+    assert (
+        event_bus.dlq_entries[0].error.error_message
+        == "stage blew up after overrunning"
+    )
+
+
+def test_run_handler_with_retry_dlq_error_message_falls_back_to_the_exception_type() -> None:
+    """``str(RuntimeError())`` is ``''``; an empty DLQ message tells an operator nothing."""
+
+    event_bus = InMemoryEventBus()
+
+    def handler() -> int:
+        raise RuntimeError
+
+    asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-empty-message", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert len(event_bus.dlq_entries) == 1
+    assert event_bus.dlq_entries[0].error.error_message == "RuntimeError"
 
 
 def test_run_handler_with_retry_runs_handler_off_event_loop_thread() -> None:
@@ -5552,6 +5728,7 @@ def test_run_worker_passes_configured_stage_policy_registry(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 
@@ -5621,6 +5798,7 @@ def test_run_worker_replays_recovery_markers_before_drain(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 
@@ -5683,6 +5861,7 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_bus=InMemoryEventBus(),
             event_settings=EventBusSettings(backend="in-memory"),
+            close=lambda: None,
         ),
     )
 
@@ -5904,6 +6083,98 @@ def test_handle_documents_parsed_persists_parser_warnings() -> None:
     assert record is not None
     assert record.warning_count == 2
     assert "csv.ragged_row: row 1" in record.warning_reasons
+
+
+_REPLAY_PARSED_STORAGE_KEY = "knowledgebases/kb-1/parsed/parsed-1.json"
+
+
+class _HandlerDeps(TypedDict):
+    document_chunker: DocumentChunker
+    object_store: ObjectStore
+    event_bus: EventBus
+    kb_repository: KnowledgeBaseRepository
+
+
+def _seed_document(
+    repository: InMemoryKnowledgeBaseRepository, *, kb_id: str, document_id: str
+) -> None:
+    from knowledgebases.models import DocumentRecord
+    from shared.utils import utc_now
+
+    repository.create(
+        KnowledgeBase(id=kb_id, name="KB", description="", created_at=utc_now())
+    )
+    repository.add_document(
+        DocumentRecord(
+            id=document_id,
+            knowledge_base_id=kb_id,
+            filename="claims.csv",
+            content_type="text/csv",
+        )
+    )
+
+
+def _parsed_event(
+    *, knowledge_base_id: str, document_id: str, warning_count: int
+) -> DocumentsParsedEvent:
+    return DocumentsParsedEvent(
+        documents=[
+            ParsedDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id=document_id,
+                parsed_document_id="parsed-1",
+                parser_name="test-parser",
+                warning_count=warning_count,
+                warning_samples=["truncated table"],
+                parsed_document_storage_key=_REPLAY_PARSED_STORAGE_KEY,
+            )
+        ]
+    )
+
+
+def _deps(*, kb_repository: KnowledgeBaseRepository) -> _HandlerDeps:
+    object_store = InMemoryObjectStore()
+    parsed_document = ParsedDocument(
+        id="parsed-1",
+        source_document_id="doc-1",
+        text_content="claim_id: 42",
+        parser_name="test-parser",
+    )
+    object_store.put_bytes(
+        _REPLAY_PARSED_STORAGE_KEY,
+        parsed_document.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return _HandlerDeps(
+        document_chunker=create_document_chunker(),
+        object_store=object_store,
+        event_bus=InMemoryEventBus(),
+        kb_repository=kb_repository,
+    )
+
+
+def test_replaying_a_parsed_event_does_not_inflate_the_warning_count() -> None:
+    """The handler body runs again on retry and on redelivery.
+
+    record_document_warnings is a blind read-modify-write at the very top of
+    handle_documents_parsed, before the work that can fail. With
+    RetryPolicy(max_retries=3) a transient chunker error runs the increment
+    four times, so a document with 2 warnings reports 8 -- and the value is
+    shown to users on the KB document inventory chip. Redis Streams is
+    at-least-once, so redelivery reproduces this with no handler failure at
+    all.
+    """
+    repository = InMemoryKnowledgeBaseRepository()
+    _seed_document(repository, kb_id="kb-1", document_id="doc-1")
+    event = _parsed_event(knowledge_base_id="kb-1", document_id="doc-1", warning_count=2)
+
+    handle_documents_parsed(event, **_deps(kb_repository=repository))
+    handle_documents_parsed(event, **_deps(kb_repository=repository))
+
+    document = repository.get_document("kb-1", "doc-1")
+    assert document is not None
+    assert document.warning_count == 2
+    assert document.warning_reasons == ["truncated table"]
 
 
 def test_handle_entities_extracted_persists_extraction_warnings() -> None:

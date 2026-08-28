@@ -44,6 +44,11 @@ class SessionRecord(BaseModel):
     user_id: str
     roles: list[str] = Field(default_factory=list)
     email: str | None = None
+    # Mirrors ``User.knowledge_base_ids``: ``None`` means the IdP issued no
+    # claim (unrestricted), an empty list is a real restriction. Persisted on
+    # the session because the cookie path rebuilds the principal from this
+    # record alone and never re-reads the id_token.
+    knowledge_base_ids: list[str] | None = None
     access_token: str
     refresh_token: str | None = None
     access_token_expires_at: float

@@ -42,9 +42,35 @@ __all__ = [
 
 _WORKFLOW_REGISTRY = default_workflow_registry()
 _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
-    {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
+    {"vectors.indexed", "kb.ready", "records.ingested"}
 )
 _TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
+# Event types analytics emits *once per entity* under the triggering
+# pipeline's correlation id, so one run is shared by an unbounded number of
+# them.
+#
+# ``risk.scored`` carries the correlation id deliberately: without it the
+# event resolves to no run, the ``monitoring`` step is never completed, and
+# nothing records that the pipeline's last step happened. But a shared run
+# must not be closed by any single per-entity event, because closing it also
+# *gates* the rest of the fan-out — ``begin_event`` returns False on a
+# terminal run and the coordinator drops the event without running its
+# handler. ``risk.scored`` is the sole path for monitoring, the
+# risk_score_history write-back and the risk projection, so that dropped
+# every entity after the first.
+#
+# Two rules follow, and both are needed:
+#   1. A fan-out event is not terminal-success: it completes its own step and
+#      leaves the run RUNNING. The pipeline's real terminal event
+#      (``vectors.indexed`` for documents) still closes the run, so runs do
+#      not hang for stale reconciliation to reap.
+#   2. A fan-out event is not gated by an already-COMPLETED run. The records
+#      path publishes its fan-out from inside the ``records.ingested``
+#      handler, so every one of them lands after that one-step run has
+#      legitimately closed. Re-running the handler is safe: its writes key on
+#      a deterministic request id and are idempotent by construction. A
+#      CANCELLED run still gates them — that is user intent, not bookkeeping.
+_FAN_OUT_EVENT_TYPES: frozenset[str] = frozenset({"risk.scored"})
 # Statuses in which a *pipeline* run accepts step transitions. Distinct from
 # RECONCILABLE_RUN_STATUSES below despite listing the same two: this gates
 # begin/complete_event for ingestion-triggered runs, which never reach
@@ -113,12 +139,21 @@ class WorkflowEventTracker:
             # record while sibling documents in the same batch are still in
             # flight — their successor events must keep processing, with the
             # run record left frozen at FAILED. Cancelled runs stay gated
-            # (user intent); completed runs stay gated (replay safety).
-            return tracked.run.status is WorkflowRunStatus.FAILED
+            # (user intent); completed runs stay gated (replay safety) unless
+            # the event is a per-entity fan-out, whose siblings legitimately
+            # arrive after the shared run has closed (see
+            # ``_FAN_OUT_EVENT_TYPES``).
+            if tracked.run.status is WorkflowRunStatus.FAILED:
+                return True
+            return (
+                tracked.run.status is WorkflowRunStatus.COMPLETED
+                and event.event_type in _FAN_OUT_EVENT_TYPES
+            )
         updated_steps = _steps_with_status(
             tracked.run.steps,
             tracked.step_name,
             WorkflowStepStatus.RUNNING,
+            backfill_earlier=event.event_type not in _FAN_OUT_EVENT_TYPES,
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
@@ -151,6 +186,10 @@ class WorkflowEventTracker:
                 if event.event_type in _TERMINAL_FAILURE_EVENT_TYPES
                 else WorkflowStepStatus.COMPLETED
             ),
+            # ``risk.scored`` maps to the *last* step but is published from the
+            # mid-pipeline ``graph.updated`` handler, so back-filling would
+            # stamp vector_index/ready COMPLETED before they have run.
+            backfill_earlier=event.event_type not in _FAN_OUT_EVENT_TYPES,
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
@@ -186,7 +225,10 @@ class WorkflowEventTracker:
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
-        metadata["last_error"] = str(error)
+        # ``str(RuntimeError())`` is ``''``, and this is the string the UI shows
+        # on a failed run. Fall back to the exception type, matching the DLQ
+        # record's ``error_message`` for the same exception.
+        metadata["last_error"] = str(error) or type(error).__name__
         # CAS on non-terminal status: a user cancel takes precedence over a
         # retry-exhaustion failure rather than being overwritten by it.
         self._run_store.update_run_if_current(
@@ -301,6 +343,20 @@ class WorkflowEventTracker:
         step_name = _WORKFLOW_REGISTRY.step_for_event_type(event.event_type)
         if step_name is None:
             return None
+        default_step_sequence = _WORKFLOW_REGISTRY.default_step_names()
+        if step_name in default_step_sequence and default_step_sequence.index(step_name):
+            # A mid-pipeline step with no run behind it. Representing this as a
+            # run would assert a whole multi-step pipeline that nothing
+            # observed starting — and for a terminal-success event type
+            # ``complete_event`` would immediately close it as a successful
+            # end-to-end ingestion. ``risk.scored`` maps to the *last* step and
+            # analytics emits one per entity, so accepting these manufactures a
+            # phantom "successful ingestion" per scored entity, each of which
+            # also counts as busy against ``is_busy`` and blocks uploads.
+            #
+            # Standalone steps (``records_ingest``) and genuine first steps are
+            # still tracked: a one-step run records exactly what was seen.
+            return None
         steps = _fallback_steps(step_name)
         metadata: dict[str, MetadataValue] = {
             "correlation_id": event.correlation_id,
@@ -322,7 +378,17 @@ def _steps_with_status(
     steps: list[WorkflowStepState],
     step_name: str,
     status: WorkflowStepStatus,
+    *,
+    backfill_earlier: bool = True,
 ) -> list[WorkflowStepState]:
+    """Set ``step_name`` to ``status``, optionally completing skipped steps.
+
+    ``backfill_earlier`` marks still-PENDING earlier steps COMPLETED, which is
+    right for the linear pipeline (reaching step N means 1..N-1 happened) and
+    wrong for an out-of-band fan-out event whose step sits later in the
+    sequence than the stage that published it.
+    """
+
     if not any(step.step_name == step_name for step in steps):
         steps = [*steps, WorkflowStepState(step_name=step_name)]
     updated_steps: list[WorkflowStepState] = []
@@ -333,7 +399,11 @@ def _steps_with_status(
         next_status = step.status
         if index == target_index:
             next_status = status
-        elif index < target_index and step.status is WorkflowStepStatus.PENDING:
+        elif (
+            backfill_earlier
+            and index < target_index
+            and step.status is WorkflowStepStatus.PENDING
+        ):
             next_status = WorkflowStepStatus.COMPLETED
         updated_steps.append(step.model_copy(update={"status": next_status}))
     return updated_steps
@@ -349,13 +419,15 @@ def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
             )
         ]
     steps: list[WorkflowStepState] = []
-    current_step_index = default_step_sequence.index(current_step)
-    for index, step_name in enumerate(default_step_sequence):
-        status = WorkflowStepStatus.PENDING
-        if step_name == current_step:
-            status = WorkflowStepStatus.RUNNING
-        elif index < current_step_index:
-            status = WorkflowStepStatus.COMPLETED
+    for step_name in default_step_sequence:
+        # Earlier steps stay PENDING. The run is a fallback precisely because
+        # nothing tracked the events that would have completed them, so
+        # marking them COMPLETED reports work that was never observed.
+        status = (
+            WorkflowStepStatus.RUNNING
+            if step_name == current_step
+            else WorkflowStepStatus.PENDING
+        )
         steps.append(WorkflowStepState(step_name=step_name, status=status))
     return steps
 

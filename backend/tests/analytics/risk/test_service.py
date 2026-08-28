@@ -593,3 +593,53 @@ def test_create_risk_service_default_thresholds_fall_back_to_pydantic_defaults()
     )
     assert service.default_medium_risk_threshold == 0.5
     assert service.default_high_risk_threshold == 0.8
+
+def test_assess_publishes_under_the_triggering_correlation_id() -> None:
+    """``risk.scored`` must join the run that triggered it.
+
+    The worker resolves a run by the event's correlation id. Left unset,
+    ``EventBase`` mints a fresh one, the event matches no run, and the
+    pipeline's monitoring step is never completed — the run stays RUNNING
+    until stale reconciliation fails it an hour later.
+    """
+    event_bus = InMemoryEventBus()
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-7",
+                    signals=[
+                        RiskSignal(
+                            signal_name="timeseries",
+                            value=0.9,
+                            weight=2.0,
+                            rationale="spike",
+                        ),
+                        RiskSignal(
+                            signal_name="gnn_cluster",
+                            value=0.8,
+                            weight=1.5,
+                            rationale="dense cluster",
+                        ),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+
+    service.assess(
+        RiskAssessmentRequest(
+            knowledge_base_id="kb-1",
+            entity_id="provider-7",
+            correlation_id="corr-pipeline-1",
+        )
+    )
+
+    published = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, RiskScoredEvent)
+    ]
+    assert [event.correlation_id for event in published] == ["corr-pipeline-1"]

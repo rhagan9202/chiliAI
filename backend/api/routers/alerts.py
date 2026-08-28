@@ -14,6 +14,7 @@ from api.contracts import (
     AlertBulkStatusUpdateRequest,
     AlertBulkStatusUpdateResponse,
     AlertDetailResponse,
+    AlertListItem,
     AlertListResponse,
     AlertOperationResponse,
     AlertStatusUpdateRequest,
@@ -190,12 +191,8 @@ async def update_alert_status_bulk(
         for alert_id in payload.alert_ids
         if (record := store.get_alert(alert_id)) is not None
     }
-    response = build_alert_bulk_status_update_payload(
-        payload=payload,
-        store=store,
-        actor=user.user_id,
-    )
-    for alert in response.updated_alerts:
+
+    def _audit(alert: AlertListItem) -> None:
         before_record = before_records.get(alert.id)
         record_alert_audit_event(
             audit_service,
@@ -212,4 +209,10 @@ async def update_alert_status_bulk(
             alert=alert,
             metadata={"bulk": True, "reason_present": payload.reason is not None},
         )
-    return response
+
+    return build_alert_bulk_status_update_payload(
+        payload=payload,
+        store=store,
+        actor=user.user_id,
+        on_transitioned=_audit,
+    )

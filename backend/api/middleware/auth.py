@@ -158,7 +158,12 @@ REFRESH_LEEWAY_SECONDS = 60
 
 
 def _user_from_session(record: SessionRecord) -> User:
-    return User(user_id=record.user_id, roles=record.roles, email=record.email)
+    return User(
+        user_id=record.user_id,
+        roles=record.roles,
+        email=record.email,
+        knowledge_base_ids=record.knowledge_base_ids,
+    )
 
 
 def set_jwks_fetcher(fetcher: JwksFetcher, *, ttl_seconds: int | None = None) -> None:
