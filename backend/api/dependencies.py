@@ -97,6 +97,7 @@ from cases.adapters.protocols import CaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
+from conversations.exceptions import ConversationConcurrentModificationError
 from conversations.models import Conversation, ConversationMessage
 from conversations.service import ConversationService, create_conversation_service
 from rag.service_models import RagQueryRequest
@@ -1810,13 +1811,21 @@ def get_chat_message_payload(
             filters=payload.filters,
         )
     )
-    updated = service.append_messages(
-        conversation_id,
-        [
-            build_user_message(payload.content),
-            build_assistant_message(rag_response),
-        ],
-    )
+    try:
+        updated = service.append_messages(
+            conversation_id,
+            [
+                build_user_message(payload.content),
+                build_assistant_message(rag_response),
+            ],
+        )
+    except ConversationConcurrentModificationError as exc:
+        # append_messages retries a lost race internally (appending is a
+        # pure merge), so this only surfaces once that retry budget is
+        # exhausted -- a genuinely contended row, not the common case. Still
+        # a "reload and retry" signal per the shared ConcurrentModification
+        # contract, so 409 rather than 500.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return project_conversation(updated)
 
 
