@@ -78,8 +78,23 @@ def _list_accessible_workflows(
             # `scan_offset + consumed` is a store-agnostic count of items
             # scanned so far in *this* page, not a value either store hands
             # us -- it is only a valid resume cursor because both adapters
-            # keep an offset meaning "position in the store-filtered
-            # sequence" (see `WorkflowRunStoreProtocol.list_runs`).
+            # treat `offset` as a position in the *same* sequence for
+            # whatever `knowledge_base_id`/`status` filters were actually
+            # passed to `list_runs`. This router never passes an
+            # entitlement filter (entitlement is checked here, in the
+            # router, after the fact), so both filter args are `None` on
+            # every call here -- which each adapter collapses to its own
+            # single global, newest-first, unfiltered-by-kb/status
+            # sequence: Redis's `CREATED_INDEX` ZSET
+            # (`redis_store.py::_listing_index_key`), in-memory's unfiltered
+            # `self._runs.values()` (`in_memory.py::list_runs`). It is
+            # *agreement between the adapters on what that sequence is*,
+            # not any pre-filtering of it, that makes the arithmetic work.
+            # `WorkflowRunStoreProtocol.list_runs` (`adapters/protocols.py`)
+            # documents only that results are newest-first -- it does NOT
+            # specify offset-vs-filtering semantics, so this agreement is a
+            # real, undocumented coupling between the two adapters, not a
+            # guaranteed contract either one is obligated to keep.
             # RedisWorkflowRunStore additionally depends on pruning every
             # stale ZSET entry it encounters *synchronously within the same
             # `list_runs` call*, before returning (`redis_store.py`, near
