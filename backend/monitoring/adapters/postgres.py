@@ -12,7 +12,11 @@ from datetime import datetime
 from typing import Any, cast
 
 from database.protocols import ConnectionProvider, Row
-from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
+from monitoring.exceptions import (
+    AlertConcurrentModificationError,
+    AlertLifecycleError,
+    MonitoringSourceError,
+)
 from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import (
     AlertHistoryRecord,
@@ -394,11 +398,11 @@ class PostgresAlertHistoryStore:
                     validate_alert_transition(
                         _row_to_alert_record(current).status, "acknowledged"
                     )
-                    raise MonitoringSourceError(
-                        "Alert status changed concurrently; retry the transition."
-                    )
+                    raise AlertConcurrentModificationError(alert_id)
                 conn.commit()
         except AlertLifecycleError:
+            raise
+        except AlertConcurrentModificationError:
             raise
         except MonitoringSourceError:
             raise
@@ -485,11 +489,11 @@ class PostgresAlertHistoryStore:
                     validate_alert_transition(
                         _row_to_alert_record(current).status, status
                     )
-                    raise MonitoringSourceError(
-                        "Alert status changed concurrently; retry the transition."
-                    )
+                    raise AlertConcurrentModificationError(alert_id)
                 conn.commit()
         except AlertLifecycleError:
+            raise
+        except AlertConcurrentModificationError:
             raise
         except MonitoringSourceError:
             raise

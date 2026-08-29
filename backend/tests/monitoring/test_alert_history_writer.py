@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
 
+import monitoring.adapters.in_memory as in_memory_module
 from monitoring.exceptions import AlertLifecycleError
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.adapters.protocols import AlertHistoryWriter
+from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord
 
 
@@ -352,6 +356,177 @@ def test_transition_alert_status_rejects_invalid_transition() -> None:
             status="resolved",
             actor="analyst@example.com",
         )
+
+
+def test_a_racing_acknowledge_does_not_silently_land_over_a_winning_dismissal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lost-write race this task exists to close, reproduced in-memory.
+
+    ALERT_TRANSITIONS['dismissed'] == {'open'}, so 'dismissed' -> 'acknowledged'
+    is forbidden. Both callers read the alert while it is still 'open' and
+    both pass validation against that snapshot -- mirroring
+    ``PostgresAlertHistoryStore``'s own race (see
+    ``test_concurrent_acknowledge_loses_instead_of_committing_over_a_dismissal``
+    in ``test_postgres_alert_history.py``). Without a guard across the
+    read-validate-write, the racing acknowledge's write still lands after the
+    dismiss commits, silently overwriting 'dismissed' with the
+    lifecycle-forbidden 'acknowledged' and dropping the dismiss's triage
+    event -- a false audit trail, since the real prior status was
+    'dismissed', not 'open'.
+
+    ``get_alert_feed_store`` is an ``lru_cache(maxsize=1)`` process
+    singleton shared across threadpool requests, so this interleave is
+    genuinely reachable, not theoretical.
+
+    A ``threading.Barrier`` forces both threads' pre-lock validate call
+    (``in_memory.py``'s own module-level ``validate_alert_transition``,
+    monkeypatched here) to happen before either can reach its lock-guarded
+    re-check-and-write, deliberately widening the compare-to-write window so
+    two barrier-synchronized threads reliably overlap inside it instead of
+    depending on lucky GIL scheduling.
+    """
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-race-1", status="open")])
+
+    read_barrier = threading.Barrier(2)
+    thread_state = threading.local()
+
+    def synced_validate(current_status: str, new_status: str) -> None:
+        # Only the first call per thread is the "both callers read the
+        # alert" step being synchronized. The guard's second, recovery
+        # validate() against fresh state after a lost race must run
+        # unsynchronized, or the losing thread would block on a barrier no
+        # other thread will reach.
+        if not getattr(thread_state, "synced", False):
+            thread_state.synced = True
+            read_barrier.wait(timeout=5)
+            if new_status == "acknowledged":
+                time.sleep(0.2)
+        validate_alert_transition(current_status, new_status)
+
+    monkeypatch.setattr(in_memory_module, "validate_alert_transition", synced_validate)
+
+    results: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+    def run_dismiss() -> None:
+        try:
+            results["dismiss"] = writer.transition_status(
+                "a-race-1",
+                knowledge_base_id="kb-1",
+                status="dismissed",
+                actor="analyst-1",
+            )
+        except BaseException as exc:  # captured for the joining thread to assert on
+            results["dismiss"] = exc
+
+    def run_acknowledge() -> None:
+        try:
+            results["acknowledge"] = writer.acknowledge(
+                "a-race-1", knowledge_base_id="kb-1", actor="analyst-2"
+            )
+        except BaseException as exc:  # captured for the joining thread to assert on
+            results["acknowledge"] = exc
+
+    t_dismiss = threading.Thread(target=run_dismiss)
+    t_acknowledge = threading.Thread(target=run_acknowledge)
+    t_dismiss.start()
+    t_acknowledge.start()
+    t_dismiss.join(timeout=10)
+    t_acknowledge.join(timeout=10)
+
+    assert isinstance(results["dismiss"], AlertHistoryRecord)
+    assert results["dismiss"].status == "dismissed"
+
+    ack_result = results["acknowledge"]
+    assert isinstance(ack_result, AlertLifecycleError), (
+        "expected the racing acknowledge to be rejected as forbidden once it "
+        f"re-validates against the committed dismissal; got {ack_result!r} -- "
+        "if this is an AlertHistoryRecord, the in-memory store silently "
+        "applied a lifecycle-forbidden transition over a winning write"
+    )
+
+    row = writer.get_alert("a-race-1")
+    assert row is not None
+    assert row.status == "dismissed"
+    assert [event.to_status for event in row.triage_history] == ["dismissed"]
+
+
+def test_racing_to_the_same_target_status_signals_concurrent_modification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sibling of the forbidden-after-race test above.
+
+    Here both racers submit the *same* target status, so after the loser
+    re-reads and re-validates against the now-current row,
+    ``validate_alert_transition`` finds the transition still valid
+    (``new_status == current_status``) and does not raise. The store must
+    not silently land a second, duplicate transition on top -- it must
+    signal ``AlertConcurrentModificationError`` instead, mirroring
+    ``PostgresAlertHistoryStore``'s identical behaviour (see
+    ``test_concurrent_transition_to_the_same_status_signals_retry_not_forbidden``).
+    """
+    # Imported locally (not at module scope) so a run of this file before
+    # the exception type exists fails only *this* test with a clean
+    # ImportError, rather than an import failure at collection time hiding
+    # the sibling test's real-data-loss proof above.
+    from monitoring.exceptions import AlertConcurrentModificationError
+
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-race-2", status="investigating")])
+
+    read_barrier = threading.Barrier(2)
+    thread_state = threading.local()
+
+    def synced_validate(current_status: str, new_status: str) -> None:
+        if not getattr(thread_state, "synced", False):
+            thread_state.synced = True
+            read_barrier.wait(timeout=5)
+            if getattr(thread_state, "delay_after_barrier", False):
+                time.sleep(0.2)
+        validate_alert_transition(current_status, new_status)
+
+    monkeypatch.setattr(in_memory_module, "validate_alert_transition", synced_validate)
+
+    results: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+    def run(actor: str, *, delay_after_barrier: bool) -> None:
+        thread_state.delay_after_barrier = delay_after_barrier
+        try:
+            results[actor] = writer.transition_status(
+                "a-race-2",
+                knowledge_base_id="kb-1",
+                status="resolved",
+                actor=actor,
+            )
+        except BaseException as exc:  # captured for the joining thread to assert on
+            results[actor] = exc
+
+    winner = threading.Thread(
+        target=run, args=("analyst-1",), kwargs={"delay_after_barrier": False}
+    )
+    loser = threading.Thread(
+        target=run, args=("analyst-2",), kwargs={"delay_after_barrier": True}
+    )
+    winner.start()
+    loser.start()
+    winner.join(timeout=10)
+    loser.join(timeout=10)
+
+    assert isinstance(results["analyst-1"], AlertHistoryRecord)
+    assert results["analyst-1"].status == "resolved"
+
+    loser_result = results["analyst-2"]
+    assert isinstance(loser_result, AlertConcurrentModificationError)
+    assert not isinstance(loser_result, AlertLifecycleError)
+    assert str(loser_result) == (
+        "Alert 'a-race-2' changed concurrently; reload it and retry."
+    )
+
+    row = writer.get_alert("a-race-2")
+    assert row is not None
+    assert row.status == "resolved"
+    assert [event.to_status for event in row.triage_history] == ["resolved"]
 
 
 def test_count_by_statuses() -> None:
