@@ -107,19 +107,21 @@ class AlertConcurrentModificationError(MonitoringError, ConcurrentModificationEr
   `ConfigurationError`, which is already used the same way from
   `api/dependencies.py`). It is not raised directly.
 
-  **What this buys today, honestly stated:** nothing catches
-  `ConcurrentModificationError` yet. The gateway mapping described above
-  catches `AlertConcurrentModificationError` by its own name, not by the
-  shared base, and `AlertConcurrentModificationError` is currently the
-  *only* subclass in the tree — `CaseConcurrentModificationError` has not
-  been retrofitted onto it (see "Known gap" below). The marker is a bet
-  that Task 3's `conversations` module will add its own subclass, at which
-  point a single `except ConcurrentModificationError` becomes possible
-  somewhere that needs "was this any module's lost race" without importing
-  every module's exception module — a good bet, and the reason the base
-  exists now rather than being added later, but a capability to *finish*,
-  not one already delivered. Nothing in this codebase relies on it being
-  shared yet.
+  **What this buys today, honestly stated:** the gateway mapping described
+  above still catches `AlertConcurrentModificationError` by its own name,
+  not by the shared base, and nothing in this codebase yet does
+  `except ConcurrentModificationError` across modules — so no caller relies
+  on the sharing today. But the bet this marker was placed on has been
+  settled, not just proposed: `conversations.exceptions.
+  ConversationConcurrentModificationError` (`conversations.06`) is a second,
+  independently-defined subscriber with the same dual inheritance shape.
+  `CaseConcurrentModificationError` is still not retrofitted onto it (see
+  "Known gap" below). See `conversations/README.md` § Concurrency for what
+  that module does with the exception once raised — its resolution strategy
+  differs from this module's (retries internally instead of surfacing),
+  which is a **specialization the contract explicitly leaves to each
+  module**, not a divergence from it; see "The contract for `conversations`"
+  below for what that means for a third subscriber.
 
 **Why not a purely shared type with no per-module subclass?** The three
 permitted cross-module interaction paths (`api/`, `agent/`, `shared/`;
@@ -144,13 +146,27 @@ above.
 
 **Known gap:** `cases.exceptions.CaseConcurrentModificationError` predates
 `ConcurrentModificationError` and has **not** been retrofitted to inherit
-from it — that would touch `cases/`, which is out of this task's scope.
-This is why the shared base currently has exactly one subscriber
-(`AlertConcurrentModificationError`), not several — treat the gap as a
-follow-up, not as a sign the design is wrong; `conversations` (Task 3) is
-the base's intended second subscriber.
+from it — that would touch `cases/`, which was out of this task's scope and
+remained out of `conversations.06`'s scope too. The shared base now has two
+subscribers (`AlertConcurrentModificationError`,
+`ConversationConcurrentModificationError`); `cases` retrofitting is still a
+follow-up, not a sign the design is wrong.
 
 ## The contract for `conversations` (and any future module)
+
+**Settled by `conversations.06`:** the type and both adapters' CAS mechanics
+(steps 1–4 below) are not negotiable per module — `conversations` used the
+identical shape this module does. What *is* left to each module is step 5,
+what to do with the exception once raised: this module surfaces it (409, or
+a per-row batch skip); `conversations` instead retries the compare-and-write
+internally and only reaches step 5 if that retry is exhausted, because
+appending is a pure merge with no ordering conflict to adjudicate (full
+reasoning: `conversations/README.md` § Concurrency — not restated here). A
+third subscriber should default to surfacing (this module's and `cases`'
+choice) and only retry internally if it can make the same case
+`conversations` did: that the operation is commutative/idempotent enough
+that a caller-visible 409 would just make the client redo a no-op retry.
+If that case can't be made, surface it.
 
 1. Define your own `<Module>ConcurrentModificationError` in your module's
    `exceptions.py`, inheriting from **both** your module's base error type
