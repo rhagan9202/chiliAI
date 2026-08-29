@@ -105,11 +105,21 @@ class AlertConcurrentModificationError(MonitoringError, ConcurrentModificationEr
 - `shared.exceptions.ConcurrentModificationError` — a new cross-module
   marker base (`shared/exceptions.py`, alongside the pre-existing
   `ConfigurationError`, which is already used the same way from
-  `api/dependencies.py`). It is not raised directly; it exists so that
-  *any* module's own concurrency-conflict exception can be recognised by a
-  caller — chiefly the API gateway — that only needs to know "was this a
-  lost race", without importing every module's own exception module or
-  hand-rolling a fifth string-matched heuristic.
+  `api/dependencies.py`). It is not raised directly.
+
+  **What this buys today, honestly stated:** nothing catches
+  `ConcurrentModificationError` yet. The gateway mapping described above
+  catches `AlertConcurrentModificationError` by its own name, not by the
+  shared base, and `AlertConcurrentModificationError` is currently the
+  *only* subclass in the tree — `CaseConcurrentModificationError` has not
+  been retrofitted onto it (see "Known gap" below). The marker is a bet
+  that Task 3's `conversations` module will add its own subclass, at which
+  point a single `except ConcurrentModificationError` becomes possible
+  somewhere that needs "was this any module's lost race" without importing
+  every module's exception module — a good bet, and the reason the base
+  exists now rather than being added later, but a capability to *finish*,
+  not one already delivered. Nothing in this codebase relies on it being
+  shared yet.
 
 **Why not a purely shared type with no per-module subclass?** The three
 permitted cross-module interaction paths (`api/`, `agent/`, `shared/`;
@@ -126,16 +136,19 @@ task in this sprint (`conversations`) needs the identical contract, and a
 third independently-invented bespoke type would be the fourth answer to one
 question (the three being: `cases`' own type, `monitoring`'s old
 message-text-only overload of `MonitoringSourceError`, and no answer at
-all). A shared marker base costs nothing extra to define and gives a future
-gateway-level check (or a shared 409-mapping helper, not implemented by
-this task) a single type to look for.
+all). A shared marker base costs nothing extra to define now, and defining
+it here — rather than after a second module needs it — means Task 3 can
+adopt an existing contract instead of inventing (or retrofitting) one. It
+does not, by itself, give anything a single type to look for yet; see
+above.
 
 **Known gap:** `cases.exceptions.CaseConcurrentModificationError` predates
 `ConcurrentModificationError` and has **not** been retrofitted to inherit
 from it — that would touch `cases/`, which is out of this task's scope.
-Treat that as a follow-up, not as evidence the shared base is unused: it
-already has one real subscriber (`AlertConcurrentModificationError`) and is
-the base the next task's `conversations` type should use.
+This is why the shared base currently has exactly one subscriber
+(`AlertConcurrentModificationError`), not several — treat the gap as a
+follow-up, not as a sign the design is wrong; `conversations` (Task 3) is
+the base's intended second subscriber.
 
 ## The contract for `conversations` (and any future module)
 
