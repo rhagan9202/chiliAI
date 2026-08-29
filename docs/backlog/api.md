@@ -1107,7 +1107,8 @@ so that demo fixtures cannot mask missing persistence wiring.
 ## Story api.30: Make entitlement-filtered pagination correct for both workflow-run stores
 
 **ID:** api.30
-**Status:** planned
+**Status:** done
+**Done:** 2026-08-29 · sprint 2026-36 stabilisation Task 1 · `ecc4c165` (real-Redis parity coverage) + code comment recording the invariant
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
@@ -1116,24 +1117,38 @@ so that demo fixtures cannot mask missing persistence wiring.
 **I need** each run to appear exactly once across consecutive pages,
 **so that** the list I act on is neither missing runs nor showing duplicates.
 
-### Current State
-- Sprint 2026-35 Task 9 fixed entitlement-filtered pagination dropping accessible runs when the limit filled mid-page. The fix returns `scan_offset + consumed` as the cursor (`backend/api/routers/workflows.py:77`), where `consumed` counts items in the **filtered** page.
+### Current State (corrected 2026-08-29 — see below)
+- Sprint 2026-35 Task 9 fixed entitlement-filtered pagination dropping accessible runs when the limit filled mid-page. The fix returns `scan_offset + consumed` as the cursor (`backend/api/routers/workflows.py:97`, inside the `filled_early` block starting at line 72), where `consumed` counts items in the **filtered** page.
 - That matches `InMemoryWorkflowRunStore`, whose `next_offset = offset + len(items)` is also filtered (`backend/agent/adapters/in_memory.py:101`).
-- It does **not** match `RedisWorkflowRunStore`, whose `next_offset = index_position + 1` is a position in the **unfiltered** ZSET scan (`backend/agent/adapters/redis_store.py:188`). Mixing a filtered count with an unfiltered offset base means a run can be returned on two consecutive pages, or skipped.
-- Redis is the production store. Every test in `tests/api/test_workflows_router.py` uses the in-memory store, so the divergence is invisible to the suite — the same "two adapters behind one protocol with divergent semantics, and the in-memory one is what tests see" pattern the 2026-08-25 audit named as its first recurring theme.
-- Found by the sprint 2026-35 whole-branch review; the fix as shipped is on `prod`.
+- **Corrected:** the previous version of this story claimed `RedisWorkflowRunStore`'s `next_offset = index_position + 1` was "a position in the unfiltered ZSET scan," and that this let a run be returned twice or skipped. That claim was investigated in sprint 2026-36 Task 1 and **disproved**, at the data-structure level, before pruning even enters the argument: `_listing_index_key` (`backend/agent/adapters/redis_store.py:357-371`) returns a **distinct ZSET per `(knowledge_base_id, status)`**, so a ZSET position is already a position in the store-filtered sequence, not an unfiltered one. Combined with the stale-entry pruning + compensation at `redis_store.py:213-219` (which prunes synchronously within a single `list_runs` call, before returning), the router's `scan_offset + consumed` arithmetic is provably correct against the real Redis adapter — confirmed by an algebraic proof, a 150-trial randomized differential fuzzer, targeted adversarial stale-entry constructions, and a 972-configuration exhaustive sweep + 400 randomized trials from independent review, all against live Redis, zero failures.
+- **What was actually missing was proof, not a fix.** Sprint 2026-35 Task 9's regression test (`test_pagination_does_not_drop_accessible_runs_inside_a_page`) exercised only `InMemoryWorkflowRunStore` — no test in `tests/api/test_workflows_router.py` ran this router against a real Redis instance (the closest prior art was an `isinstance` check against a capturing double in `tests/agent/test_runtime.py`). Reverting `workflows.py` to its pre-`92958a92` state and re-running the new parity test reproduced the *original* defect (a skipped run, `wf-d`) **identically under both stores**; independent re-verification by review, re-running the same pre-fix sweep across its own harness, got 17 failures that are byte-identical between adapters — proving the Sprint 2026-35 fix was adapter-symmetric and already correct for Redis; it had just never been exercised against it.
+- The router's cursor arithmetic still *depends* on Redis pruning stale ZSET entries synchronously within a single `list_runs` call — an invariant `WorkflowRunStoreProtocol` does not express in its type. This is now recorded as a comment at `backend/api/routers/workflows.py:72-96` and at `backend/agent/adapters/redis_store.py` (near the compensation block), so a future adapter change that breaks it is visible where it would actually break.
+- **Known limitation found during this verification, deliberately not fixed here (see "Known limitation" below):** a genuine Redis-only divergence exists, just not the one originally claimed — a *second* concurrent scanner pruning a stale ZSET entry at a position before a client's saved offset shifts that client's window and skips a run. `InMemoryWorkflowRunStore` cannot exhibit this (it has no pruning).
+- Found by the sprint 2026-35 whole-branch review; the fix as shipped (commit `92958a92`) is on `prod` and, per the above, was already correct for both adapters.
 
 ### Acceptance Criteria
-- [ ] The two stores agree on what an offset counts, or the router stops assuming they agree — decide deliberately and record which.
-- [ ] A run appears exactly once across consecutive pages under **both** stores, with some runs denied by entitlement so the mid-page fill branch is exercised.
-- [ ] The regression test runs against both adapters, not only the in-memory one.
-- [ ] `has_more` is correct under both stores when the limit fills mid-page.
+- [x] The two stores agree on what an offset counts, or the router stops assuming they agree — decide deliberately and record which. **Decided:** neither store change nor router refactor (options (a)/(b) from the task brief) — investigation found no reproducible defect to fix; the existing "filtered offset" convention already holds for both adapters (see Current State). The dependency this rests on (synchronous stale-entry pruning within one Redis `list_runs` call) is recorded as a code comment at `workflows.py:72-96` and `redis_store.py:197-212`, not left implicit.
+- [x] A run appears exactly once across consecutive pages under **both** stores, with some runs denied by entitlement so the mid-page fill branch is exercised. `test_a_run_appears_exactly_once_across_consecutive_pages[in_memory]` / `[redis]`.
+- [x] The regression test runs against both adapters, not only the in-memory one. Same test, parametrized `["in_memory", "redis"]`; `[redis]` is `@pytest.mark.integration` against a live Redis instance (verified `PASSED`, not `SKIPPED`, in CI-equivalent local runs).
+- [x] `has_more` is correct under both stores when the limit fills mid-page. `test_pagination_does_not_drop_accessible_runs_inside_a_page` (parametrized `["in_memory", "redis"]` in this pass) asserts `has_more is True` on the mid-page-fill response for both adapters.
+
+### Known limitation (found during verification; explicitly deferred, not fixed by this story)
+A genuine Redis-only pagination divergence exists — the one place the two adapters actually differ, which is what this story was nominally about, just not the mechanism originally suspected:
+- A second concurrent scanner (another request, another user, a background sweep) that prunes a stale ZSET entry (an index id whose backing run no longer resolves — e.g. deleted outside `delete_run`) at a position **before** a client's already-saved offset shifts that client's subsequent window left by one and **skips a run**. Measured: the same `offset=2` request returns `['x1','x2']` before another client's full scan prunes a stale entry at position 0, and `['x2','x3']` after — `x1` is lost.
+- Requires all three of: a stale entry in the index (the normal API surface never creates one — `delete_run` keeps its index keys in sync), a second scanner concurrently pruning it, and a client resuming from a saved offset mid-sequence. Not reproducible via the normal `GET /workflows` write path alone.
+- `InMemoryWorkflowRunStore` cannot exhibit this — it has no pruning concept.
+- Side note surfaced by the same investigation: `RedisWorkflowRunStore.list_runs` performs writes (`zrem` for pruning) on what is conceptually a read path (`GET /workflows`).
+- Not fixed here: reproducing it needs real staleness (not created by the app in normal operation) plus genuine concurrency, and a fix would mean cursor-based pagination keyed on `(created_at, workflow_id)` rather than a numeric offset — a larger change than this story's scope. File as its own story if this class of staleness becomes reachable in practice (e.g. a retention/cleanup job that can leave dangling index entries).
+- Also out of scope, not adapter-specific, and not tracked further here: a run created concurrently between two client page requests can produce a duplicate on the next page under **either** adapter (a generic, well-known limitation of offset pagination); and `has_more` reports store-level rather than entitlement-level exhaustion (a page can report `has_more: true` while zero of the remaining store items are actually visible to the caller, which is already covered by `test_list_workflows_fills_scoped_page_after_denied_newer_run` continuing to page rather than stopping short).
 
 ### Verification
-- Parity test over both stores asserting the union of two consecutive pages contains each accessible run exactly once.
-- Pre-fix RED under the Redis store showing the duplicate or the skip.
+- Parity test over both stores asserting a run appears exactly once across consecutive pages, with denied runs forcing the mid-page fill branch: `tests/api/test_workflows_router.py::test_a_run_appears_exactly_once_across_consecutive_pages[in_memory|redis]`.
+- Redis-specific regression test targeting the originally suspected stale-entry mechanism directly: `tests/api/test_workflows_router.py::test_pagination_survives_a_stale_redis_index_entry` (`@pytest.mark.integration`).
+- Pre-fix RED reproduced by temporarily reverting `workflows.py` to its pre-`92958a92` state: all three new tests fail, with `wf-d` skipped identically under both stores (not merely a missing-fixture failure). Independently re-verified by review, whose own pre-fix sweep produced 17 failures byte-identical across adapters.
+- Post-fix GREEN: `tests/api/test_workflows_router.py` full suite, `pyright` (strict, bare from `backend/`), `ruff check --no-cache .` all clean.
 
 ### Code touch points
-- `backend/api/routers/workflows.py` (modify — cursor arithmetic, line ~77)
-- `backend/agent/adapters/redis_store.py` / `in_memory.py` (read — offset semantics)
-- `backend/tests/api/test_workflows_router.py` (modify — parametrise over both stores)
+- `backend/api/routers/workflows.py` (comment only — invariant recorded at the cursor-arithmetic return, line ~77; no logic change)
+- `backend/agent/adapters/redis_store.py` (comment only — invariant recorded near the stale-entry compensation block; no logic change; read for offset semantics)
+- `backend/agent/adapters/in_memory.py` (read — offset semantics)
+- `backend/tests/api/test_workflows_router.py` (modify — real-Redis fixture, parametrise the parity and mid-page-fill tests over both stores, new stale-entry regression test)

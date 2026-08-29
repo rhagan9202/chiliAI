@@ -372,99 +372,6 @@ def test_list_workflows_uses_store_cursor_for_scoped_second_page() -> None:
     assert second_body["next_offset"] is None
 
 
-def test_pagination_does_not_drop_accessible_runs_inside_a_page() -> None:
-    """The inner scan loop breaks as soon as the limit is filled, which can
-    happen partway through an underlying store page. next_offset must resume
-    at the first unconsumed item in that page, not at the page's end -- else
-    every accessible run between the two is silently skipped.
-
-    Two denied runs occupy all of the first store page (limit=3), so the scan
-    has to fetch a second page to fill the limit. That second page holds
-    three items but only the first two are needed to reach the limit --
-    "wf-D" is the unconsumed third item that the bug drops.
-    """
-    app = _app_with_workflows_and_scoped_user(
-        roles=["viewer"],
-        runs=[
-            WorkflowRun(
-                workflow_id="denied-0",
-                knowledge_base_id="kb-2",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="denied-1",
-                knowledge_base_id="kb-2",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 9, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-a",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-b",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 7, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-c",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 6, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-d",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-e",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
-            ),
-        ],
-    )
-
-    first_response = TestClient(app).get(
-        "/workflows", params={"limit": 3, "offset": 0}
-    )
-
-    assert first_response.status_code == 200
-    first_body = first_response.json()
-    assert [item["id"] for item in first_body["items"]] == ["wf-a", "wf-b", "wf-c"]
-    assert first_body["has_more"] is True
-
-    second_response = TestClient(app).get(
-        "/workflows", params={"limit": 3, "offset": first_body["next_offset"]}
-    )
-
-    assert second_response.status_code == 200
-    second_body = second_response.json()
-    # "wf-d" is the run the buggy cursor skips -- it must be the first item
-    # on the next page, not "wf-e".
-    assert [item["id"] for item in second_body["items"]] == ["wf-d", "wf-e"]
-
-
 def _filled_early_scenario_runs() -> list[WorkflowRun]:
     """Same shape as `test_pagination_does_not_drop_accessible_runs_inside_a_page`:
     two denied runs occupy the entire first store page (limit=3), so the scan
@@ -540,7 +447,59 @@ def _expected_accessible_order(
     return [run.workflow_id for run in accessible]
 
 
-@pytest.mark.parametrize("store_name", ["in_memory", "redis"])
+# The "redis" case is marked `integration` (matching `test_pagination_survives_a_stale_redis_index_entry`
+# and the `test_redis_workflow_run_store_real_redis_contract` / `TestRedisSessionStore`
+# precedents) so its skip-if-unreachable behavior is consistent with the rest
+# of the suite's real-Redis coverage.
+_STORE_PARAMS = ["in_memory", pytest.param("redis", marks=pytest.mark.integration)]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_does_not_drop_accessible_runs_inside_a_page(
+    store_name: str,
+) -> None:
+    """The inner scan loop breaks as soon as the limit is filled, which can
+    happen partway through an underlying store page. next_offset must resume
+    at the first unconsumed item in that page, not at the page's end -- else
+    every accessible run between the two is silently skipped. Also asserts
+    `has_more` on that mid-page-filled response under both stores, closing
+    api.30's AC that `has_more` is correct when the limit fills mid-page.
+
+    Two denied runs occupy all of the first store page (limit=3), so the scan
+    has to fetch a second page to fill the limit. That second page holds
+    three items but only the first two are needed to reach the limit --
+    "wf-d" is the unconsumed third item a naive cursor drops.
+    """
+    runs = _filled_early_scenario_runs()
+
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        first_response = client.get(
+            "/workflows", params={"limit": 3, "offset": 0}
+        )
+        assert first_response.status_code == 200
+        first_body = first_response.json()
+        assert [item["id"] for item in first_body["items"]] == [
+            "wf-a",
+            "wf-b",
+            "wf-c",
+        ]
+        assert first_body["has_more"] is True
+
+        second_response = client.get(
+            "/workflows", params={"limit": 3, "offset": first_body["next_offset"]}
+        )
+        assert second_response.status_code == 200
+        second_body = second_response.json()
+
+    # "wf-d" is the run a naive cursor skips -- it must be the first item on
+    # the next page, not "wf-e".
+    assert [item["id"] for item in second_body["items"]] == ["wf-d", "wf-e"]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
 def test_a_run_appears_exactly_once_across_consecutive_pages(store_name: str) -> None:
     """The router's cursor must mean the same thing to both stores.
 
@@ -578,11 +537,12 @@ def test_pagination_survives_a_stale_redis_index_entry() -> None:
     *same* store page that fills the router's limit partway through (the
     `filled_early` branch, which does its own `scan_offset + consumed`
     arithmetic instead of using the store's compensated `next_offset`).
-    Verified empirically (see task-1-report.md) that the current
-    implementation's compensation happens synchronously within a single
-    `list_runs` call, so it does not actually skew the router's naive
-    arithmetic -- this test locks that in as regression coverage for the
-    exact scenario a future change could break.
+
+    Conclusion: that compensation happens synchronously within a single
+    `list_runs` call, before it returns, so it does not skew the router's
+    naive arithmetic here -- this test locks that in as regression coverage
+    for the exact scenario a future change (e.g. deferring or batching the
+    pruning) could break.
     """
     redis_url = os.environ.get("CHILI_TEST_REDIS_URL")
     if not redis_url:

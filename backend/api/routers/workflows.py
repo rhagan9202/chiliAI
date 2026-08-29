@@ -74,6 +74,26 @@ def _list_accessible_workflows(
             # the first item this page did not consume, not at the page
             # boundary, or every accessible run in between would be skipped
             # on the next request.
+            #
+            # `scan_offset + consumed` is a store-agnostic count of items
+            # scanned so far in *this* page, not a value either store hands
+            # us -- it is only a valid resume cursor because both adapters
+            # keep an offset meaning "position in the store-filtered
+            # sequence" (see `WorkflowRunStoreProtocol.list_runs`).
+            # RedisWorkflowRunStore additionally depends on pruning every
+            # stale ZSET entry it encounters *synchronously within the same
+            # `list_runs` call*, before returning (`redis_store.py`, near
+            # the `next_offset -=` compensation) -- that is what keeps this
+            # arithmetic correct even when a page contains stale entries.
+            # Investigated exhaustively in sprint 2026-36 Task 1 (api.30):
+            # no divergence found between adapters for this arithmetic, so
+            # no fix was made here. That investigation *did* find a genuine,
+            # narrower Redis-only divergence -- a second concurrent scanner
+            # pruning a stale entry *before* a client's already-saved offset
+            # can shift that client's window and skip a run. Deliberately
+            # not fixed (needs real staleness, which the API's own write
+            # paths never create, plus concurrency); see docs/backlog/api.md
+            # (story api.30) "Known limitation".
             return runs, True, scan_offset + consumed
 
         has_more = page.has_more

@@ -24,7 +24,7 @@
 | _security.md | 9 | 0 | 3 | 0 | 12 | 25% |
 | agent.md | 21 | 0 | 1 | 0 | 22 | 4% |
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
-| api.md | 28 | 0 | 1 | 1 | 30 | 3% |
+| api.md | 27 | 0 | 2 | 1 | 30 | 6% |
 | config.md | 14 | 0 | 1 | 0 | 15 | 6% |
 | conversations.md | 1 | 0 | 0 | 0 | 1 | 0% |
 | database.md | 12 | 0 | 1 | 0 | 13 | 7% |
@@ -42,7 +42,7 @@
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 421 | 8 | 34 | 3 | 466 | 7% |
+| **Total** | 420 | 8 | 35 | 3 | 466 | 7% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -52,7 +52,6 @@
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
-- [api.30] api — size S — prereqs done
 - [cicd.22] _cicd — size S — prereqs done
 - [conversations.06] conversations — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
@@ -78,7 +77,8 @@
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
-- …45 more
+- [database.05] database — size M — prereqs done
+- …44 more
 <!-- END: ready-set -->
 
 ## Critical path
