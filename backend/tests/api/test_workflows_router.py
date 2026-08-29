@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Generator
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+import os
 import time
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.adapters.redis_store import RedisWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.service import create_agent_service
 from api.app import create_app
@@ -19,6 +25,7 @@ from api.middleware.session_store import InMemorySessionStore, SessionRecord
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
+from shared.utils import generate_id
 
 
 def _domain_with_auth() -> DomainConfig:
@@ -92,6 +99,69 @@ def _app_with_workflows_and_scoped_user(
         knowledge_base_ids=["kb-1"],
     )
     return app
+
+
+def _app_with_store_and_scoped_user(
+    *,
+    store: WorkflowRunStoreProtocol,
+    roles: list[str],
+) -> FastAPI:
+    """Like `_app_with_workflows_and_scoped_user`, but takes an already-built
+    store instead of always constructing an `InMemoryWorkflowRunStore` --
+    needed so the pagination parity tests can wire in a real
+    `RedisWorkflowRunStore` too."""
+    app = create_app()
+    agent_service = create_agent_service(store, event_bus=InMemoryEventBus())
+    app.dependency_overrides[get_domain_config] = _domain_with_auth
+    app.dependency_overrides[get_agent_service] = lambda: agent_service
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        user_id="scoped-user",
+        roles=roles,
+        email="scoped-user@example.com",
+        knowledge_base_ids=["kb-1"],
+    )
+    return app
+
+
+@contextmanager
+def _seeded_store(
+    store_name: str, runs: list[WorkflowRun]
+) -> Generator[WorkflowRunStoreProtocol]:
+    """Build a workflow-run store of the given adapter kind, seeded with
+    `runs`.
+
+    ``"redis"`` exercises the real `RedisWorkflowRunStore` against a live
+    Redis instance -- there was previously no fixture doing this for workflow
+    runs at all (`tests/agent/test_runtime.py` only does an `isinstance`
+    check against a capturing double). Follows the same
+    `CHILI_TEST_REDIS_URL`-skip-if-unset pattern as
+    `tests/api/test_session_store.py::TestRedisSessionStore`; the dev stack's
+    `chiliai-redis-1` container (defaulted by `tests/conftest.py`) makes this
+    a live run rather than a skip in the normal dev/CI environment.
+    """
+    if store_name == "in_memory":
+        yield InMemoryWorkflowRunStore(runs=runs)
+        return
+    if store_name != "redis":
+        raise ValueError(f"unknown store_name: {store_name!r}")
+
+    redis_url = os.environ.get("CHILI_TEST_REDIS_URL")
+    if not redis_url:
+        pytest.skip("CHILI_TEST_REDIS_URL is not set; skipping Redis parity test.")
+    key_prefix = f"test:workflows-router:{generate_id()}:"
+    store = RedisWorkflowRunStore(redis_url=redis_url, key_prefix=key_prefix)
+    health = store.check_health()
+    if health.status != "ok":
+        pytest.skip(f"Redis is unavailable at CHILI_TEST_REDIS_URL: {health.error}")
+    for run in runs:
+        store.save_run(run)
+    try:
+        yield store
+    finally:
+        keys = list(store.client.scan_iter(match=f"{key_prefix}*"))
+        if keys:
+            store.client.delete(*keys)
+        store.close()
 
 
 def test_list_workflows_requires_authentication_when_auth_enabled() -> None:
@@ -393,6 +463,194 @@ def test_pagination_does_not_drop_accessible_runs_inside_a_page() -> None:
     # "wf-d" is the run the buggy cursor skips -- it must be the first item
     # on the next page, not "wf-e".
     assert [item["id"] for item in second_body["items"]] == ["wf-d", "wf-e"]
+
+
+def _filled_early_scenario_runs() -> list[WorkflowRun]:
+    """Same shape as `test_pagination_does_not_drop_accessible_runs_inside_a_page`:
+    two denied runs occupy the entire first store page (limit=3), so the scan
+    has to fetch a second page to fill the limit, and only the first two of
+    that second page's three items are needed -- "wf-d" is the item a naive
+    cursor drops. Reused here to run the *same* scenario against both stores.
+    """
+    return [
+        WorkflowRun(
+            workflow_id="denied-0",
+            knowledge_base_id="kb-2",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="denied-1",
+            knowledge_base_id="kb-2",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 9, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-a",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-b",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 7, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-c",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 6, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-d",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-e",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        ),
+    ]
+
+
+def _expected_accessible_order(
+    runs: list[WorkflowRun], *, knowledge_base_id: str
+) -> list[str]:
+    accessible = [run for run in runs if run.knowledge_base_id == knowledge_base_id]
+    accessible.sort(key=lambda run: run.created_at, reverse=True)
+    return [run.workflow_id for run in accessible]
+
+
+@pytest.mark.parametrize("store_name", ["in_memory", "redis"])
+def test_a_run_appears_exactly_once_across_consecutive_pages(store_name: str) -> None:
+    """The router's cursor must mean the same thing to both stores.
+
+    `_list_accessible_workflows` returns `scan_offset + consumed`, counting
+    items in the page the store returned. Whether that is a valid offset
+    *for that store* is the thing under test -- the entitlement filter runs
+    in the router, so neither store's own next_offset accounts for it.
+    """
+    runs = _filled_early_scenario_runs()
+
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        first = client.get("/workflows", params={"limit": 3, "offset": 0}).json()
+        second = client.get(
+            "/workflows", params={"limit": 3, "offset": first["next_offset"]}
+        ).json()
+
+    seen = [item["id"] for item in first["items"] + second["items"]]
+    assert len(seen) == len(set(seen)), f"a run was returned twice: {seen}"
+    expected = _expected_accessible_order(runs, knowledge_base_id="kb-1")
+    assert seen == expected, f"a run was skipped or reordered: seen={seen} expected={expected}"
+
+
+@pytest.mark.integration
+def test_pagination_survives_a_stale_redis_index_entry() -> None:
+    """A prior review suspected the skew specifically came from Redis
+    encountering a "stale" ZSET entry (an index id whose backing run no
+    longer resolves -- e.g. deleted outside `delete_run`, a maintenance
+    operation, or a race) mid-scan, combined with the store's own
+    `next_offset -= stale_count` compensation.
+
+    This pins down that exact mechanism: the stale entry sits inside the
+    *same* store page that fills the router's limit partway through (the
+    `filled_early` branch, which does its own `scan_offset + consumed`
+    arithmetic instead of using the store's compensated `next_offset`).
+    Verified empirically (see task-1-report.md) that the current
+    implementation's compensation happens synchronously within a single
+    `list_runs` call, so it does not actually skew the router's naive
+    arithmetic -- this test locks that in as regression coverage for the
+    exact scenario a future change could break.
+    """
+    redis_url = os.environ.get("CHILI_TEST_REDIS_URL")
+    if not redis_url:
+        pytest.skip("CHILI_TEST_REDIS_URL is not set; skipping Redis parity test.")
+    key_prefix = f"test:workflows-router-stale:{generate_id()}:"
+    store = RedisWorkflowRunStore(redis_url=redis_url, key_prefix=key_prefix)
+    health = store.check_health()
+    if health.status != "ok":
+        pytest.skip(f"Redis is unavailable at CHILI_TEST_REDIS_URL: {health.error}")
+
+    def _run(workflow_id: str, kb: str, minutes_ago: int) -> WorkflowRun:
+        return WorkflowRun(
+            workflow_id=workflow_id,
+            knowledge_base_id=kb,
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 20, tzinfo=timezone.utc)
+            - timedelta(minutes=minutes_ago),
+        )
+
+    # Newest -> oldest: denied, denied, wf-a, wf-b, GHOST(stale), wf-c, wf-d,
+    # wf-e. "ghost" sits between wf-b and wf-c, inside the same underlying
+    # store page that fills the router's limit (3) partway through.
+    runs = [
+        _run("denied-0", "kb-2", 0),
+        _run("denied-1", "kb-2", 1),
+        _run("wf-a", "kb-1", 2),
+        _run("wf-b", "kb-1", 3),
+        _run("ghost", "kb-1", 4),
+        _run("wf-c", "kb-1", 5),
+        _run("wf-d", "kb-1", 6),
+        _run("wf-e", "kb-1", 7),
+    ]
+    try:
+        for run in runs:
+            store.save_run(run)
+        # Simulate staleness: remove the backing record directly, bypassing
+        # `delete_run`, so the ZSET index entry for it lingers.
+        deleted = store.client.delete(f"{key_prefix}workflow:ghost")
+        assert deleted == 1, "test setup: ghost run must exist before deletion"
+
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        seen: list[str] = []
+        offset = 0
+        for _ in range(10):
+            body = client.get(
+                "/workflows", params={"limit": 3, "offset": offset}
+            ).json()
+            seen.extend(item["id"] for item in body["items"])
+            if not body["has_more"]:
+                break
+            assert body["next_offset"] is not None
+            offset = body["next_offset"]
+        else:
+            pytest.fail("pagination did not terminate within 10 pages")
+
+        assert len(seen) == len(set(seen)), f"a run was returned twice: {seen}"
+        assert seen == ["wf-a", "wf-b", "wf-c", "wf-d", "wf-e"], (
+            f"a run was skipped or reordered: {seen}"
+        )
+    finally:
+        keys = list(store.client.scan_iter(match=f"{key_prefix}*"))
+        if keys:
+            store.client.delete(*keys)
+        store.close()
 
 
 def test_list_workflows_with_limit_zero_returns_no_items() -> None:
