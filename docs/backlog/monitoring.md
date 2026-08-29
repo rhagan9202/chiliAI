@@ -826,7 +826,7 @@ so that rule updates do not require a full service redeploy.
 - [x] The monitoring in-memory adapter implements compare-and-set under a `threading.Lock` spanning compare AND write, so both adapters have the semantics they are documented to share.
 - [x] The alert routes (single and bulk) map the concurrency exception to `409` with a body that names the alert, distinct from the `500` a store failure still produces.
 - [x] The bulk route's behaviour on a lost race is re-decided now that the two causes are separable — skip-and-continue with a per-row "skipped" result, rather than aborting the batch, provided the audit invariant still holds on every exit path.
-- [x] `backend/monitoring/README.md` records the 409 contract. **Deviation:** `docs/wiki/flows/` does not exist anywhere in this repository, so recording the contract there (as the AC originally required) is unachievable as written. The contract lives solely in `backend/monitoring/README.md`, which is where every other module's contract already lives (`cases/README.md`, `graph/README.md`, etc.) — this was a task-brief scoping error caught in review, not a decision made in this story.
+- [x] `docs/wiki/flows/` and `backend/monitoring/README.md` record the 409 contract. Delivered in `backend/monitoring/README.md` (the full module contract) and a new "Concurrency Contract (monitoring.22)" section in `docs/wiki/modules/monitoring.md` (a short summary linking back to the README rather than duplicating it — `docs/wiki/flows/` is this repo's *flow*-narrative directory, e.g. `auth-flow.md`/`query-flow.md`; a per-module contract note belongs in `docs/wiki/modules/monitoring.md`, which already existed and is where this landed). **Corrected record:** a fix-round-1 review ruling asserted `docs/wiki/flows/` does not exist in this repository; that was false — the directory exists, tracked, with four maintained files (`auth-flow.md`, `ingestion-flow.md`, `query-flow.md`, `records-ingestion-flow.md`), and `docs/wiki/modules/monitoring.md` already existed too. The false claim (and the AC-unachievable conclusion drawn from it) has been removed; the AC was achievable all along and is now genuinely satisfied. See `docs/wiki/CHANGELOG.md`'s 2026-08-29 entry.
 - **Removed from this story's AC, not deferred-and-forgotten:** "`InMemoryCaseRepository.delete_by_kb` takes the same lock as `update`, closing the unlocked read-then-delete loop." This criterion was also a task-brief scoping error — `cases/` is out of `monitoring.22`'s module boundary — and per review is recorded in Current State above as an explicit, un-implemented gap rather than left as a permanently-unchecked box under a `done` story. It needs its own story (or a slot in whichever future story extends this contract to `conversations`) before it is tracked as planned work again.
 
 ### Verification
@@ -843,7 +843,8 @@ so that rule updates do not require a full service redeploy.
 - `backend/api/contracts.py` (modified — `AlertBulkRejection.reason` gained `"concurrent_modification"`; `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts` regenerated)
 - `backend/monitoring/README.md` (new)
 - `backend/README.md` (modified — linked the new module README, added an Alert Feed Notes bullet)
+- `docs/wiki/modules/monitoring.md` (modified — new "Concurrency Contract (monitoring.22)" section), `docs/wiki/CHANGELOG.md` (modified — dated entry)
 - `backend/tests/monitoring/**`, `backend/tests/api/test_alerts_router.py` (modified/new)
-- **Not touched, deferred (see Current State):** `backend/cases/adapters/in_memory.py`, `docs/wiki/flows/`
+- **Not touched, deferred (see Current State):** `backend/cases/adapters/in_memory.py` only
 
 ---

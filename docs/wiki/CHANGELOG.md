@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-29 — monitoring.22 closed: lost write race typed, mapped to 409
+
+### Changes
+
+| Page | Change |
+| --- | --- |
+| `modules/monitoring.md` | New "Concurrency Contract (monitoring.22)" section: `acknowledge`/`transition_status` now raise `monitoring.exceptions.AlertConcurrentModificationError` (not `MonitoringSourceError`) on a lost optimistic-concurrency race, on both adapters; the API gateway maps it to 409 on the single-alert routes and treats it as a per-row skip (not a batch abort) on the bulk route. Points at `backend/monitoring/README.md` for the full contract rather than duplicating it. |
+
+**Note:** this entry corrects a controller ruling made during this same sprint's review that `docs/wiki/flows/` does not exist in this repository — it does, with four files, and this changelog itself was already being maintained. The ruling was made without checking; see `docs/backlog/monitoring.md`'s `monitoring.22` entry for the corrected record.
+
+**Code files read:** `backend/monitoring/exceptions.py`, `backend/monitoring/adapters/postgres.py`, `backend/monitoring/adapters/in_memory.py`, `backend/api/dependencies.py`, `backend/monitoring/README.md`.
+
+---
+
 ## 2026-08-06 — SAFE-CMS surge documentation reconciliation
 
 The 2026-07-30 → 08-05 SAFE-CMS surge landed ~142 commits and seven new backend

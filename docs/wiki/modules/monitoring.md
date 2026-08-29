@@ -192,6 +192,23 @@ class AlertFeedStoreProtocol(Protocol):   # supersets AlertHistoryWriter
 
 ---
 
+## Concurrency Contract (monitoring.22)
+
+Last verified: 2026-08-29
+
+`acknowledge`/`transition_status` on `AlertFeedStoreProtocol` are read → validate → write against a row two callers can race on — including two ordinary concurrent HTTP requests, since `api.dependencies.get_alert_feed_store()` is an `lru_cache(maxsize=1)` process singleton shared across every threadpool request, not just two threads in a test.
+
+A lost race raises `monitoring.exceptions.AlertConcurrentModificationError`, typed distinctly from `MonitoringSourceError` (which means the store itself failed and may not be safe to retry). Both adapters raise it *before* writing anything, so it is always safe for a caller to retry:
+
+- `PostgresAlertHistoryStore` — a `WHERE status = %s` guarded `UPDATE` that matched zero rows, re-read and re-validated against the fresh row.
+- `InMemoryAlertHistoryWriter` — a `threading.Lock`-guarded re-check-and-write reproducing the same read → validate → write shape without a database.
+
+The API gateway maps it to `HTTPException(409)` on the single-alert routes (`POST /alerts/{id}/acknowledge`, `PATCH /alerts/{id}/status`) and treats it as a per-row skip — not a batch abort — on `POST /alerts/bulk/status`, since nothing commits on the lost-race branch.
+
+Full contract (including the shared `shared.exceptions.ConcurrentModificationError` cross-module marker base other modules are expected to adopt for the same guarantee, and the adapter-parity test shape): `backend/monitoring/README.md`. Not duplicated here to avoid two copies of the same contract drifting apart.
+
+---
+
 ## Module Dependencies
 
 - `shared/types.py` — `Alert`
