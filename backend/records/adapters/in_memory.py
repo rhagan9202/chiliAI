@@ -104,3 +104,25 @@ class InMemoryRawRecordStore:
             if self._records.pop(stored_key, None) is not None:
                 removed += 1
         return removed
+
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
+    ) -> int:
+        """Delete the given rows and forget the submission hash atomically.
+
+        Implemented independently of ``delete_records``/``discard_submission``
+        (rather than composed from them) so this never shares a fault with
+        those separately-callable steps; in-memory dict mutations cannot fail
+        partway, so both effects are always applied together.
+        """
+        removed = 0
+        for key in keys:
+            stored_key = (knowledge_base_id, key.record_type, key.record_id)
+            if self._records.pop(stored_key, None) is not None:
+                removed += 1
+        self._submissions.discard((knowledge_base_id, submission_hash))
+        return removed

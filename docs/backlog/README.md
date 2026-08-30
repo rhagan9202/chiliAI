@@ -37,12 +37,12 @@
 | llm.md | 17 | 0 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 2 | 0 | 22 | 9% |
 | rag.md | 17 | 0 | 0 | 0 | 17 | 0% |
-| records.md | 15 | 2 | 1 | 0 | 18 | 5% |
+| records.md | 14 | 2 | 2 | 0 | 18 | 11% |
 | scorecards.md | 3 | 0 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 419 | 8 | 36 | 3 | 466 | 7% |
+| **Total** | 418 | 8 | 37 | 3 | 466 | 7% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -55,7 +55,6 @@
 - [cicd.22] _cicd — size S — prereqs done
 - [conversations.06] conversations — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
-- [records.18] records — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -78,7 +77,8 @@
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
 - [database.05] database — size M — prereqs done
-- …43 more
+- [database.07] database — size M — prereqs done
+- …42 more
 <!-- END: ready-set -->
 
 ## Critical path

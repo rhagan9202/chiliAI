@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import cast
 
 import pytest
@@ -11,8 +12,9 @@ from config.schema import RecordEntityMapping, RecordFeedConfig, RecordsConfig
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.in_memory import InMemoryRawRecordStore
-from records.exceptions import RecordFeedNotFoundError
+from records.exceptions import RecordFeedNotFoundError, RecordPersistenceError
 from events.protocols import EventBus
+from records.models import RawRecordKey
 from records.service import RecordsService, create_records_service
 from records.service_models import RecordIngestReceipt
 from records.service_models import RecordSubmission
@@ -540,3 +542,94 @@ def test_a_rollback_keeps_a_row_the_failed_call_did_not_insert() -> None:
         )
     }
     assert surviving == {"shared"}
+
+
+class _PublishAlwaysFails:
+    """Event bus whose every publish attempt fails."""
+
+    def publish(self, event: object) -> None:
+        raise RuntimeError("event bus unavailable")
+
+    def subscribe(self, event_type: str, handler: object) -> None:
+        return None
+
+
+class _StoreFailingAfterDelete(InMemoryRawRecordStore):
+    """Fails the second rollback step under the current two-call rollback.
+
+    ``discard_submission`` always raises here, reproducing the window the
+    two-independent-transactions design exposes: the delete lands, the
+    discard doesn't, and the hash is stranded. Once the rollback is a single
+    atomic ``rollback_submission`` call there is no "after delete, before
+    discard" boundary left for this fault to attach to -- the atomic method
+    is implemented independently of the (still separately faulty)
+    ``discard_submission`` step, so it is unaffected by this override.
+    """
+
+    def discard_submission(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> None:
+        raise RuntimeError("discard_submission unavailable")
+
+
+def test_a_failure_between_the_two_rollback_steps_does_not_strand_the_client() -> None:
+    """delete_records and discard_submission commit separately. A failure
+    between them leaves rows deleted and the hash retained, so the client's
+    retry returns duplicate=True with zero rows -- forever, since nothing
+    will ever publish an event for rows that no longer exist.
+    """
+    store = _StoreFailingAfterDelete()
+    bus = _PublishFailsOnce()
+    service = create_records_service(
+        store, event_bus=cast(EventBus, bus), records_config=_records_config()
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    with pytest.raises(Exception):
+        _push(service, rows)
+
+    receipt = cast(RecordIngestReceipt, _push(service, rows))  # the client's retry
+    assert receipt.duplicate is False, "the retry was refused as a duplicate"
+    assert receipt.accepted_count == len(rows)
+
+
+class _StoreWhoseRollbackAlsoFails(InMemoryRawRecordStore):
+    """A store whose rollback path always fails outright.
+
+    Overrides both the current two-call rollback's first step
+    (``delete_records``) and, once it exists, the atomic
+    ``rollback_submission`` -- so the same double exercises both the
+    unfixed and the fixed rollback path without needing to change between
+    runs.
+    """
+
+    def delete_records(
+        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
+    ) -> int:
+        raise RecordPersistenceError("Failed to delete raw records.")
+
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
+    ) -> int:
+        raise RecordPersistenceError("Failed to roll back the submission.")
+
+
+def test_the_publish_error_is_not_replaced_by_a_storage_error() -> None:
+    """The bare `raise` that re-surfaces the publish failure only runs if
+    both rollback calls succeed. Otherwise a Redis outage is reported as
+    "Record storage failure", pointing the operator at the wrong subsystem.
+    """
+    store = _StoreWhoseRollbackAlsoFails()
+    service = create_records_service(
+        store,
+        event_bus=cast(EventBus, _PublishAlwaysFails()),
+        records_config=_records_config(),
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    with pytest.raises(RuntimeError, match="event bus"):
+        _push(service, rows)

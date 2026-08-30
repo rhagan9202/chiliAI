@@ -66,6 +66,25 @@ class RawRecordStore(Protocol):
         """
         ...
 
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
+    ) -> int:
+        """Delete the named rows and forget the submission hash atomically.
+
+        Either both happen or neither does. Doing this as two independently
+        committed steps (``delete_records`` then ``discard_submission``)
+        leaves a window where a failure between them deletes the rows but
+        keeps the hash -- which makes the client's identical retry a
+        permanent no-op: ``duplicate=True`` with zero rows, forever, because
+        nothing will ever publish an event for rows that no longer exist.
+        Returns the count of rows removed.
+        """
+        ...
+
 
 @runtime_checkable
 class RecordSourceProtocol(Protocol):

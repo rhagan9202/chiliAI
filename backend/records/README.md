@@ -23,8 +23,18 @@ could not help either, because `persist()` dedupes by `record_id` and the rows
 already existed under the *original* correlation id.
 
 The publish is therefore wrapped: on failure the service calls
-`delete_records(keys=...)` and `discard_submission(...)` before re-raising, so
-the client's retry is a clean first ingest.
+`rollback_submission(keys=..., submission_hash=...)` before re-raising, so
+the client's retry is a clean first ingest. That call deletes the rows and
+discards the submission hash **atomically, in one transaction** — either both
+happen or neither does. Two independently-committed steps would leave a
+window where a failure between them deletes the rows but keeps the hash,
+which makes the client's identical retry a permanent no-op (`duplicate=True`,
+zero rows, no event, forever). `PostgresRawRecordStore.rollback_submission`
+follows the same one-connection/one-commit shape as `delete_by_kb`;
+`InMemoryRawRecordStore.rollback_submission` applies both mutations directly.
+If the rollback call itself fails outright, that failure is logged and
+swallowed so the *original* publish exception still reaches the caller —
+an operator seeing it needs to know the event bus is down, not storage.
 
 The rollback is scoped to **row identity, never the correlation id**.
 `persist()` returns the `RawRecordKey`s it actually inserted (Postgres gets
@@ -34,8 +44,11 @@ connector path: `connectors/executor` assigns one correlation id per sync run
 and reuses it for every page, so rolling back page N would also delete pages
 1..N-1 — rows whose `records.ingested` events were already published and very
 likely already consumed. Rows this call did not insert (a record id an earlier
-page already landed) are equally not its to remove. Both store adapters
-implement the two methods.
+page already landed) are equally not its to remove.
+
+The standalone `delete_records(keys=...)` / `discard_submission(...)` methods
+remain on `RawRecordStore` (each adapter's own tests still exercise them
+individually) but are no longer part of the rollback path.
 
 ## Layout
 

@@ -55,6 +55,37 @@ def test_delete_records_removes_only_the_named_keys() -> None:
     ] == ["c1"]
 
 
+def test_rollback_submission_deletes_rows_and_discards_hash_atomically() -> None:
+    """The atomic replacement for the delete_records + discard_submission pair.
+
+    A single call must leave the store in one of exactly two states: both
+    the named rows and the hash gone, or (on the empty-keys edge case) just
+    the hash gone. There is no state where the rows vanish but the hash
+    survives.
+    """
+    store = InMemoryRawRecordStore()
+    store.persist([_record("c1", correlation_id="corr-rb")])
+    store.persist([_record("c2", correlation_id="corr-rb")])
+    store.record_submission(
+        knowledge_base_id="kb-1", submission_hash="sub-rb", correlation_id="corr-rb"
+    )
+
+    removed = store.rollback_submission(
+        knowledge_base_id="kb-1",
+        keys=[RawRecordKey("claim_record", "c2")],
+        submission_hash="sub-rb",
+    )
+
+    assert removed == 1
+    assert [
+        record.record_id
+        for record in store.load_batch(
+            knowledge_base_id="kb-1", correlation_id="corr-rb"
+        )
+    ] == ["c1"]
+    assert store.was_submitted(knowledge_base_id="kb-1", submission_hash="sub-rb") is False
+
+
 def test_load_batch_filters_by_correlation_id() -> None:
     store = InMemoryRawRecordStore()
     store.persist([_record("c1", correlation_id="corr-1")])

@@ -258,3 +258,66 @@ def test_rollback_removes_only_this_batch_and_frees_the_submission(
                 "WHERE knowledge_base_id = 'kb-records-test'"
             )
             conn.commit()
+
+
+def test_rollback_submission_deletes_rows_and_discards_hash_in_one_transaction(
+    database_url: str,
+) -> None:
+    """``rollback_submission`` replaces the two-call rollback with one atomic
+    call: the row deletion and the hash discard commit together, so a
+    failure between them (the old ``delete_records`` / ``discard_submission``
+    pair's exposure) is no longer possible.
+    """
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresRawRecordStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.execute(
+                "DELETE FROM record_submissions "
+                "WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.commit()
+
+        run_correlation_id = "corr-sync-run-atomic"
+        store.persist([_record("keep-2", correlation_id=run_correlation_id)])
+        failed_page = store.persist(
+            [_record("rollback-2", correlation_id=run_correlation_id)]
+        )
+        store.record_submission(
+            knowledge_base_id="kb-records-test",
+            submission_hash="hash-rollback-atomic",
+            correlation_id=run_correlation_id,
+        )
+        assert store.was_submitted(
+            knowledge_base_id="kb-records-test", submission_hash="hash-rollback-atomic"
+        )
+
+        removed = store.rollback_submission(
+            knowledge_base_id="kb-records-test",
+            keys=failed_page,
+            submission_hash="hash-rollback-atomic",
+        )
+
+        assert removed == 1
+        surviving = store.load_batch(
+            knowledge_base_id="kb-records-test", correlation_id=run_correlation_id
+        )
+        assert [record.record_id for record in surviving] == ["keep-2"]
+        assert not store.was_submitted(
+            knowledge_base_id="kb-records-test", submission_hash="hash-rollback-atomic"
+        )
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.execute(
+                "DELETE FROM record_submissions "
+                "WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.commit()
+        provider.close()

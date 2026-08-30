@@ -221,6 +221,38 @@ class PostgresRawRecordStore:
             raise RecordPersistenceError("Failed to delete raw records.") from exc
         return removed
 
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
+    ) -> int:
+        """Delete the given rows and forget the submission hash atomically.
+
+        Two separate transactions could leave rows deleted with the hash
+        retained, which makes the client's identical retry a permanent
+        no-op: duplicate=True, zero rows, no event. Follows the same shape
+        as ``delete_by_kb``: one connection, one commit, both statements in
+        the same ``try``.
+        """
+        removed = 0
+        try:
+            with self._provider.connection() as conn:
+                for key in keys:
+                    cursor = conn.execute(
+                        _DELETE_RECORDS_SQL,
+                        (knowledge_base_id, key.record_type, key.record_id),
+                    )
+                    removed += cursor.rowcount
+                conn.execute(
+                    _DISCARD_SUBMISSION_SQL, (knowledge_base_id, submission_hash)
+                )
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError("Failed to roll back the submission.") from exc
+        return removed
+
 
 def _row_to_record(row: Row) -> RawRecord:
     raw_payload = row[3]
