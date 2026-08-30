@@ -88,23 +88,6 @@ class InMemoryRawRecordStore:
         """Record that a submission hash has been accepted for a KB."""
         self._submissions.add((knowledge_base_id, submission_hash))
 
-    def discard_submission(
-        self, *, knowledge_base_id: str, submission_hash: str
-    ) -> None:
-        """Forget a submission hash so an identical retry is not a duplicate."""
-        self._submissions.discard((knowledge_base_id, submission_hash))
-
-    def delete_records(
-        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
-    ) -> int:
-        """Delete exactly the named rows; return the count removed."""
-        removed = 0
-        for key in keys:
-            stored_key = (knowledge_base_id, key.record_type, key.record_id)
-            if self._records.pop(stored_key, None) is not None:
-                removed += 1
-        return removed
-
     def rollback_submission(
         self,
         *,
@@ -114,10 +97,10 @@ class InMemoryRawRecordStore:
     ) -> int:
         """Delete the given rows and forget the submission hash atomically.
 
-        Implemented independently of ``delete_records``/``discard_submission``
-        (rather than composed from them) so this never shares a fault with
-        those separately-callable steps; in-memory dict mutations cannot fail
-        partway, so both effects are always applied together.
+        In-memory dict mutations cannot fail partway, so both effects are
+        always applied together. This is the only deletion entry point on the
+        store: the separately-callable row-delete and hash-discard steps it
+        replaced were removed with it, so there is no non-atomic path left.
         """
         removed = 0
         for key in keys:

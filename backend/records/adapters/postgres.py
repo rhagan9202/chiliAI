@@ -186,41 +186,6 @@ class PostgresRawRecordStore:
                 "Failed to record submission hash."
             ) from exc
 
-    def discard_submission(
-        self, *, knowledge_base_id: str, submission_hash: str
-    ) -> None:
-        """Forget a submission hash so an identical retry is not a duplicate."""
-        try:
-            with self._provider.connection() as conn:
-                conn.execute(
-                    _DISCARD_SUBMISSION_SQL, (knowledge_base_id, submission_hash)
-                )
-                conn.commit()
-        except Exception as exc:
-            raise RecordPersistenceError(
-                "Failed to discard submission hash."
-            ) from exc
-
-    def delete_records(
-        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
-    ) -> int:
-        """Delete exactly the named rows; return the count removed."""
-        if not keys:
-            return 0
-        removed = 0
-        try:
-            with self._provider.connection() as conn:
-                for key in keys:
-                    cursor = conn.execute(
-                        _DELETE_RECORDS_SQL,
-                        (knowledge_base_id, key.record_type, key.record_id),
-                    )
-                    removed += cursor.rowcount
-                conn.commit()
-        except Exception as exc:
-            raise RecordPersistenceError("Failed to delete raw records.") from exc
-        return removed
-
     def rollback_submission(
         self,
         *,
@@ -234,7 +199,9 @@ class PostgresRawRecordStore:
         retained, which makes the client's identical retry a permanent
         no-op: duplicate=True, zero rows, no event. Follows the same shape
         as ``delete_by_kb``: one connection, one commit, both statements in
-        the same ``try``.
+        the same ``try``. The separate row-delete and hash-discard methods
+        this replaced were removed, so both statements can only ever run in
+        this one transaction.
         """
         removed = 0
         try:

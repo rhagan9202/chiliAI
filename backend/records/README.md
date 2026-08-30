@@ -46,9 +46,15 @@ and reuses it for every page, so rolling back page N would also delete pages
 likely already consumed. Rows this call did not insert (a record id an earlier
 page already landed) are equally not its to remove.
 
-The standalone `delete_records(keys=...)` / `discard_submission(...)` methods
-remain on `RawRecordStore` (each adapter's own tests still exercise them
-individually) but are no longer part of the rollback path.
+`rollback_submission` is the *only* deletion entry point on `RawRecordStore`.
+The standalone `delete_records(keys=...)` / `discard_submission(...)` pair it
+replaced was removed from the protocol and both adapters once nothing called
+them, so the two-transaction rollback -- rows deleted, hash retained, the
+client's retry a permanent `duplicate=True` no-op -- cannot be reassembled by
+accident. Postgres's single-transaction guarantee is asserted, not inferred:
+`test_rollback_submission_rolls_the_deletes_back_if_the_discard_fails` forces
+the second statement to fail and requires the row deletes to roll back with
+it.
 
 ## Layout
 

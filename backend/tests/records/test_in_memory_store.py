@@ -37,24 +37,6 @@ def test_persist_returns_only_the_keys_it_inserted() -> None:
     assert store.persist([_record("c1")]) == []
 
 
-def test_delete_records_removes_only_the_named_keys() -> None:
-    store = InMemoryRawRecordStore()
-    store.persist([_record("c1", correlation_id="corr-shared")])
-    store.persist([_record("c2", correlation_id="corr-shared")])
-
-    removed = store.delete_records(
-        knowledge_base_id="kb-1", keys=[RawRecordKey("claim_record", "c2")]
-    )
-
-    assert removed == 1
-    assert [
-        record.record_id
-        for record in store.load_batch(
-            knowledge_base_id="kb-1", correlation_id="corr-shared"
-        )
-    ] == ["c1"]
-
-
 def test_rollback_submission_deletes_rows_and_discards_hash_atomically() -> None:
     """The atomic replacement for the delete_records + discard_submission pair.
 
