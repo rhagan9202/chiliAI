@@ -16,7 +16,7 @@
 <!-- BEGIN: status-rollup -->
 | File | Planned | In-progress | Done | Dropped | Total | % done |
 |------|---------|-------------|------|---------|-------|--------|
-| _cicd.md | 21 | 1 | 0 | 0 | 22 | 0% |
+| _cicd.md | 20 | 1 | 1 | 0 | 22 | 4% |
 | _infra.md | 19 | 0 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
@@ -42,7 +42,7 @@
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 417 | 8 | 38 | 3 | 466 | 8% |
+| **Total** | 416 | 8 | 39 | 3 | 466 | 8% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -52,7 +52,6 @@
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
-- [cicd.22] _cicd — size S — prereqs done
 - [conversations.06] conversations — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
@@ -78,7 +77,8 @@
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
-- …41 more
+- [embeddings.06] embeddings — size M — prereqs done
+- …40 more
 <!-- END: ready-set -->
 
 ## Critical path

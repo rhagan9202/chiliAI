@@ -766,7 +766,8 @@ so that failures are diagnosable and the lane can scale as coverage grows.
 ## Story cicd.22: Gate every live-stack skip, not just the base-URL probe
 
 **ID:** cicd.22
-**Status:** planned
+**Status:** done
+**Done:** 2026-08-29 · sprint 2026-36 stabilisation Task 6 · `d16b3149` (`require_stack_condition` + all six live-stack skip sites converted)
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
@@ -777,19 +778,22 @@ so that failures are diagnosable and the lane can scale as coverage grows.
 
 ### Current State
 - Sprint 2026-35 added `CHILI_E2E_REQUIRE_STACK` and `backend/tests/e2e/stack_gate.py` so a missing stack fails loudly in CI instead of skipping green, and so the probe verifies it is talking to a chiliAI API rather than whatever holds port 8000.
-- The variable only gates that one decision. `stack_gate._unavailable` is consulted solely inside `resolve_stack`, and the same three e2e files retain **ungated** `pytest.skip` calls: a missing connector-imports directory, a failed `docker exec` into `chiliai-postgres-1` / `chiliai-worker-1`, and `test_approval_and_replay_flow.py:262` "No completed score run available to replay" — which skips in exactly the case where the feature under test did not work.
-- So a broken-but-listening stack still produces a green run. That is the same class of false confidence the audit's test-quality dimension named.
-- Related: the backend CI job that starts the app containers has never run to completion, so none of these paths has been exercised in CI yet.
+- Fixed 2026-08-29: `stack_gate.py` now exposes `require_stack_condition(condition, reason)`, the general-purpose form of the `_unavailable` mechanism `resolve_stack` already used. Every non-probe `pytest.skip` in `backend/tests/e2e/` was audited (six sites, not the seven the dispatch brief guessed — re-grepped and recounted before converting) and judged individually:
+  - Five are genuine environment preconditions — a failed `docker exec` into `chiliai-postgres-1` (`test_workflow_run_flow.py`, `test_approval_and_replay_flow.py`) or `chiliai-worker-1` (same two files), and a missing connector-imports host directory (`test_connector_sync_flow.py`) — and now route through `require_stack_condition`, so `CHILI_E2E_REQUIRE_STACK=1` turns each into a failure.
+  - One — `test_approval_and_replay_flow.py`'s "No completed score run available to replay" — is not an environment-readiness question: it fires *after* `resolve_stack` has already confirmed a genuine chiliAI stack is answering, and score runs are expected to complete automatically on ingest. Its absence there is a symptom of the scoring pipeline not producing output, i.e. the exact case this test exists to catch. It was converted to an **unconditional** `pytest.fail`, not routed through `require_stack_condition` — it must not skip even when `CHILI_E2E_REQUIRE_STACK` is unset, since by that point "the stack is optional" has already been settled in the affirmative.
+- `test_stack_gate.py` gained regression coverage for `require_stack_condition` (true/false/required-fails) and an `autouse` fixture that isolates its own tests from an ambient `CHILI_E2E_REQUIRE_STACK` in the shell/CI environment (a pre-existing leakage gap surfaced while gathering the `CHILI_E2E_REQUIRE_STACK=1` evidence run for this story).
+- Verified locally only: `tests/e2e/` run with and without `CHILI_E2E_REQUIRE_STACK=1` (20 passed/15 skipped, vs. 20 passed/15 errors). No full `make dev` app stack (API + worker) was available locally to exercise the six converted sites' docker-exec/directory paths end-to-end — only `chiliai-postgres-1`/`redis`/`qdrant` were up, and port 8000 was held by an unrelated foreign service, which `resolve_stack` correctly rejected before reaching the converted sites. The backend CI job that starts the app containers has never run to completion either, so this story has no CI-green evidence yet — only the local `require_stack_condition` unit coverage and the diff review of each converted call site.
 - Found by the sprint 2026-35 whole-branch review.
 
 ### Acceptance Criteria
-- [ ] Every `pytest.skip` in `backend/tests/e2e/` routes through the same gate, so `CHILI_E2E_REQUIRE_STACK=1` turns each into a failure.
-- [ ] The score-run replay skip in particular fails under the flag, since it is indistinguishable from the feature being broken.
-- [ ] A test asserts the gate converts a representative non-base-URL skip into a failure when the flag is set.
+- [x] Every genuine environment-precondition `pytest.skip` in `backend/tests/e2e/` (docker-exec reachability, host bind-mount existence) routes through `require_stack_condition`, so `CHILI_E2E_REQUIRE_STACK=1` turns each into a failure.
+- [x] The score-run replay skip fails — unconditionally, not just under the flag, per the reasoning above — since it is indistinguishable from the feature being broken.
+- [x] `test_stack_gate.py` asserts `require_stack_condition` converts a representative non-base-URL skip into a failure when the flag is set (`TestRequireStackConditionGatesAnyLiveStackPrecondition`).
 
 ### Verification
-- Run the e2e suite with `CHILI_E2E_REQUIRE_STACK=1` against a deliberately incomplete stack and confirm failures rather than skips.
+- Run the e2e suite with `CHILI_E2E_REQUIRE_STACK=1` against a deliberately incomplete stack and confirm failures rather than skips. Done locally (see Current State); not yet confirmed against a full `make dev` stack or in CI.
 
 ### Code touch points
-- `backend/tests/e2e/stack_gate.py` (modify — expose the gate for non-probe skips)
-- `backend/tests/e2e/test_approval_and_replay_flow.py`, `test_connector_sync_flow.py`, `test_workflow_run_flow.py` (modify — route skips through it)
+- `backend/tests/e2e/stack_gate.py` (modified — added `require_stack_condition`)
+- `backend/tests/e2e/test_approval_and_replay_flow.py`, `test_connector_sync_flow.py`, `test_workflow_run_flow.py` (modified — routed skips through it; the score-run skip made an unconditional `pytest.fail` instead)
+- `backend/tests/e2e/test_stack_gate.py` (modified — regression coverage + ambient-env isolation fixture)
