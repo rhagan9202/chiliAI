@@ -97,15 +97,34 @@ class TestRequireStackConditionGatesAnyLiveStackPrecondition:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The regression this file exists for: before ``require_stack_condition``,
-        the docker-exec and missing-directory preconditions (and "no completed
-        score run available to replay", which fires precisely when the feature
-        under test did not work) called ``pytest.skip`` directly and stayed a
-        skip under CHILI_E2E_REQUIRE_STACK=1.
+        every docker-exec and missing-directory precondition in ``tests/e2e/``
+        called ``pytest.skip`` directly and stayed a skip under
+        CHILI_E2E_REQUIRE_STACK=1.
         """
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
         with pytest.raises(Failed):
-            require_stack_condition(False, "No completed score run available to replay.")
+            require_stack_condition(False, "Cannot reach chiliai-worker-1: exit 1.")
+
+
+class TestABarePytestSkipIsNeverGated:
+    """Permanent regression coverage for the defect ``require_stack_condition`` fixes.
+
+    Not testing this module's code -- testing ``pytest.skip``'s own behaviour,
+    which is exactly why it exists. Before cicd.22, every non-probe live-stack
+    precondition in ``tests/e2e/`` called ``pytest.skip`` directly (the shape
+    reproduced below), so ``CHILI_E2E_REQUIRE_STACK=1`` never touched it --
+    committed here so the next person does not have to take a report's word
+    for what the TDD RED actually showed.
+    """
+
+    def test_a_bare_skip_stays_a_skip_no_matter_how_the_flag_is_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
+
+        with pytest.raises(Skipped):
+            pytest.skip("Cannot reach chiliai-postgres-1: exit 1")
 
 
 class TestTheGateRejectsAForeignService:

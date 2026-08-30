@@ -173,12 +173,21 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > `stack_gate.require_stack_condition(condition, reason)` is the
 > general-purpose form of the same skip-or-fail decision; a failed `docker
 > exec` into `chiliai-postgres-1`/`chiliai-worker-1` and a missing
-> connector-imports host directory all route through it. One exception is
-> deliberate: `test_approval_and_replay_flow.py`'s "no completed score run
-> available to replay" fails **unconditionally** (not gated behind the flag),
-> because by the time it runs `resolve_stack` has already confirmed a real
-> chiliAI stack, and an empty `score_runs` table there is a symptom of the
-> scoring pipeline not working, not of a missing environment.
+> connector-imports host directory all route through it.
+>
+> `test_approval_and_replay_flow.py`'s score-run replay test is a deliberate
+> non-example: it does **not** scavenge `score_runs` for a row left behind by
+> another test, and it does **not** fail unconditionally when none exists
+> either. An earlier version tried the latter, reasoning that a real,
+> confirmed-answering stack with no completed score run must mean the scoring
+> pipeline is broken — but nothing creates a `score_runs` row as a side effect
+> of ingest (that's a *different*, per-entity analytics fan-out), so that
+> would have hard-failed every real CI run on a healthy stack: a fresh
+> Postgres, `alembic upgrade head`, no seed step, and the one test that
+> ingests real data collecting after this one. The test now drives its own
+> precondition instead — pushes rows via `POST /records/{id}/push`, polls the
+> KB's live `entity_count` until they land, and starts+polls a real
+> `POST /score-runs` to `completed` — before breaking and replaying that run.
 >
 > ⚠️ **Postgres-touching tests default to `chili_test`, never the dev DB.**
 > `tests/database/test_migrations.py` runs `alembic downgrade base` →
