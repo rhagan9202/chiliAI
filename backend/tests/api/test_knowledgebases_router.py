@@ -560,10 +560,11 @@ def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
             storage_key="knowledgebases/kb-ready/documents/doc-1/source.json",
         )
     )
-    repository.record_document_warnings(
+    repository.set_stage_document_warnings(
         "kb-ready",
         "doc-1",
-        additional_count=2,
+        stage="parse",
+        count=2,
         reasons=["csv.ragged_row: row 1 dropped a field"],
     )
     graph_service = _MetricsOnlyGraphService(

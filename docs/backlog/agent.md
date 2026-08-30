@@ -813,41 +813,46 @@
 ## Story agent.22: Make the extract-stage document warning counter replay-safe with per-stage accounting
 
 **ID:** agent.22
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** M
+**Done:** added `KnowledgeBaseRepository.set_stage_document_warnings(stage=...)`, an absolute setter keyed by (document, stage) with the document total maintained as the sum across stages on every write; both `handle_documents_parsed` and `handle_entities_extracted` now write through it; the old additive/stage-blind methods were removed from both adapters.
 
 **As an** operator reading a document's warning count,
 **I need** the number to stay correct when a pipeline handler is retried,
 **so that** a transient failure does not inflate a document's warnings and make a clean document look problematic.
 
 ### Current State
-- Sprint 2026-35 Task 5 closed **half** of its audit finding ("retrying a `documents.parsed` / `entities.validated` handler re-applies the non-idempotent document warning counter"). `handle_documents_parsed` now calls an absolute setter (`set_document_warnings`) so a replay overwrites rather than accumulates.
-- The second writer, `handle_entities_extracted` (`backend/agent/coordinator.py:2045`), still does an additive `record_document_warnings`. A retry of that handler still inflates the count.
-- This was left deliberately, not overlooked: that call site is additive **across pipeline stages by design** — parse-stage warnings and extract-stage warnings accumulate into one total. Converting it to the absolute setter would make the extract stage overwrite the parse stage's warnings, trading a replay bug for a data-loss bug.
-- A correct fix needs per-stage accounting: an absolute setter keyed by stage, with the total derived as the sum across stages. That is a schema/API design decision that was never specced and is larger than a fix round.
-- Related API asymmetry noted at the time: `set_document_warnings` returns `None` while its sibling `record_document_warnings` returns the updated record.
+- Sprint 2026-35 Task 5 closed **half** of its audit finding ("retrying a `documents.parsed` / `entities.extracted` handler re-applies the non-idempotent document warning counter" — corrected here from `entities.validated`, which is the event `handle_entities_validated`, the *graph* stage, consumes; it does not take `kb_repository` and was never the second writer). `handle_documents_parsed` had gained an absolute setter (`set_document_warnings`) so a replay overwrites rather than accumulates.
+- Sprint 2026-36 Task 5 (this story) closed the other half: `handle_entities_extracted` (`backend/agent/coordinator.py:~2045`) moved off the additive `record_document_warnings` onto the same per-stage setter as parse, with `stage="extract"`.
+- Both writers now call `KnowledgeBaseRepository.set_stage_document_warnings(knowledge_base_id, document_id, *, stage, count, reasons)`, keyed by `(document, stage)` and absolute per stage. The document-level `warning_count` / `warning_reasons` are maintained on every write as the sum / stage-order-sampled union across every stage that has written (recomputed in `knowledgebases/_helpers.build_stage_document_warning_updates`, shared by both adapters so the two write paths cannot diverge). The old `record_document_warnings` (additive) and `set_document_warnings` (absolute, stage-blind) methods have no remaining callers and were removed from the protocol and both adapters, so the additive path cannot be reintroduced.
+- A document persisted before this per-stage ledger existed (non-zero flat `warning_count`/`warning_reasons`, empty per-stage dicts) is migrated in place the first time any stage writes: its prior total is folded in as a synthetic `"legacy"` stage entry rather than being dropped or double-counted. No standalone backfill script was needed.
+- The return-shape asymmetry (`set_document_warnings` returned `None`, `record_document_warnings` returned the record) is resolved: `set_stage_document_warnings` returns `DocumentRecord | None`, matching the module's other mutators (`update_document_status`, `update_summary`).
+- No frontend contract change: `DocumentSummary.warning_count`/`warning_reasons` (the API-facing shape) are unchanged in field name, type, and semantics (still the document-level total/sample) — confirmed by re-exporting OpenAPI and diffing against `chili_app/openapi.json` (no drift).
 
 ### Acceptance Criteria
-- [ ] `KnowledgeBaseRepository` gains per-stage warning accounting — an absolute setter keyed by (document, stage) — with the document's total derived as the sum across stages rather than stored as a running counter.
-- [ ] `handle_entities_extracted` writes its stage's warnings absolutely, so re-entering the handler for the same document leaves the count unchanged.
-- [ ] The parse stage keeps its warnings when the extract stage writes: no stage can overwrite another's contribution.
-- [ ] Both real adapters (`in_memory.py` and `object_store.py`) implement it with identical guard order and the same shared reasons cap; there is no Postgres adapter for this repository.
-- [ ] The `set_document_warnings` / `record_document_warnings` return-shape asymmetry is resolved one way or the other.
-- [ ] `backend/knowledgebases/README.md` and `backend/agent/README.md` record the per-stage model.
+- [x] `KnowledgeBaseRepository` gains per-stage warning accounting — an absolute setter keyed by (document, stage) — with the document's total derived as the sum across stages rather than stored as a running counter.
+- [x] `handle_entities_extracted` writes its stage's warnings absolutely, so re-entering the handler for the same document leaves the count unchanged.
+- [x] The parse stage keeps its warnings when the extract stage writes: no stage can overwrite another's contribution.
+- [x] Both real adapters (`in_memory.py` and `object_store.py`) implement it with identical guard order and the same shared reasons cap; there is no Postgres adapter for this repository.
+- [x] The `set_document_warnings` / `record_document_warnings` return-shape asymmetry is resolved one way or the other.
+- [x] `backend/knowledgebases/README.md` and `backend/agent/README.md` record the per-stage model.
 
 ### Verification
-- [ ] A replay test re-enters `handle_entities_extracted` for the same document and asserts the warning count and reasons are unchanged (the pre-fix RED is an inflated count, e.g. `assert 4 == 2` with duplicated reasons).
-- [ ] A cross-stage test writes parse-stage warnings then extract-stage warnings and asserts the total is the sum and neither stage's reasons were lost.
-- [ ] Both adapters are covered by the same parametrized tests.
-- [ ] `backend/.venv/bin/pytest tests/agent tests/knowledgebases -q` green; `pyright` (bare) and `ruff check --no-cache .` clean.
+- [x] A replay test re-enters `handle_entities_extracted` for the same document and asserts the warning count and reasons are unchanged (`tests/agent/test_coordinator.py::test_replaying_the_extract_stage_does_not_inflate_the_warning_count`). The pre-fix RED (captured against the pre-existing additive/absolute methods directly, since the per-stage setter did not exist yet) showed `assert 8 == 5` for replay inflation and `assert 3 == 5` for the naive-absolute-fix data-loss trap.
+- [x] A cross-stage test writes parse-stage warnings then extract-stage warnings and asserts the total is the sum and neither stage's reasons were lost (`tests/knowledgebases/test_document_warnings.py::test_a_later_stage_never_overwrites_an_earlier_stages_contribution`).
+- [x] Both adapters are covered by the same parametrized tests (`tests/knowledgebases/test_document_warnings.py`, `ids=["in_memory", "object_store"]`).
+- [x] `backend/.venv/bin/pytest tests/agent tests/knowledgebases -q` green; `pyright` (bare) and `ruff check --no-cache .` clean.
 
 ### Code touch points
-- `backend/knowledgebases/adapters/protocols.py` (modify — per-stage setter)
-- `backend/knowledgebases/adapters/in_memory.py`, `backend/knowledgebases/adapters/object_store.py` (modify)
-- `backend/agent/coordinator.py` (modify — `handle_entities_extracted` warning write, line 2045)
-- `backend/knowledgebases/README.md`, `backend/agent/README.md` (modify)
-- `backend/tests/agent/**`, `backend/tests/knowledgebases/**` (modify/new)
+- `backend/knowledgebases/protocols.py` (modified — `set_stage_document_warnings` replaces `record_document_warnings`/`set_document_warnings`)
+- `backend/knowledgebases/models.py` (modified — `stage_warning_counts`/`stage_warning_reasons` added to `DocumentRecord`)
+- `backend/knowledgebases/_helpers.py` (modified — `build_stage_document_warning_updates`, shared fold/derive logic)
+- `backend/knowledgebases/adapters/in_memory.py`, `backend/knowledgebases/adapters/object_store.py` (modified)
+- `backend/agent/coordinator.py` (modified — both `handle_documents_parsed` and `handle_entities_extracted` warning writes, `~1626` and `~2045`)
+- `backend/knowledgebases/README.md` (new), `backend/agent/README.md` (modified)
+- `docs/architecture.md` (modified — per-document parse/extraction warnings paragraph)
+- `backend/tests/agent/test_coordinator.py`, `backend/tests/knowledgebases/test_document_warnings.py`, `backend/tests/api/test_knowledgebases_router.py` (modified/new)
 
 ---

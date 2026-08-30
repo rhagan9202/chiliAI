@@ -56,28 +56,29 @@ class KnowledgeBaseRepository(Protocol):
         status: str,
     ) -> DocumentRecord | None: ...
 
-    def record_document_warnings(
+    def set_stage_document_warnings(
         self,
         knowledge_base_id: str,
         document_id: str,
         *,
-        additional_count: int,
-        reasons: list[str],
-    ) -> DocumentRecord | None: ...
-
-    def set_document_warnings(
-        self,
-        knowledge_base_id: str,
-        document_id: str,
-        *,
+        stage: str,
         count: int,
         reasons: list[str],
-    ) -> None:
-        """Set a document's warning count and reasons to exactly these values.
+    ) -> DocumentRecord | None:
+        """Set one pipeline stage's warning contribution absolutely.
 
-        Absolute rather than additive so that replaying the event that
-        carries them -- a retry, or an at-least-once redelivery -- converges
-        instead of accumulating.
+        The document-level ``warning_count`` / ``warning_reasons`` are the
+        sum / sampled union across every stage that has written for this
+        document (e.g. ``"parse"``, ``"extract"``), not a running counter.
+        Absolute per stage rather than additive overall, so replaying the
+        handler that owns a stage -- a retry, or an at-least-once Redis
+        Streams redelivery -- converges to the same value instead of
+        accumulating, while a different stage's contribution is never
+        overwritten.
+
+        Returns the updated record, or ``None`` if the knowledge base or the
+        document does not exist (a no-op; no document is created as a side
+        effect).
         """
         ...
 

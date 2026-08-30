@@ -6220,6 +6220,74 @@ def test_handle_entities_extracted_persists_extraction_warnings() -> None:
     assert any("No entity candidates" in reason for reason in record.warning_reasons)
 
 
+def test_replaying_the_extract_stage_does_not_inflate_the_warning_count() -> None:
+    """agent.22: the extract stage (handle_entities_extracted, coordinator.py
+    ~2045) writes its warnings via set_stage_document_warnings(stage="extract"),
+    absolute per stage rather than additive overall. A retry or an
+    at-least-once Redis Streams redelivery re-enters this handler body, so an
+    additive write would inflate the count on replay -- and a naive absolute
+    fix (no stage key) would instead overwrite the parse stage's contribution.
+    Per-stage accounting must avoid both failure modes at once.
+    """
+    repository = _kb_repository_with_document()
+    repository.set_stage_document_warnings(
+        "kb-1", "doc-1", stage="parse", count=2, reasons=["truncated table"]
+    )
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-replay",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        warnings=["No entity candidates extracted from persisted chunks."],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-replay.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    event = EntitiesExtractedEvent(
+        documents=[
+            ExtractedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-replay",
+                entity_count=0,
+                relationship_count=0,
+                extraction_storage_key=extraction_storage_key,
+            )
+        ]
+    )
+
+    handle_entities_extracted(
+        event,
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+    document_after_first_call = repository.get_document("kb-1", "doc-1")
+    assert document_after_first_call is not None
+    total_after_first_call = document_after_first_call.warning_count
+    assert total_after_first_call > 2  # extract's own contribution landed
+
+    handle_entities_extracted(  # replay: retry or at-least-once redelivery
+        event,
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+    document_after_replay = repository.get_document("kb-1", "doc-1")
+    assert document_after_replay is not None
+
+    assert document_after_replay.warning_count == total_after_first_call  # no inflation
+    assert "truncated table" in document_after_replay.warning_reasons  # parse preserved
+
+
 def test_worker_subscribes_to_extraction_warning_events() -> None:
     assert "documents.extraction_warning" in WORKER_EVENT_TYPES
 

@@ -1624,12 +1624,15 @@ def handle_documents_parsed(
     for document in event.documents:
         started_at = time.perf_counter()
         if kb_repository is not None and document.warning_count > 0:
-            # Absolute, not additive: this handler body is re-entered on retry
-            # and on at-least-once redelivery, and the event already carries
-            # the document's total.
-            kb_repository.set_document_warnings(
+            # Absolute per stage, not additive overall: this handler body is
+            # re-entered on retry and on at-least-once redelivery, and the
+            # event already carries the parse stage's total. The document
+            # total is the sum across stages (see set_stage_document_warnings),
+            # so this can never clobber the extract stage's contribution.
+            kb_repository.set_stage_document_warnings(
                 document.knowledge_base_id,
                 document.source_document_id,
+                stage="parse",
                 count=document.warning_count,
                 reasons=list(document.warning_samples),
             )
@@ -2042,10 +2045,17 @@ def handle_entities_extracted(
                         + stripped_property_count
                         + len(extraction_stage_warnings)
                     ) or 1  # an unexplained empty extraction still counts once
-                    kb_repository.record_document_warnings(
+                    # Absolute per stage, not additive: this handler body is
+                    # re-entered on retry and on at-least-once redelivery, so
+                    # an additive write would inflate the count on replay.
+                    # The document total is the sum across stages (see
+                    # set_stage_document_warnings), so this can never clobber
+                    # the parse stage's contribution.
+                    kb_repository.set_stage_document_warnings(
                         document.knowledge_base_id,
                         document.source_document_id,
-                        additional_count=warning_total,
+                        stage="extract",
+                        count=warning_total,
                         reasons=sample_reasons,
                     )
         except Exception:
