@@ -11,7 +11,7 @@ replaces the previous in-memory-only, seeded `ApiState` conversation store.
 | File | Responsibility |
 |------|----------------|
 | `models.py` | `Conversation`, `ConversationMessage`, `ConversationCitation` domain models. |
-| `adapters/protocols.py` | `ConversationRepository` protocol — `create / get / save`. |
+| `adapters/protocols.py` | `ConversationRepository` protocol — `create / get / save / list_by_kb / delete_by_kb`. |
 | `adapters/in_memory.py` | `InMemoryConversationRepository` (dict keyed by `conversation_id`) for tests/dev. |
 | `adapters/postgres.py` | `PostgresConversationRepository` over `database.ConnectionProvider` (psycopg-free); jsonb `messages`; idempotent `create` (`ON CONFLICT DO NOTHING`) + CAS-guarded `save`. |
 | `service.py` | `ConversationService` — `create` (title default), `get`, `append_messages` (owns `updated_at`, retries the guarded write on a lost race; see below). |

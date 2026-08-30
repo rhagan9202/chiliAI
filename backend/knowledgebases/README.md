@@ -59,7 +59,7 @@ overall**:
   insertion order, capped at `MAX_DOCUMENT_WARNING_REASONS`) are recomputed
   and stored on **every** stage write, by the shared helper
   `_helpers.build_stage_document_warning_updates` — not derived lazily on
-  read. Both adapters call this one helper, so the fold/derive math cannot
+  read. Both adapters call this one helper, so the derive math cannot
   drift between them; only the KB/document lookup and snapshot
   load/save differ per adapter.
 
@@ -116,11 +116,11 @@ after upgrade is untouched and keeps showing its pre-existing flat total
 ## KB-Scoped Delete
 
 `cleanup.py::kb_deletion_steps` is the ordered cascade purging every durable
-per-KB store `KnowledgeBaseRepository` does not itself own (graph, vector,
-raw records, derived signals, risk history/projections, observations, alert
-history, GNN clusters, metrics, conversations, cases, policy items,
-evidence packs, scorecard runs, document status, object-store payloads under
-the KB's key prefix). `KnowledgeBaseRepository.delete` and
+per-KB store `KnowledgeBaseRepository` does not itself own (18 steps: graph,
+vector, raw records, derived signals, timeseries anomalies, risk
+history/projections, observations, alert history, GNN clusters, metrics,
+conversations, cases, policy items, evidence packs, scorecard runs, document
+status, object-store payloads under the KB's key prefix). `KnowledgeBaseRepository.delete` and
 `mark_pending_cleanup` handle only this module's own KB/document metadata;
 the API's `DELETE /knowledgebases/{id}` and the worker's
 `KnowledgeBaseDeletedEvent` retry both assemble a `KbDeletionStores` bundle
