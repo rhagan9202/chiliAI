@@ -86,20 +86,32 @@ stage's sample, so the document-level total never exceeds 10 even though
 each stage could in principle contribute up to 10 of its own. `warning_count`
 is never capped — it is an exact sum.
 
-**Migrating documents from before this ledger existed.** A document
-persisted before Sprint 2026-36 carries a non-zero flat `warning_count`
-(from `set_document_warnings`/`record_document_warnings`, both since
-removed — no callers remain) but empty `stage_warning_counts` /
-`stage_warning_reasons`. The first stage write for such a document folds
-its prior flat total in as a synthetic `"legacy"` stage entry before
-applying the new stage's value, so the earlier contribution is preserved
-(added into the new total) rather than silently dropped. This fires at most
-once per document, since after that first write `stage_warning_counts` is
-no longer empty. No standalone backfill script exists or is needed — the
-migration is inline in the write path and self-limiting. A document that is
-never re-processed by any pipeline stage after upgrade keeps showing its
-pre-existing flat total unchanged (`stage_warning_counts` stays empty for
-it, but `warning_count`/`warning_reasons` were already correct).
+**Documents from before this ledger existed.** A document persisted before
+Sprint 2026-36 carries a non-zero flat `warning_count` (from
+`set_document_warnings`/`record_document_warnings`, both since removed — no
+callers remain) but empty `stage_warning_counts` / `stage_warning_reasons`.
+That flat total was itself the *sum* of both stages under the old additive
+scheme — parse wrote absolutely, extract added its own count on top — so
+there is no way to recover which portion of it belonged to which stage.
+
+The first stage write for such a document therefore **discards** the old
+flat total rather than folding it in: `stage_warning_counts` starts fresh
+with only that stage's own contribution. Folding the whole prior total into
+a synthetic entry was considered and rejected — it double-counts every
+stage that goes on to rewrite (a document already showing `5` gains its own
+stage's count *again* on top of the old `5`), and since nothing ever clears
+that entry, it never converges; a later replay of the *same* stage would
+even keep re-adding it. Discarding instead means a document transiently
+**under**-reports right after this deploy — it shows only the stages that
+have rewritten since, until every stage has — but the count can never
+inflate, and it converges to the correct sum once every stage has run
+again. That is the safer failure direction for an advisory count. No
+standalone backfill script exists or is needed: the old scheme never
+recorded the per-stage breakdown, so there is no data a backfill could
+recover that the write path itself doesn't already reconstruct correctly
+over time. A document that is never re-processed by any pipeline stage
+after upgrade is untouched and keeps showing its pre-existing flat total
+(nothing writes to it).
 
 ## KB-Scoped Delete
 

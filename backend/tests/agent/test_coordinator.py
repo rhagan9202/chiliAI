@@ -6156,13 +6156,15 @@ def _deps(*, kb_repository: KnowledgeBaseRepository) -> _HandlerDeps:
 def test_replaying_a_parsed_event_does_not_inflate_the_warning_count() -> None:
     """The handler body runs again on retry and on redelivery.
 
-    record_document_warnings is a blind read-modify-write at the very top of
-    handle_documents_parsed, before the work that can fail. With
-    RetryPolicy(max_retries=3) a transient chunker error runs the increment
-    four times, so a document with 2 warnings reports 8 -- and the value is
-    shown to users on the KB document inventory chip. Redis Streams is
-    at-least-once, so redelivery reproduces this with no handler failure at
-    all.
+    Before Sprint 2026-35, the parse-stage warning write was a blind
+    additive read-modify-write at the very top of handle_documents_parsed,
+    before the work that can fail. With RetryPolicy(max_retries=3) a
+    transient chunker error ran the increment four times, so a document
+    with 2 warnings reported 8 -- and the value is shown to users on the KB
+    document inventory chip. Redis Streams is at-least-once, so redelivery
+    reproduced this with no handler failure at all.
+    `set_stage_document_warnings(stage="parse")` (agent.22, Sprint 2026-36)
+    is absolute per stage, so this no longer applies.
     """
     repository = InMemoryKnowledgeBaseRepository()
     _seed_document(repository, kb_id="kb-1", document_id="doc-1")

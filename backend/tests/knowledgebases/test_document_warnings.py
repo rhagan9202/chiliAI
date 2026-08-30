@@ -201,13 +201,20 @@ def test_set_stage_document_warnings_unknown_knowledge_base_is_a_no_op(
 
 
 @pytest.mark.parametrize("repository", _repositories(), ids=["in_memory", "object_store"])
-def test_a_document_with_a_pre_existing_flat_total_is_migrated_on_first_stage_write(
+def test_a_pre_existing_flat_total_is_discarded_not_folded_on_first_stage_write(
     repository: KnowledgeBaseRepository,
 ) -> None:
     """A document persisted before the per-stage ledger existed carries a
-    non-zero warning_count/warning_reasons with no per-stage breakdown. The
-    first stage write must fold that prior total in (as a synthetic "legacy"
-    stage) rather than silently dropping it or double-counting it.
+    non-zero warning_count/warning_reasons with no per-stage breakdown. That
+    flat total was itself the *sum* of both stages under the old additive
+    scheme (parse wrote absolutely, extract added on top) -- there is no way
+    to recover which portion belonged to which stage from it. Folding the
+    whole total into a synthetic entry would double-count every stage that
+    goes on to rewrite, and -- since nothing ever clears it -- never
+    converge. So the first stage write instead discards the old flat total
+    and starts the per-stage ledger fresh with only that stage's own
+    contribution: a transient undercount, never an overcount, converging to
+    the correct sum once every stage has rewritten.
     """
     repository.create(
         KnowledgeBase(id="kb-1", name="KB", description="", created_at=utc_now())
@@ -218,31 +225,35 @@ def test_a_document_with_a_pre_existing_flat_total_is_migrated_on_first_stage_wr
             knowledge_base_id="kb-1",
             filename="claims.csv",
             content_type="text/csv",
-            warning_count=2,
-            warning_reasons=["pre-2026-36 truncated table"],
+            warning_count=5,  # pre-2026-36: parse's 2 + extract's 3, accumulated
+            warning_reasons=["pre-2026-36 truncated table", "pre-2026-36 unknown type"],
         )
     )
 
+    # Parse reprocesses first: the flat "5" is discarded, not folded in.
+    updated = _record_stage(repository, stage="parse", count=2, reasons=["truncated table"])
+    assert updated is not None
+    assert updated.warning_count == 2  # not 2 + 5 = 7 (the double-count trap), and not left at 5
+    assert updated.warning_reasons == ["truncated table"]
+
+    # Once extract also rewrites, the total converges to the correct sum of
+    # the two real per-stage contributions -- not the old flat total plus
+    # anything.
     updated = _record_stage(repository, stage="extract", count=3, reasons=["unknown type"])
-
     assert updated is not None
-    assert updated.warning_count == 5  # 2 legacy + 3 extract, not 3 (data loss)
-    assert updated.warning_reasons == ["pre-2026-36 truncated table", "unknown type"]
-
-    # A second extract write is still absolute for the extract stage alone;
-    # the migrated legacy entry is untouched.
-    updated = _record_stage(repository, stage="extract", count=1, reasons=["unknown type"])
-    assert updated is not None
-    assert updated.warning_count == 3  # 2 legacy + 1 extract, not accumulating
+    assert updated.warning_count == 5  # 2 parse + 3 extract, not 2 + 5 + 3 = 10
+    assert updated.warning_reasons == ["truncated table", "unknown type"]
 
 
 @pytest.mark.parametrize("repository", _repositories(), ids=["in_memory", "object_store"])
-def test_a_document_with_a_pre_existing_zero_total_is_not_migrated(
+def test_the_first_stage_write_starts_the_ledger_fresh_regardless_of_prior_total(
     repository: KnowledgeBaseRepository,
 ) -> None:
-    """A brand-new document (warning_count defaults to 0) must not seed a
-    spurious "legacy" stage entry -- only a genuinely non-zero prior total
-    triggers the migration fold-in."""
+    """The discard-on-first-write behavior is unconditional: it applies
+    whether the document's prior flat total was non-zero (a migrated
+    document) or the pydantic default of 0 (a brand-new document) -- there
+    is no special-casing on the prior value, which is exactly what rules
+    out the double-count trap above."""
     _register(repository)  # warning_count=0 by default
 
     updated = _record_stage(repository, stage="parse", count=2, reasons=["truncated table"])

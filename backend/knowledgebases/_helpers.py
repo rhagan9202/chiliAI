@@ -50,23 +50,28 @@ def build_stage_document_warning_updates(
     redelivery) converges to the same value instead of accumulating, while a
     different stage's contribution is never overwritten.
 
-    A document written under the pre-2026-36 flat-total scheme -- a
-    non-zero ``warning_count`` but no per-stage ledger yet -- is migrated in
-    place the first time any stage writes: its prior total is folded in as a
-    synthetic ``"legacy"`` stage entry so that earlier contribution survives
-    instead of being silently dropped. This only fires once per document,
-    since after the first stage write ``stage_warning_counts`` is no longer
-    empty.
+    A document written under the pre-2026-36 flat-total scheme has a
+    non-zero ``warning_count`` but no per-stage ledger. There is no legacy
+    fold-in: that flat total was itself the *sum* of both stages under the
+    old additive scheme (parse wrote absolutely, extract added on top), so
+    there is no way to recover which portion belonged to which stage, and
+    folding the whole thing into a synthetic entry would double-count every
+    stage that goes on to rewrite -- and never converge, since nothing ever
+    clears it. Instead, the first per-stage write for such a document
+    discards the old flat total and starts the per-stage ledger fresh with
+    only that stage's contribution. This transiently *under*-reports (a
+    document shows only the stages that have rewritten since deploy, until
+    every stage has), but it can never inflate, and it converges to the
+    correct sum once every stage has written again -- the safer failure
+    direction for an advisory count. See `backend/knowledgebases/README.md`
+    § Per-stage document warning accounting for the full rationale.
 
     Shared by both adapters (`in_memory.py`, `object_store.py`) so the guard
-    order, the reasons cap, and this fold/derive math cannot diverge between
+    order, the reasons cap, and this derive math cannot diverge between
     them -- that divergence is the defect class this fix exists to close.
     """
     stage_counts = dict(document.stage_warning_counts)
     stage_reasons = dict(document.stage_warning_reasons)
-    if not stage_counts and document.warning_count:
-        stage_counts["legacy"] = document.warning_count
-        stage_reasons["legacy"] = list(document.warning_reasons)
 
     stage_counts[stage] = count
     stage_reasons[stage] = reasons[:MAX_DOCUMENT_WARNING_REASONS]

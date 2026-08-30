@@ -43,9 +43,15 @@ class DocumentRecord(BaseModel):
     #
     # A document persisted before this per-stage ledger existed carries a
     # non-zero `warning_count`/`warning_reasons` with empty stage dicts. The
-    # first stage write after that folds the prior total in as a synthetic
-    # "legacy" stage entry (see `_helpers.build_stage_document_warning_updates`)
-    # so it survives instead of being silently dropped or double-counted.
+    # old flat total was itself the sum of both stages under the prior
+    # additive scheme, so there is no way to recover which portion belonged
+    # to which stage. The first stage write after that discards the old flat
+    # total rather than folding it in (see
+    # `_helpers.build_stage_document_warning_updates`): folding would
+    # double-count every stage that goes on to rewrite, and never converge.
+    # This transiently under-reports until every stage has rewritten once,
+    # but it can never inflate -- the safer failure direction for an
+    # advisory count.
     warning_count: int = Field(default=0, ge=0)
     warning_reasons: list[str] = Field(default_factory=list)
     stage_warning_counts: dict[str, int] = Field(default_factory=dict)
