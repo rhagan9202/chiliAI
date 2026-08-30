@@ -79,6 +79,25 @@ Per-stage keying rules both out structurally: replaying `stage="extract"`
 converges (same key, same absolute value), and `stage="extract"` writing
 can never touch the `"parse"` entry.
 
+**Absent means zero, and both writers write unconditionally.** A stage that
+runs and produces no warnings carries no entry: `count=0` with no reasons
+*removes* that stage's key rather than storing a zero. Both coordinator
+writers (`handle_documents_parsed`, `handle_entities_extracted`) call
+`set_stage_document_warnings` for every document in a batch, clean ones
+included — they used to write only when the stage had warnings, which meant a
+reprocess that fixed a parse problem (2 warnings → 0) never cleared the stale
+2 and the document total could only ever rise. Since the per-stage dicts are
+the source of truth for the total, a stage that goes quiet has to say so.
+
+`build_stage_document_warning_updates` returns `{}` when the write would
+change nothing, and both adapters skip persisting on an empty update — which
+is what keeps the now-unconditional call cheap, since every object-store write
+is a full snapshot read-modify-write. That comparison is against the whole
+resulting record, not just this stage's entry, so it stays correct next to the
+legacy discard below: a pre-ledger document's flat total differs from a
+freshly-derived zero, so even a clean reprocess still lands and still
+discards it.
+
 **Reasons cap.** `reasons` passed to a single stage write are truncated to
 `MAX_DOCUMENT_WARNING_REASONS` (10) before being stored for that stage;
 `warning_reasons` on the document is capped again after combining every

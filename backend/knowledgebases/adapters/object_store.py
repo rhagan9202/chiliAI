@@ -189,11 +189,16 @@ class ObjectStoreKnowledgeBaseRepository:
         document = kb_documents.get(document_id)
         if document is None:
             return None
-        updated = document.model_copy(
-            update=build_stage_document_warning_updates(
-                document, stage=stage, count=count, reasons=reasons
-            )
+        updates = build_stage_document_warning_updates(
+            document, stage=stage, count=count, reasons=reasons
         )
+        if not updates:
+            # No change, so no snapshot write. Both coordinator writers now
+            # call this for every document including the clean ones (F11), and
+            # a snapshot read-modify-write per clean document would be a real
+            # cost on a large batch.
+            return document
+        updated = document.model_copy(update=updates)
         kb_documents[document_id] = updated
         self._save_snapshot(snapshot)
         return updated

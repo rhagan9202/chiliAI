@@ -155,11 +155,12 @@ class InMemoryKnowledgeBaseRepository:
         document = kb_documents.get(document_id)
         if document is None:
             return None
-        updated = document.model_copy(
-            update=build_stage_document_warning_updates(
-                document, stage=stage, count=count, reasons=reasons
-            )
+        updates = build_stage_document_warning_updates(
+            document, stage=stage, count=count, reasons=reasons
         )
+        if not updates:
+            return document
+        updated = document.model_copy(update=updates)
         kb_documents[document_id] = updated
         return updated
 

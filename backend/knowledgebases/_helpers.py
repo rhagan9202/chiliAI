@@ -72,17 +72,45 @@ def build_stage_document_warning_updates(
     """
     stage_counts = dict(document.stage_warning_counts)
     stage_reasons = dict(document.stage_warning_reasons)
+    capped_reasons = reasons[:MAX_DOCUMENT_WARNING_REASONS]
 
-    stage_counts[stage] = count
-    stage_reasons[stage] = reasons[:MAX_DOCUMENT_WARNING_REASONS]
+    if count == 0 and not capped_reasons:
+        # Absent means zero. A stage that ran and produced nothing carries no
+        # entry, so a stage which *stops* producing warnings clears itself
+        # rather than leaving a stale figure standing -- the coordinator now
+        # calls this on every document, clean ones included, precisely so that
+        # can happen.
+        stage_counts.pop(stage, None)
+        stage_reasons.pop(stage, None)
+    else:
+        stage_counts[stage] = count
+        stage_reasons[stage] = capped_reasons
 
     combined_reasons: list[str] = []
     for sample in stage_reasons.values():
         combined_reasons.extend(sample)
 
-    return {
+    updates: dict[str, object] = {
         "stage_warning_counts": stage_counts,
         "stage_warning_reasons": stage_reasons,
         "warning_count": sum(stage_counts.values()),
         "warning_reasons": combined_reasons[:MAX_DOCUMENT_WARNING_REASONS],
     }
+    if (
+        document.stage_warning_counts == stage_counts
+        and document.stage_warning_reasons == stage_reasons
+        and document.warning_count == updates["warning_count"]
+        and document.warning_reasons == updates["warning_reasons"]
+    ):
+        # Nothing would change, so report no updates and let the adapters skip
+        # the write entirely. In the object-store adapter every write is a full
+        # snapshot read-modify-write, and the clean-document call is now the
+        # common case, so this is what keeps the unconditional write cheap.
+        #
+        # Compared against the *whole* resulting record rather than just this
+        # stage's entry, which is what makes it safe next to the legacy
+        # discard: a pre-ledger document has a non-zero flat `warning_count`
+        # and no per-stage entries, so even a zero write differs from what is
+        # stored and still lands -- discarding the flat total as documented.
+        return {}
+    return updates

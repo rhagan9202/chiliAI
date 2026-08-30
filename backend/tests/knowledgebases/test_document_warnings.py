@@ -262,3 +262,69 @@ def test_the_first_stage_write_starts_the_ledger_fresh_regardless_of_prior_total
     assert updated.warning_count == 2
     assert updated.warning_reasons == ["truncated table"]
     assert updated.stage_warning_counts == {"parse": 2}
+
+
+@pytest.mark.parametrize("repository", _repositories(), ids=["in_memory", "object_store"])
+def test_a_zero_write_for_a_stage_that_never_wrote_changes_nothing(
+    repository: KnowledgeBaseRepository,
+) -> None:
+    """Both coordinator writers now call this on every document of every
+    batch, clean ones included, so that a stage which stops producing warnings
+    clears its own entry. That makes the "clean document" call the common
+    case, and in the object-store adapter every write is a full snapshot
+    read-modify-write -- so a write that changes nothing must not touch the
+    store.
+
+    Asserted through the public surface: the record comes back unchanged and
+    the ledger stays empty, so nothing was written, and repeating the call is
+    still a no-op.
+    """
+    original = _register(repository)
+
+    first = _record_stage(repository, stage="extract", count=0, reasons=[])
+    second = _record_stage(repository, stage="extract", count=0, reasons=[])
+
+    assert first == original
+    assert second == original
+    document = repository.get_document("kb-1", "doc-1")
+    assert document is not None
+    assert document.stage_warning_counts == {}
+    assert document.stage_warning_reasons == {}
+    assert document.warning_count == 0
+
+
+@pytest.mark.parametrize("repository", _repositories(), ids=["in_memory", "object_store"])
+def test_a_clean_reprocess_still_discards_a_legacy_flat_total(
+    repository: KnowledgeBaseRepository,
+) -> None:
+    """Guards the interaction between the no-change short-circuit above and
+    the legacy-discard rule.
+
+    A pre-ledger document has a non-zero flat ``warning_count`` and no
+    per-stage entries. If it is reprocessed and comes back *clean*, the write
+    is a zero -- which looks like "nothing to change" if you only compare this
+    stage's entry. It is not: the flat total must still be discarded, or a
+    document that has been fully reprocessed clean keeps showing the old
+    number forever. That is the same defect the per-stage model exists to
+    close, reached by the legacy path.
+    """
+    repository.create(
+        KnowledgeBase(id="kb-1", name="KB", description="", created_at=utc_now())
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-1",
+            filename="claims.csv",
+            content_type="text/csv",
+            warning_count=5,  # pre-2026-36 flat total, no per-stage breakdown
+            warning_reasons=["pre-2026-36 truncated table"],
+        )
+    )
+
+    updated = _record_stage(repository, stage="parse", count=0, reasons=[])
+
+    assert updated is not None
+    assert updated.warning_count == 0, "the legacy flat total survived a clean reprocess"
+    assert updated.warning_reasons == []
+    assert updated.stage_warning_counts == {}

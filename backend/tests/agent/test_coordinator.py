@@ -6115,8 +6115,16 @@ def _seed_document(
 
 
 def _parsed_event(
-    *, knowledge_base_id: str, document_id: str, warning_count: int
+    *,
+    knowledge_base_id: str,
+    document_id: str,
+    warning_count: int,
+    warning_samples: list[str] | None = None,
 ) -> DocumentsParsedEvent:
+    """A parsed-document event. ``warning_samples`` defaults to one sample,
+    matching the non-zero counts most callers pass; a caller asserting the
+    zero-warning case passes ``[]``, since a parser that reports no warnings
+    has no samples to report either."""
     return DocumentsParsedEvent(
         documents=[
             ParsedDocumentReference(
@@ -6125,7 +6133,9 @@ def _parsed_event(
                 parsed_document_id="parsed-1",
                 parser_name="test-parser",
                 warning_count=warning_count,
-                warning_samples=["truncated table"],
+                warning_samples=(
+                    ["truncated table"] if warning_samples is None else warning_samples
+                ),
                 parsed_document_storage_key=_REPLAY_PARSED_STORAGE_KEY,
             )
         ]
@@ -6288,6 +6298,143 @@ def test_replaying_the_extract_stage_does_not_inflate_the_warning_count() -> Non
 
     assert document_after_replay.warning_count == total_after_first_call  # no inflation
     assert "truncated table" in document_after_replay.warning_reasons  # parse preserved
+
+
+def test_reprocessing_a_fixed_document_clears_the_parse_stage_entry() -> None:
+    """The per-stage dicts are the source of truth for the document total, so a
+    stage that stops producing warnings has to say so.
+
+    The parse write used to be gated on ``document.warning_count > 0``. A
+    reprocess that fixes a parse problem (2 warnings -> 0) then never wrote
+    ``stage_warning_counts["parse"] = 0``: the stale 2 stayed and the document
+    total could only ever rise. Reprocessing after a config or parser fix is a
+    normal operation here, and the stale value is durable, not transient --
+    nothing later corrects it. The repository has always handled ``count=0``
+    correctly
+    (``test_set_stage_document_warnings_empty_reasons_clears_that_stages_reasons``);
+    the coordinator just never sent it.
+    """
+    repository = InMemoryKnowledgeBaseRepository()
+    _seed_document(repository, kb_id="kb-1", document_id="doc-1")
+
+    handle_documents_parsed(
+        _parsed_event(knowledge_base_id="kb-1", document_id="doc-1", warning_count=2),
+        **_deps(kb_repository=repository),
+    )
+    after_first_parse = repository.get_document("kb-1", "doc-1")
+    assert after_first_parse is not None
+    assert after_first_parse.warning_count == 2
+
+    # The document is reprocessed after the parse problem is fixed.
+    handle_documents_parsed(
+        _parsed_event(
+            knowledge_base_id="kb-1",
+            document_id="doc-1",
+            warning_count=0,
+            warning_samples=[],
+        ),
+        **_deps(kb_repository=repository),
+    )
+
+    document = repository.get_document("kb-1", "doc-1")
+    assert document is not None
+    assert document.warning_count == 0, (
+        "the parse stage stopped producing warnings but its stale count "
+        f"survived: {document.stage_warning_counts}"
+    )
+    assert document.warning_reasons == []
+    assert document.stage_warning_counts.get("parse", 0) == 0
+
+
+def test_reprocessing_a_fixed_document_clears_the_extract_stage_entry() -> None:
+    """Same defect on the extract side, where the write sits inside the
+    ``if empty_extraction or dropped... `` block: a clean re-extraction skipped
+    the block entirely and left the previous run's count standing.
+
+    Also pins the half that must NOT change: clearing ``extract`` may not
+    disturb ``parse``. That is the whole point of keying per stage.
+    """
+    repository = _kb_repository_with_document()
+    repository.set_stage_document_warnings(
+        "kb-1", "doc-1", stage="parse", count=2, reasons=["truncated table"]
+    )
+    repository.set_stage_document_warnings(
+        "kb-1", "doc-1", stage="extract", count=3, reasons=["No entity candidates"]
+    )
+    seeded = repository.get_document("kb-1", "doc-1")
+    assert seeded is not None
+    assert seeded.warning_count == 5
+
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-clean",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        candidate_entities=[
+            CandidateEntity(
+                id="provider-1",
+                source_document_id="doc-1",
+                chunk_id="chunk-1",
+                type="provider",
+                properties={"npi": "1234567890"},
+                confidence=0.9,
+                extraction_method="pattern_v1",
+            )
+        ],
+        warnings=[],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-clean.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-clean",
+                    entity_count=1,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        # A definition the candidate satisfies, so extraction is clean: one
+        # valid entity, no dropped entities, no stripped properties.
+        extraction_validator=create_extraction_validator(
+            [
+                EntityDefinition(
+                    name="provider",
+                    display_label="Provider",
+                    icon="box",
+                    properties={
+                        "npi": PropertyDefinition(
+                            type=PropertyType.STRING, display="NPI"
+                        )
+                    },
+                )
+            ],
+            [],
+        ),
+        object_store=object_store,
+        event_bus=InMemoryEventBus(),
+        kb_repository=repository,
+    )
+
+    document = repository.get_document("kb-1", "doc-1")
+    assert document is not None
+    assert document.stage_warning_counts.get("extract", 0) == 0, (
+        "a clean re-extraction left the previous run's count standing: "
+        f"{document.stage_warning_counts}"
+    )
+    assert document.stage_warning_counts["parse"] == 2, "parse was collateral damage"
+    assert document.warning_count == 2
+    assert document.warning_reasons == ["truncated table"]
 
 
 def test_worker_subscribes_to_extraction_warning_events() -> None:
