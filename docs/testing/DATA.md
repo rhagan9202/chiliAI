@@ -11,7 +11,7 @@ chiliAI's data falls into **two tiers**, and the rule is simple:
 | **2. Local bulk source data** | `sample_data/` | ❌ **gitignored** | GB-scale | the live TN-subset demo + realistic manual ingest |
 
 **Golden rules**
-1. **Never commit bulk data.** Real CMS DE-SynPUF / NPPES files are GB-scale, public, and updated independently of this repo. `sample_data/` is gitignored (`sample_data/*` except its README). Runtime object-store data (`backend/data/`) is gitignored too.
+1. **Never commit bulk data.** Real CMS DE-SynPUF / NPPES files are GB-scale, public, and updated independently of this repo. `sample_data/` is gitignored (`sample_data/*`, except its README and the empty `connector_imports/` bind-mount root — see below). Runtime object-store data (`backend/data/`) is gitignored too.
 2. **New test data → a tiny, purpose-built, tracked fixture** under the right `tests/.../fixtures/` dir (see the index below). Keep it synthetic — **no real PHI/PII/credentials**.
 3. **Big realistic data stays local** in `sample_data/` and is staged by `make data-setup`.
 
@@ -49,7 +49,9 @@ produces them:
 
 ```
 sample_data/                                  # gitignored (bulk, local-only)
-├── README.md                                 # tracked (the only tracked file here)
+├── README.md                                 # tracked
+├── connector_imports/                        # tracked (empty) — see below
+│   └── .gitkeep                              # tracked; contents ignored
 ├── npidata_pfile_<dates>.csv                 # NPPES NPI registry (~11 GB)  ← builder --nppes-root
 ├── pl_pfile / othername_pfile / endpoint_pfile…   # NPPES aux (optional)
 └── CMS/                                       # ← builder --desynpuf-root
@@ -77,6 +79,30 @@ sample_data/                                  # gitignored (bulk, local-only)
 > `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (the config the dev
 > stack loads via `CHILI_CONFIG_PATH`).
 
+### Why `sample_data/connector_imports/` is tracked while everything else here is not
+
+It is the host side of a bind mount (`./sample_data/connector_imports:/imports`
+in `docker-compose.dev.yaml`), not a data location. Docker creates a **missing**
+bind-mount source as a **root-owned** directory, and the host user then cannot
+write into it — verified, not assumed: `docker run --rm -v /nonexistent:/x
+alpine true` leaves `drwxr-xr-x root root`, and a non-root write inside it is
+denied. `backend/tests/e2e/test_connector_sync_flow.py` writes a CSV there, so
+that turns into an opaque `PermissionError` from inside a fixture rather than
+the missing-directory skip/failure the gate was written for.
+
+Three layers keep that from happening, in order of precedence:
+
+1. The directory is tracked (empty, via `.gitkeep`), so a fresh checkout
+   creates it owned by the checking-out user before any container starts.
+2. `make`'s stack-launching targets and the CI stack bring-up both
+   `mkdir -p` it first, covering the case where someone deleted it.
+3. The e2e fixture gates on `os.access(..., os.W_OK)` as well as `is_dir()`
+   through `require_stack_condition`, so a directory that is present but
+   root-owned reports as a named failure under `CHILI_E2E_REQUIRE_STACK=1`
+   instead of a raw `PermissionError`.
+
+Its *contents* stay gitignored — nothing generated into it is ever committed.
+
 ---
 
 ## Fixture index — every data location and its consumer
@@ -86,6 +112,7 @@ sample_data/                                  # gitignored (bulk, local-only)
 | `sample_data/*.csv` | bulk · ignored | NPPES bulk pfiles | `tools/sample_data/build_tennessee_subset.py` (`--nppes-root`) | provider source for the TN subset |
 | `sample_data/CMS/DE1_0_*.csv` | bulk · ignored | CMS DE-SynPUF samples | same builder (`--desynpuf-root`) | claims/beneficiary source |
 | `sample_data/CMS/tn_subset/*.csv` | bulk · ignored | **generated** TN subset + `MANIFEST.json` | `scripts/demo_ingest_tn_subset.sh` (`make demo-tn-subset`) | output of the builder |
+| `sample_data/connector_imports/` | **directory tracked**, contents ignored | the worker's `/imports` bind-mount root (`CHILI_CONNECTOR_FS_ROOT`) | `docker-compose.dev.yaml`; `backend/tests/e2e/test_connector_sync_flow.py` writes a CSV here per run | tracked empty on purpose — see the note below |
 | `backend/tests/records/fixtures/cms/*_sample.csv` | tracked | tiny CMS samples (exact column layouts) | `backend/tests/records/test_cms_ingestion.py` | **column counts must match real CMS layouts** |
 | `backend/tests/e2e/fixtures/tiny_*.csv` | tracked | tiny linked CMS rows (6 feeds) | `backend/tests/e2e/test_full_pipeline.py` | full records→graph→vector e2e |
 | `backend/tests/ingestion/fixtures/policies/*` | tracked | synthetic policy corpus (MD/HTML/JSON/TXT/DOCX) | `test_full_pipeline.py` + `scripts/demo_ingest_tn_subset.sh` | document-ingestion / policy graph (BL-014) |

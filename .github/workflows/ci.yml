@@ -83,6 +83,14 @@ jobs:
         # enables Neo4j auth for the integration tests.
         working-directory: ${{ github.workspace }}
         run: |
+          # Create the worker's /imports bind-mount source before compose can.
+          # Docker creates a missing bind source as a ROOT-OWNED directory, and
+          # the runner then cannot write the CSV that
+          # tests/e2e/test_connector_sync_flow.py drops in there -- an opaque
+          # PermissionError, not the missing-directory failure the gate is for.
+          # The directory is tracked (sample_data/connector_imports/.gitkeep) so
+          # checkout normally wins this race; this is the belt to that braces.
+          mkdir -p sample_data/connector_imports
           docker compose -f docker-compose.dev.yaml up -d --wait \
             redis postgres neo4j qdrant minio
           # The application containers are what the live-stack e2e tests talk

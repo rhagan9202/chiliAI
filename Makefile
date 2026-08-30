@@ -11,8 +11,16 @@ help: ## Show this help
 
 # Compose loads `.env`; on a fresh checkout it does not exist yet, so every
 # stack-launching target creates it from the tracked example first.
+#
+# The same targets pre-create the worker's /imports bind-mount source. Docker
+# creates a missing bind source as a ROOT-OWNED directory, which the host user
+# then cannot write into -- and tests/e2e/test_connector_sync_flow.py writes a
+# CSV there. The directory is tracked (sample_data/connector_imports/.gitkeep)
+# so a fresh checkout already owns it; this covers the case where someone
+# deleted it.
 env-file:
 	@test -f .env || { cp .env.example .env; echo ">> Created .env from .env.example — edit it if you need non-default settings"; }
+	@mkdir -p sample_data/connector_imports
 
 # ---------- Development ----------
 

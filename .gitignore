@@ -50,6 +50,14 @@ coverage.json
 # Sample / reference datasets (see sample_data/README.md for sources)
 sample_data/*
 !sample_data/README.md
+# The worker's /imports bind-mount root (docker-compose.dev.yaml). The
+# directory itself is tracked so a fresh checkout owns it: Docker creates a
+# missing bind-mount source as root, and the host user then cannot write the
+# CSV that tests/e2e/test_connector_sync_flow.py drops in there. Its contents
+# stay ignored.
+!sample_data/connector_imports/
+sample_data/connector_imports/*
+!sample_data/connector_imports/.gitkeep
 
 # Playwright e2e artifacts
 chili_app/test-results/

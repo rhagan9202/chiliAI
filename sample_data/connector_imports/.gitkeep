@@ -1,0 +1,16 @@
+Tracked so this directory exists on a fresh checkout.
+
+docker-compose.dev.yaml bind-mounts it as the worker's /imports root
+(CHILI_CONNECTOR_FS_ROOT). Docker auto-creates a missing bind-mount source as
+a ROOT-OWNED 0755 directory, which the host user then cannot write into --
+verified, not assumed: `docker run --rm -v /nonexistent/path:/x alpine true`
+leaves `drwxr-xr-x root root`, and a non-root `touch` inside it is denied.
+
+That is what made backend/tests/e2e/test_connector_sync_flow.py's `csv_file`
+fixture fail with an opaque PermissionError rather than the missing-directory
+skip/failure it was written for: `_IMPORTS_DIR.is_dir()` was True, because
+Docker had just created it.
+
+Keeping the directory tracked (and empty) means the checkout wins the race and
+the host user owns it. Contents stay gitignored -- see sample_data/README.md
+and docs/testing/DATA.md for the two-tier data model.
