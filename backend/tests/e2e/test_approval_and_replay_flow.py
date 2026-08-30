@@ -405,8 +405,10 @@ def test_a_replayed_score_run_executes(base_url: str) -> None:
     assert state == "completed", status
     # The three counters must partition the run. This assertion used to be
     # `scored + failed == total`, which held only because `failed` was a
-    # remainder that swallowed every skipped entity — the run this test drives
-    # scores nothing and skips all 57.
+    # remainder that swallowed every skipped entity. The "all 57 skipped"
+    # this once named belonged to the run scavenged from the connector-sync
+    # test's CSV; this test drives its own much smaller run, so assert the
+    # partition invariant itself rather than any particular count.
     assert int(scored) + int(failed) + int(skipped) == int(total), status
 
 
