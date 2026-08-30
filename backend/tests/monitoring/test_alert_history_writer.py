@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pytest
 
 import monitoring.adapters.in_memory as in_memory_module
-from monitoring.exceptions import AlertLifecycleError
+from monitoring.exceptions import AlertConcurrentModificationError, AlertLifecycleError
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.adapters.protocols import AlertHistoryWriter
 from monitoring.lifecycle import validate_alert_transition
@@ -569,3 +569,86 @@ def test_new_fields_round_trip_including_tags_list() -> None:
     assert fetched.entity_label == "Dr. Jane Doe"
     assert fetched.confidence == 0.87
     assert fetched.tags == ["peer-deviation", "billing-spike"]
+
+
+def test_the_transition_lock_makes_the_recheck_and_the_write_atomic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_transition_lock`` is held across the re-check and the write.
+    ``PostgresAlertHistoryStore`` gets that atomicity free from row locking;
+    the in-memory adapter's re-read -> compare -> build -> write is four
+    separate Python steps, and the window between the compare and the write
+    spans a ``utc_now()``, a pydantic model construction and a ``model_copy``
+    -- comfortably long enough for a GIL switch.
+
+    ``test_a_racing_acknowledge_does_not_silently_land_over_a_winning_dismissal``
+    does not prove the lock. Its barrier synchronises the *pre-lock*
+    ``validate_alert_transition``, so the guarded re-check catches the
+    conflict with or without the lock -- verified by mutation: replacing
+    ``threading.Lock()`` with a no-op context manager leaves that whole file
+    passing. The lock's own window is never entered.
+
+    This test enters it, using the one call the critical section makes:
+    ``in_memory.py``'s module-level ``utc_now``. The first caller into it
+    stalls there -- inside the lock -- while a second caller attempts the
+    same transition. Under the lock the second caller cannot get in until the
+    first has written, so it sees the new status and raises the documented
+    ``AlertConcurrentModificationError``. Without the lock it passes the
+    stale compare, writes, and is then silently overwritten by the stalled
+    caller: two "successes", one of them a lie.
+    """
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-lock-1", status="open")])
+
+    sibling_done = threading.Event()
+    first_call_seen = threading.Event()
+
+    def stalling_utc_now() -> datetime:
+        if not first_call_seen.is_set():
+            first_call_seen.set()
+            sibling_done.wait(timeout=1.0)
+        return datetime.now(timezone.utc)
+
+    monkeypatch.setattr(in_memory_module, "utc_now", stalling_utc_now)
+
+    outcomes: dict[str, AlertHistoryRecord | BaseException | None] = {}
+
+    def acknowledge_as(actor: str) -> None:
+        try:
+            outcomes[actor] = writer.acknowledge(
+                "a-lock-1", knowledge_base_id="kb-1", actor=actor
+            )
+        except BaseException as exc:  # captured for the joining thread to assert on
+            outcomes[actor] = exc
+
+    def run_sibling() -> None:
+        try:
+            acknowledge_as("sibling")
+        finally:
+            sibling_done.set()
+
+    stalled = threading.Thread(target=acknowledge_as, args=("stalled",))
+    sibling = threading.Thread(target=run_sibling)
+    stalled.start()
+    # Let the stalled caller take the lock and reach utc_now() before the
+    # sibling attempts the same transition.
+    assert first_call_seen.wait(timeout=5), "the stalled caller never reached utc_now"
+    sibling.start()
+    stalled.join(timeout=10)
+    sibling.join(timeout=10)
+
+    written = [actor for actor, outcome in outcomes.items() if isinstance(outcome, AlertHistoryRecord)]
+    assert len(written) == 1, (
+        "both acknowledges reported success, so one write was silently "
+        f"discarded: {outcomes}"
+    )
+    loser = next(actor for actor in outcomes if actor not in written)
+    assert isinstance(outcomes[loser], AlertConcurrentModificationError), (
+        f"the losing caller got {outcomes[loser]!r}, not the documented "
+        "AlertConcurrentModificationError"
+    )
+    stored = writer.get_alert("a-lock-1")
+    assert stored is not None
+    assert stored.status == "acknowledged"
+    # One transition, one audit event -- not one event silently replacing another.
+    assert [event.actor for event in stored.triage_history] == [written[0]]

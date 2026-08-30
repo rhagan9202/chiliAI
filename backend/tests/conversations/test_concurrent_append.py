@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -24,6 +26,7 @@ from config.schema import DatabaseConfig
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
+from conversations.exceptions import ConversationConcurrentModificationError
 from conversations.models import ConversationMessage
 from conversations.service import create_conversation_service
 from database.runtime import create_connection_provider
@@ -150,3 +153,105 @@ def test_two_concurrent_turns_both_survive(
         assert stored is not None
         texts = {m.content for m in stored.messages}
         assert {"from-analyst-a", "from-analyst-b"} <= texts, f"a turn was lost: {texts}"
+
+
+def test_the_in_memory_save_lock_makes_the_compare_and_the_write_atomic() -> None:
+    """``InMemoryConversationRepository.save`` holds ``_save_lock`` across its
+    compare-and-write. Postgres gets that atomicity free from row locking; the
+    in-memory adapter's read -> compare -> write is three separate Python
+    steps, so without the lock two threads can both pass the compare against
+    the same stale ``updated_at`` and both write, the second write silently
+    discarded.
+
+    ``test_two_concurrent_turns_both_survive`` does not prove this. Its
+    barrier synchronises the *pre-lock* read in the service, so the guarded
+    compare still catches the conflict with or without the lock -- verified by
+    mutation: replacing ``threading.Lock()`` with a no-op context manager
+    leaves that test passing on five consecutive runs. The lock's own window
+    is never entered.
+
+    This test enters it. The window has no injectable call in it, so the seam
+    is the one value the *caller* supplies: ``expected_updated_at``. Python
+    gives a right-hand operand whose type is a proper subclass of the left's
+    priority on the reflected comparison, so ``existing.updated_at !=
+    expected_updated_at`` dispatches to ``_PausingDatetime.__ne__`` -- inside
+    the critical section, using only the public signature.
+    """
+    repository = InMemoryConversationRepository()
+    service = create_conversation_service(repository)
+    conversation = service.create(knowledge_base_id="kb-lock-window")
+    original_updated_at = conversation.updated_at
+
+    sibling_done = threading.Event()
+
+    class _PausingDatetime(datetime):
+        """Stalls the *first* compare-and-write long enough for a sibling
+        save to run to completion, then lets it finish.
+
+        Under the lock the sibling cannot run at all -- it is blocked on
+        ``_save_lock`` -- so this wait times out and the sequence serialises,
+        which is the behaviour being asserted. Without the lock the sibling
+        completes and sets the event, and the paused writer then overwrites
+        it.
+        """
+
+        def __ne__(self, other: object) -> bool:
+            sibling_done.wait(timeout=1.0)
+            return datetime.__ne__(self, other)
+
+        def __eq__(self, other: object) -> bool:
+            return datetime.__eq__(self, other)
+
+        def __hash__(self) -> int:
+            return datetime.__hash__(self)
+
+    paused_expectation = _PausingDatetime.fromtimestamp(
+        original_updated_at.timestamp(), tz=original_updated_at.tzinfo
+    )
+
+    outcomes: dict[str, BaseException | None] = {}
+
+    def save_turn(name: str, expected: datetime) -> None:
+        turn = conversation.model_copy(
+            update={
+                "messages": [_message(name)],
+                "updated_at": original_updated_at + timedelta(seconds=1),
+            }
+        )
+        try:
+            repository.save(turn, expected_updated_at=expected)
+            outcomes[name] = None
+        except BaseException as exc:  # recorded, asserted on below
+            outcomes[name] = exc
+
+    def run_sibling() -> None:
+        try:
+            save_turn("sibling", original_updated_at)
+        finally:
+            sibling_done.set()
+
+    paused = threading.Thread(target=save_turn, args=("paused", paused_expectation))
+    sibling = threading.Thread(target=run_sibling)
+    paused.start()
+    # Let the paused writer reach the compare (and, with the lock, take it)
+    # before the sibling attempts its own save.
+    time.sleep(0.05)
+    sibling.start()
+    paused.join(timeout=10)
+    sibling.join(timeout=10)
+
+    # Exactly one write may land. Whichever loses must be told so -- a silent
+    # success whose data is then overwritten is the defect.
+    succeeded = [name for name, error in outcomes.items() if error is None]
+    assert len(succeeded) == 1, (
+        "both saves reported success, so one write was silently discarded: "
+        f"{outcomes}"
+    )
+    loser = next(name for name, error in outcomes.items() if error is not None)
+    assert isinstance(outcomes[loser], ConversationConcurrentModificationError), (
+        f"the losing save raised {outcomes[loser]!r}, not the documented "
+        "ConversationConcurrentModificationError"
+    )
+    stored = repository.get(conversation.id)
+    assert stored is not None
+    assert [message.content for message in stored.messages] == [succeeded[0]]
