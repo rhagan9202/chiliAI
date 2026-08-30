@@ -12,10 +12,43 @@ Two failure modes this guards against, both of which report success today:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from _pytest.outcomes import Failed, Skipped
 
 from tests.e2e.stack_gate import StackProbe, require_stack_condition, resolve_stack
+
+
+def assert_fails_rather_than_skips(call: Callable[[], object]) -> None:
+    """Assert ``call`` raises ``Failed`` -- and specifically not ``Skipped``.
+
+    ``with pytest.raises(Failed):`` is NOT enough here, and using it makes this
+    suite unable to detect the one regression it exists to detect. ``Failed``
+    and ``Skipped`` are *siblings* (both derive directly from
+    ``OutcomeException``), so if the gate regresses to a bare ``pytest.skip``
+    the resulting ``Skipped`` is not caught by ``pytest.raises(Failed)``: it
+    propagates out of the context manager and pytest reports *this test* as
+    SKIPPED, which reads as green in a summary line. Deleting the whole
+    ``stack_is_required()`` branch used to leave this file at
+    "6 passed, 4 skipped, 0 failed".
+
+    Catching every outcome and asserting the type turns that back into a
+    failure, which is the only reporting state CI treats as red.
+    """
+    try:
+        call()
+    except Failed:
+        return
+    except BaseException as raised:  # noqa: BLE001 - the type IS the assertion
+        raise AssertionError(
+            "expected the gate to FAIL while CHILI_E2E_REQUIRE_STACK is set, "
+            f"but it raised {type(raised).__name__}: {raised}"
+        ) from raised
+    raise AssertionError(
+        "expected the gate to FAIL while CHILI_E2E_REQUIRE_STACK is set, "
+        "but the call returned normally"
+    )
 
 
 def _chili_stack(*, healthy: bool = True, is_chili: bool = True) -> StackProbe:
@@ -64,16 +97,18 @@ class TestTheGateFailsWhenTheStackIsRequired:
     ) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack("http://localhost:8000", probe=_no_listener)
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack("http://localhost:8000", probe=_no_listener)
+        )
 
     def test_an_unhealthy_stack_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack(
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack(
                 "http://localhost:8000", probe=_chili_stack(healthy=False)
             )
+        )
 
 
 class TestRequireStackConditionGatesAnyLiveStackPrecondition:
@@ -103,8 +138,11 @@ class TestRequireStackConditionGatesAnyLiveStackPrecondition:
         """
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            require_stack_condition(False, "Cannot reach chiliai-worker-1: exit 1.")
+        assert_fails_rather_than_skips(
+            lambda: require_stack_condition(
+                False, "Cannot reach chiliai-worker-1: exit 1."
+            )
+        )
 
 
 class TestABarePytestSkipIsNeverGated:
@@ -141,7 +179,8 @@ class TestTheGateRejectsAForeignService:
     ) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack(
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack(
                 "http://localhost:8000", probe=_chili_stack(is_chili=False)
             )
+        )
