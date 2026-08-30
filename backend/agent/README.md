@@ -86,10 +86,21 @@ that a single flat counter cannot close together:
   extract already ran), since there would be nowhere to keep a different
   stage's prior value.
 
+Both handlers call the setter **unconditionally**, including when the stage
+produced no warnings. They used to write only when there were warnings to
+report, which meant a reprocess that *fixed* a problem (2 warnings → 0) never
+wrote the zero: the stale count stayed and the document total could only ever
+rise. Since the per-stage dicts are the source of truth for that total, a
+stage going quiet has to say so. A zero write with no reasons removes that
+stage's entry (absent means zero), and a write that would change nothing is
+elided before it reaches the store — see
+`backend/knowledgebases/README.md` § Per-stage document warning accounting.
+
 Sprint 2026-35 fixed only `handle_documents_parsed` (an absolute, but
 stage-blind, setter); Sprint 2026-36 (agent.22) extended the same fix to
 `handle_entities_extracted` and moved both onto the per-stage setter, which
-is why the setter is keyed by stage in the first place.
+is why the setter is keyed by stage in the first place. The unconditional
+write came out of that sprint's whole-branch review (finding F11).
 
 ### Stage timeouts are an alarm, not a deadline
 

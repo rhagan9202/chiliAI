@@ -86,6 +86,23 @@ widened** compare-to-write window — a slow-writing dict wrapper in memory,
 real concurrent connections against Postgres — so the guard is proven under
 real overlap rather than lucky GIL scheduling.
 
+Those barriers synchronise the *pre-lock* read, so they prove the guard but
+not the in-memory adapter's `_save_lock`: neutering it leaves them passing.
+The lock is proven separately by
+`tests/conversations/test_concurrent_append.py::test_the_in_memory_save_lock_makes_the_compare_and_the_write_atomic`,
+which stalls the first caller *inside* the critical section. That section
+calls nothing patchable, so the seam is the one value the caller supplies:
+Python gives a right-hand operand whose type is a proper subclass of the
+left's priority on the reflected comparison, so passing `expected_updated_at`
+as a `datetime` subclass makes `existing.updated_at != expected_updated_at`
+dispatch into the test's own `__ne__`. Without the lock both saves report
+success and one write is silently discarded.
+
+Retry-budget exhaustion — the only path to that caller-visible 409 — is
+covered at both levels:
+`tests/conversations/test_service.py::test_append_gives_up_after_the_retry_budget_instead_of_spinning`
+and `tests/api/test_chat_router.py::test_a_conversation_append_that_never_wins_the_race_is_a_409_not_a_500`.
+
 ## Persistence
 
 The `conversations` table is created by Alembic migration

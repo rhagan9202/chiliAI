@@ -60,6 +60,14 @@ untypeable and could equally mean the database was down — surfaced an opaque
   relying on lucky GIL scheduling — see
   `tests/monitoring/test_alert_history_writer.py` and the concurrent tests
   in `tests/monitoring/test_postgres_alert_history.py`.
+  That barrier synchronises the *pre-lock* read, so it proves the guard but
+  not the lock: neutering the lock leaves it passing. The lock itself is
+  proven separately by
+  `test_the_transition_lock_makes_the_recheck_and_the_write_atomic`, which
+  stalls the first caller *inside* the critical section (monkeypatching the
+  module-level `utc_now`, the one call the section makes) while a second
+  attempts the same transition. Without the lock both report success and one
+  write is silently discarded.
 
 **What it means to a caller:** always safe to retry — reload the alert and
 resubmit. This is the load-bearing distinction from `MonitoringSourceError`,
