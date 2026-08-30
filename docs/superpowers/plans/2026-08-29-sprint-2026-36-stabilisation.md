@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12 / FastAPI / Pydantic, psycopg 3, redis-py, pytest, pyright strict.
 
-**Spec:** `docs/superpowers/specs/2026-09-10-sprint-2026-36-stabilisation-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-28-sprint-2026-36-stabilisation-design.md`
 
 ## Global Constraints
 
