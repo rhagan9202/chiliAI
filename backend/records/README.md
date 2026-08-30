@@ -46,7 +46,9 @@ and reuses it for every page, so rolling back page N would also delete pages
 likely already consumed. Rows this call did not insert (a record id an earlier
 page already landed) are equally not its to remove.
 
-`rollback_submission` is the *only* deletion entry point on `RawRecordStore`.
+`rollback_submission` is the only *submission-scoped* deletion entry point on
+`RawRecordStore`. (`delete_by_kb` also deletes, but at whole-KB granularity,
+for teardown -- `knowledgebases/cleanup.py` calls it.)
 The standalone `delete_records(keys=...)` / `discard_submission(...)` pair it
 replaced was removed from the protocol and both adapters once nothing called
 them, so the two-transaction rollback -- rows deleted, hash retained, the

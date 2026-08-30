@@ -275,9 +275,15 @@ def test_a_zero_write_for_a_stage_that_never_wrote_changes_nothing(
     read-modify-write -- so a write that changes nothing must not touch the
     store.
 
-    Asserted through the public surface: the record comes back unchanged and
-    the ledger stays empty, so nothing was written, and repeating the call is
-    still a no-op.
+    Scope, honestly: this asserts the observable *result* -- the record comes
+    back unchanged, the ledger stays empty, and repeating the call changes
+    nothing. It does NOT pin the write elision itself. Deleting the elision
+    leaves this test (and the rest of the file) green, because a redundant
+    full-snapshot write produces byte-identical content; the elision is an
+    efficiency property, and proving it would take a spy on the store that
+    the public surface does not offer. What must not regress is the
+    correctness half -- that a zero write for a stage which never wrote does
+    not create an entry -- and that is what is asserted here.
     """
     original = _register(repository)
 
