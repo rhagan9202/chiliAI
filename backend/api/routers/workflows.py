@@ -80,16 +80,32 @@ def _list_accessible_workflows(
             # us -- it is only a valid resume cursor because both adapters
             # treat `offset` as a position in the *same* sequence for
             # whatever `knowledge_base_id`/`status` filters were actually
-            # passed to `list_runs`. This router never passes an
-            # entitlement filter (entitlement is checked here, in the
-            # router, after the fact), so both filter args are `None` on
-            # every call here -- which each adapter collapses to its own
-            # single global, newest-first, unfiltered-by-kb/status
-            # sequence: Redis's `CREATED_INDEX` ZSET
-            # (`redis_store.py::_listing_index_key`), in-memory's unfiltered
-            # `self._runs.values()` (`in_memory.py::list_runs`). It is
-            # *agreement between the adapters on what that sequence is*,
-            # not any pre-filtering of it, that makes the arithmetic work.
+            # passed to `list_runs`.
+            #
+            # Those two filters are NOT always `None` here: `GET /workflows`
+            # below declares both as query params and forwards them straight
+            # through, and the frontend sends them
+            # (`chili_app/src/api/workflows.ts`). What this router never
+            # passes down is an *entitlement* filter -- entitlement is
+            # checked here, in the router, after the fact, which is why a
+            # page can be partially consumed and this arithmetic is needed
+            # at all.
+            #
+            # The agreement therefore has to hold for all four filter
+            # combinations, and it does. In-memory filters
+            # `self._runs.values()` by kb/status, sorts newest-first, and
+            # slices by `offset` (`in_memory.py::list_runs`). Redis reads
+            # the one ZSET `_listing_index_key` selects for that exact
+            # combination -- `CREATED_INDEX` when both args are `None`, and
+            # one of `KB_INDEX_PREFIX` / `STATUS_INDEX_PREFIX` /
+            # `KB_STATUS_INDEX_PREFIX` otherwise -- and `offset` is a rank
+            # within that one index. All four indexes are written on every
+            # `save`/`update` and pruned on a status change
+            # (`_listing_index_keys_for_run`, `_update_listing_indexes`), so
+            # each holds exactly the runs matching its combination, in the
+            # same newest-first order in-memory produces. It is *that
+            # agreement, per filter combination*, that makes the arithmetic
+            # work -- not any property of one particular index.
             # `WorkflowRunStoreProtocol.list_runs` (`adapters/protocols.py`)
             # documents only that results are newest-first -- it does NOT
             # specify offset-vs-filtering semantics, so this agreement is a

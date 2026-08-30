@@ -525,6 +525,123 @@ def test_a_run_appears_exactly_once_across_consecutive_pages(store_name: str) ->
     assert seen == expected, f"a run was skipped or reordered: seen={seen} expected={expected}"
 
 
+def _filtered_scenario_runs() -> list[WorkflowRun]:
+    """`_filled_early_scenario_runs` plus completed runs interleaved through it.
+
+    With `status=running` the visible sequence collapses back to exactly the
+    unfiltered scenario, so the same mid-page-fill assertions apply while the
+    stores are genuinely filtering. Every pagination test in this file before
+    these two called `GET /workflows` with limit/offset only, so the filtered
+    paths -- the ones the frontend actually calls
+    (`chili_app/src/api/workflows.ts`) -- had no router-level coverage at all.
+    """
+    noise = [
+        ("noise-newest", "kb-1", datetime(2026, 1, 10, 12, tzinfo=timezone.utc)),
+        ("noise-middle", "kb-2", datetime(2026, 1, 8, 12, tzinfo=timezone.utc)),
+        ("noise-oldest", "kb-1", datetime(2026, 1, 5, 12, tzinfo=timezone.utc)),
+    ]
+    return _filled_early_scenario_runs() + [
+        WorkflowRun(
+            workflow_id=workflow_id,
+            knowledge_base_id=knowledge_base_id,
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.COMPLETED,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=created_at,
+        )
+        for workflow_id, knowledge_base_id, created_at in noise
+    ]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_holds_when_a_status_filter_is_passed(store_name: str) -> None:
+    """The router forwards `status` straight to the store, so the cursor
+    agreement `_list_accessible_workflows` depends on has to hold with a
+    filter applied, not only for the both-`None` case the other pagination
+    tests cover. Same mid-page-fill scenario, same invariant, now with
+    entitlement-denied runs *and* a store-level filter in play.
+
+    Scope, honestly: this asserts the observable contract -- each matching run
+    once, in order, `has_more` correct -- under both adapters. It does not pin
+    *which* Redis ZSET is read. I mutation-checked that: forcing
+    `_listing_index_key` to fall back to `CREATED_INDEX` for the status-only
+    case still passes here, because Redis derives `next_offset` from ranks in
+    whichever index it actually read, and for this data the two cursors happen
+    to land on the same run. `tests/agent/test_redis_workflow_run_store.py`
+    covers index selection at the store level, which is where it belongs.
+    """
+    runs = _filtered_scenario_runs()
+
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        first = client.get(
+            "/workflows", params={"status": "running", "limit": 3, "offset": 0}
+        ).json()
+        assert [item["id"] for item in first["items"]] == ["wf-a", "wf-b", "wf-c"]
+        assert first["has_more"] is True
+
+        second = client.get(
+            "/workflows",
+            params={
+                "status": "running",
+                "limit": 3,
+                "offset": first["next_offset"],
+            },
+        ).json()
+
+    # "wf-d" is the item a naive page-boundary cursor drops; no completed run
+    # may leak into a status=running listing under either adapter.
+    assert [item["id"] for item in second["items"]] == ["wf-d", "wf-e"]
+    seen = [item["id"] for item in first["items"] + second["items"]]
+    assert seen == _expected_accessible_order(
+        [run for run in runs if run.status is WorkflowRunStatus.RUNNING],
+        knowledge_base_id="kb-1",
+    )
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_holds_when_both_filters_are_passed(store_name: str) -> None:
+    """The both-filters-set combination. Paging right through must return
+    every matching run exactly once, in the same order, under both adapters.
+
+    Weaker than the status-only case above by construction: entitlement is
+    per-knowledge-base, so once the caller filters to a knowledge base they
+    can access, no run in the result is denied and the router never reaches
+    its `scan_offset + consumed` branch -- it just round-trips each store's
+    own `next_offset`. What this pins is that the two stores agree on the
+    filtered sequence and that the router forwards both query params, which
+    nothing at this level previously checked.
+    """
+    runs = _filtered_scenario_runs()
+    expected = _expected_accessible_order(
+        [run for run in runs if run.status is WorkflowRunStatus.RUNNING],
+        knowledge_base_id="kb-1",
+    )
+
+    seen: list[str] = []
+    with _seeded_store(store_name, runs) as store:
+        client = TestClient(
+            _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        )
+        offset: int | None = 0
+        while offset is not None:
+            body = client.get(
+                "/workflows",
+                params={
+                    "knowledge_base_id": "kb-1",
+                    "status": "running",
+                    "limit": 2,
+                    "offset": offset,
+                },
+            ).json()
+            seen.extend(item["id"] for item in body["items"])
+            offset = body["next_offset"] if body["has_more"] else None
+
+    assert seen == expected, f"seen={seen} expected={expected}"
+
+
 @pytest.mark.integration
 def test_pagination_survives_a_stale_redis_index_entry() -> None:
     """A prior review suspected the skew specifically came from Redis
