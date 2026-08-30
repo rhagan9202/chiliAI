@@ -13,7 +13,12 @@ from typing import NoReturn
 
 import pytest
 
-__all__ = ["StackProbe", "resolve_stack", "stack_is_required"]
+__all__ = [
+    "StackProbe",
+    "require_stack_condition",
+    "resolve_stack",
+    "stack_is_required",
+]
 
 # (status_code, body) for a GET of the given path, or a raised exception when
 # nothing is listening.
@@ -36,6 +41,21 @@ def _unavailable(reason: str) -> NoReturn:
             "rather than a skip: the stack was expected to be running."
         )
     pytest.skip(f"{reason} Start it with `make dev`.")
+
+
+def require_stack_condition(condition: bool, reason: str) -> None:
+    """Skip, or fail when the stack is required, for any live-stack precondition.
+
+    ``_unavailable`` was reachable only from ``resolve_stack``, so every other
+    live-stack precondition -- a docker exec into a named container, a
+    bind-mounted directory that must exist on the host -- called
+    ``pytest.skip`` directly and stayed a skip even with
+    ``CHILI_E2E_REQUIRE_STACK`` set. Route any such precondition through this
+    instead of calling ``pytest.skip`` directly.
+    """
+    if condition:
+        return
+    _unavailable(reason)
 
 
 def resolve_stack(base_url: str, *, probe: StackProbe) -> str:

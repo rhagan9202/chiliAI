@@ -18,7 +18,7 @@ from typing import cast
 
 import pytest
 
-from tests.e2e.stack_gate import resolve_stack
+from tests.e2e.stack_gate import require_stack_condition, resolve_stack
 
 pytestmark = pytest.mark.integration
 
@@ -61,8 +61,10 @@ def _psql(sql: str) -> str:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}",
+    )
     return result.stdout.strip()
 
 
@@ -86,8 +88,10 @@ def _reassign_requester(workflow_id: str, actor_user_id: str) -> None:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}",
+    )
 
 
 def _create_kb(base_url: str, name: str) -> str:
@@ -259,7 +263,16 @@ def test_a_replayed_score_run_executes(base_url: str) -> None:
         "where status = 'completed' order by created_at desc limit 1"
     )
     if not completed:
-        pytest.skip("No completed score run available to replay.")
+        # Deliberately unconditional -- NOT routed through require_stack_condition.
+        # By the time this line runs, `base_url` has already confirmed a real
+        # chiliAI stack is answering (resolve_stack), so this is not an
+        # environment-readiness question the way "can't reach the postgres
+        # container" is. Score runs are expected to complete automatically on
+        # ingest (see test_connector_sync_flow.py, and CLAUDE.md's "analytics
+        # fire natively on ingest"), so finding none here means the scoring
+        # pipeline did not produce one -- the exact case this test exists to
+        # catch. Skipping it would let a broken pipeline report green.
+        pytest.fail("No completed score run available to replay.")
     run_id, kb_id = completed.split("|")
 
     _psql(

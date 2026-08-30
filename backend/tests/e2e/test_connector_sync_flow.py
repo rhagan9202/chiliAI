@@ -22,7 +22,7 @@ from typing import cast
 
 import pytest
 
-from tests.e2e.stack_gate import resolve_stack
+from tests.e2e.stack_gate import require_stack_condition, resolve_stack
 
 pytestmark = pytest.mark.integration
 
@@ -65,11 +65,11 @@ def base_url() -> str:
 def csv_file() -> Iterator[str]:
     """Write a feed-conformant CSV into the worker's import directory."""
 
-    if not _IMPORTS_DIR.is_dir():
-        pytest.skip(
-            f"{_IMPORTS_DIR} does not exist; it is the host side of the worker's "
-            f"{_CONTAINER_ROOT} mount."
-        )
+    require_stack_condition(
+        _IMPORTS_DIR.is_dir(),
+        f"{_IMPORTS_DIR} does not exist; it is the host side of the worker's "
+        f"{_CONTAINER_ROOT} mount.",
+    )
     name = f"e2e-carrier-{int(time.time())}.csv"
     target = _IMPORTS_DIR / name
     rows = "".join(

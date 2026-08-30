@@ -169,6 +169,17 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > another project's 404 bodies). The gate now additionally requires
 > `/config/domain` to return a domain config before accepting the stack.
 >
+> The gate covers every live-stack precondition, not just the base-URL probe.
+> `stack_gate.require_stack_condition(condition, reason)` is the
+> general-purpose form of the same skip-or-fail decision; a failed `docker
+> exec` into `chiliai-postgres-1`/`chiliai-worker-1` and a missing
+> connector-imports host directory all route through it. One exception is
+> deliberate: `test_approval_and_replay_flow.py`'s "no completed score run
+> available to replay" fails **unconditionally** (not gated behind the flag),
+> because by the time it runs `resolve_stack` has already confirmed a real
+> chiliAI stack, and an empty `score_runs` table there is a symptom of the
+> scoring pipeline not working, not of a missing environment.
+>
 > ⚠️ **Postgres-touching tests default to `chili_test`, never the dev DB.**
 > `tests/database/test_migrations.py` runs `alembic downgrade base` →
 > `upgrade head` against `DATABASE_URL` — dropping and recreating **every**

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 from _pytest.outcomes import Failed, Skipped
 
-from tests.e2e.stack_gate import StackProbe, resolve_stack
+from tests.e2e.stack_gate import StackProbe, require_stack_condition, resolve_stack
 
 
 def _chili_stack(*, healthy: bool = True, is_chili: bool = True) -> StackProbe:
@@ -31,6 +31,18 @@ def _chili_stack(*, healthy: bool = True, is_chili: bool = True) -> StackProbe:
 
 def _no_listener(path: str) -> tuple[int, str]:
     raise ConnectionError("connection refused")
+
+
+@pytest.fixture(autouse=True)
+def isolated_from_the_ambient_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test below asserts specific CHILI_E2E_REQUIRE_STACK behaviour.
+
+    Without this, a shell (or a CI job) that happens to export the flag for
+    the whole run flips the "stack is optional" tests from skip to fail --
+    the same class of leakage this suite exists to prevent in the real
+    live-stack tests, just aimed at this file instead.
+    """
+    monkeypatch.delenv("CHILI_E2E_REQUIRE_STACK", raising=False)
 
 
 class TestTheGateSkipsWhenTheStackIsOptional:
@@ -62,6 +74,38 @@ class TestTheGateFailsWhenTheStackIsRequired:
             resolve_stack(
                 "http://localhost:8000", probe=_chili_stack(healthy=False)
             )
+
+
+class TestRequireStackConditionGatesAnyLiveStackPrecondition:
+    """``require_stack_condition`` is the general-purpose form of ``_unavailable``.
+
+    ``resolve_stack`` is only the base-URL probe. Every other live-stack
+    precondition in ``tests/e2e/`` -- a docker exec into ``chiliai-postgres-1``
+    or ``chiliai-worker-1``, a missing connector-imports directory -- must
+    route through this so a broken-but-listening stack cannot go green by
+    quietly skipping past the part that would have caught it.
+    """
+
+    def test_a_true_condition_is_a_no_op(self) -> None:
+        require_stack_condition(True, "unreachable reason")
+
+    def test_a_false_condition_skips_when_the_stack_is_optional(self) -> None:
+        with pytest.raises(Skipped, match="Cannot reach chiliai-postgres-1"):
+            require_stack_condition(False, "Cannot reach chiliai-postgres-1: exit 1.")
+
+    def test_a_non_probe_skip_also_fails_when_the_stack_is_required(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The regression this file exists for: before ``require_stack_condition``,
+        the docker-exec and missing-directory preconditions (and "no completed
+        score run available to replay", which fires precisely when the feature
+        under test did not work) called ``pytest.skip`` directly and stayed a
+        skip under CHILI_E2E_REQUIRE_STACK=1.
+        """
+        monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
+
+        with pytest.raises(Failed):
+            require_stack_condition(False, "No completed score run available to replay.")
 
 
 class TestTheGateRejectsAForeignService:
