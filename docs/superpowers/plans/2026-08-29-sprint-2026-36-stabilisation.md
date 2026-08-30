@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the six defects sprint 2026-35 introduced, shipped, or left half-done — one of which is live on `prod`.
+**Goal:** Close the six defects sprint 2026-35 introduced, shipped, or left half-done. ~~one of which is live on `prod`~~ — **corrected 2026-08-29: none of the six turned out to be live on `prod`. `api.30` was the one so classified, and Task 1's investigation disproved the premise; see "Correction (2026-08-29)" under Task 1 and `docs/superpowers/specs/2026-08-28-sprint-2026-36-stabilisation-design.md`.**
 
 **Architecture:** No new subsystems. Three of the six exist because two adapters behind one protocol diverged and only the in-memory one was exercised, so the through-line is parity: every fix is proven against *both* adapters, parametrised, with the non-default one genuinely executing.
 
@@ -30,7 +30,7 @@ Read before task 1. Each contradicts something a reader would reasonably assume.
 
 - **`records.18` is narrower than its story implies.** The story describes a correlation-scoped delete taking out earlier pages of a connector sync run. That was already fixed in 2026-35's final fix wave — `records/service.py` now calls `delete_records(keys=inserted_keys)`, scoped to the keys `persist` reported inserting. The *remaining* defect is only that `delete_records` and `discard_submission` are two separate transactions. Do not re-fix the scoping.
 - **`delete_by_kb` is the shape to copy.** `records/adapters/postgres.py:141-152` already does two statements in one transaction with a single commit. Task 4 is making the rollback look like that.
-- **The pagination divergence is NOT simply "unfiltered vs filtered".** Both stores scope their listing by knowledge base and status — the Redis ZSET is keyed per `(kb, status)` via `_listing_index_key`. The skew comes from Redis *skipping stale entries* (a ZSET id whose run no longer exists) so `page.items` can be shorter than the positions consumed, and from its own trailing `next_offset -= stale_count` compensation. **Do not take my word for the mechanism.** Task 1's first job is an empirical parity test that exposes the actual behaviour; derive the fix from what you observe.
+- **The pagination divergence is NOT simply "unfiltered vs filtered".** ~~Both stores scope their listing by knowledge base and status — the Redis ZSET is keyed per `(kb, status)` via `_listing_index_key`.~~ **Corrected 2026-08-29 (twice wrong before this):** `_listing_index_key` returns a per-`(kb, status)` ZSET only when *both* args are non-`None`; it returns a kb-only index, a status-only index, or the single global `CREATED_INDEX` for the other three combinations. All four are maintained on every write, so each holds exactly the runs for its combination — which is why the adapters agree, and why the heading's "not simply unfiltered vs filtered" was right even though its stated reason was not. The stale-entry skipping and the trailing `next_offset -= stale_count` compensation are real and are what make the cursor survive staleness; they are not a source of divergence. **Do not take my word for the mechanism** — and note that this bullet, the spec, and three successive rewrites of `docs/backlog/api.md` all got it wrong before it was pinned down. Task 1's first job is an empirical parity test that exposes the actual behaviour; derive the fix from what you observe. (Outcome: there was nothing to fix.)
 - **The entitlement filter lives in the router, not either store.** `_can_access_workflow` runs after `list_workflows` returns, so neither store's `next_offset` accounts for it. That is why the router does its own arithmetic at all.
 - **`monitoring`'s in-memory alert store validates but does not compare-and-set.** `in_memory.py:188` (`acknowledge`) and `:248` (`transition_status`) call `validate_alert_transition` and then write, with no guard and no lock — while the Postgres sibling now does CAS. `get_alert_feed_store` is `@lru_cache(maxsize=1)`, a process singleton shared across threadpool requests, so this is reachable.
 
@@ -59,7 +59,23 @@ Read before task 1. Each contradicts something a reader would reasonably assume.
 **Interfaces:**
 - Produces: no signature change. `_list_accessible_workflows` returns a cursor valid under both stores.
 
-> This is the only task fixing a defect currently live on `prod`.
+> ~~This is the only task fixing a defect currently live on `prod`.~~
+>
+> **Correction (2026-08-29) — the premise was wrong; this task fixed no
+> production defect.** Task 1 investigated the claimed divergence instead of
+> implementing against it and found that the two adapters already agree on
+> what `offset` counts, for every `knowledge_base_id`/`status` combination:
+> in-memory filters and slices its list, and Redis reads the one ZSET
+> `_listing_index_key` selects for that exact combination (`CREATED_INDEX` when
+> both args are `None`, one of three pre-filtered indexes otherwise, all four
+> kept in sync on every write), pruning stale entries and compensating
+> `next_offset` synchronously within a single `list_runs` call. Sprint
+> 2026-35's fix `92958a92` was already adapter-symmetric. The delivered commit
+> `ecc4c165` is therefore **test-and-comment only** — real-Redis parity
+> coverage plus the invariant recorded where it would break — and nothing on
+> `prod` needed reverting. The steps below are preserved as the original plan,
+> not as a record of what was implemented; see `docs/backlog/api.md` story
+> `api.30`.
 
 - [ ] **Step 1: Write the parity test first — it must fail against the Redis store and pass against in-memory**
 

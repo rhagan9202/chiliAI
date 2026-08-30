@@ -1,7 +1,10 @@
 # Sprint 2026-36 — Stabilisation: Close What 2026-35 Broke or Left Half-Done
 
 **Date:** 2026-08-28
-**Status:** Approved design, pending implementation plan
+**Status:** Approved design, implemented (sprint 2026-36). **One premise was
+disproved during execution — see "Correction (2026-08-29): `api.30` was not a
+production defect" below. The `api.30` rows and section further down are
+preserved as written, not as current fact.**
 **Predecessor:** sprint `2026-35` (`docs/project/planning/sprints/2026-35.md`), merged as `824072db`
 **Scope decision:** regressions and half-closed work only. The audit burn-down remainder (`BL-059`–`BL-066`) moves to `2026-37`.
 
@@ -45,7 +48,7 @@ capacity again would ignore that evidence.
 
 | ID | Story | SP | Origin |
 |---|---|---:|---|
-| `api.30` | Pagination correct for both workflow-run stores | 3 | Defect shipped by 2026-35 Task 9, live on `prod` |
+| `api.30` | Pagination correct for both workflow-run stores | 3 | ~~Defect shipped by 2026-35 Task 9, live on `prod`~~ — **superseded, see the correction below: no defect existed** |
 | `monitoring.22` | Signal a lost write race instead of returning 500 | 5 | Contract divergence created across Tasks 1–4 |
 | `conversations.06` | Guard the conversation read-modify-write | 3 | The one race Task 13 touched and left open |
 | `records.18` | Atomic rollback; stop masking the publish error | 3 | Task 7's rollback is two transactions |
@@ -53,7 +56,12 @@ capacity again would ignore that evidence.
 | `cicd.22` | Gate every live-stack skip, not just the probe | 2 | Gap in the e2e gating Task 10 introduced |
 | | **Total** | **21** | |
 
-### `api.30` is the only story fixing a defect currently in production
+### ~~`api.30` is the only story fixing a defect currently in production~~ — SUPERSEDED
+
+> **Correction (2026-08-29): `api.30` was not a production defect.** The
+> paragraph below is preserved as the design's original reasoning. Execution
+> disproved it. Keep reading to the correction that follows it before acting on
+> anything here.
 
 `backend/api/routers/workflows.py:77` returns `scan_offset + consumed`, counting
 items in the **filtered** page. That matches `InMemoryWorkflowRunStore`
@@ -62,6 +70,38 @@ items in the **filtered** page. That matches `InMemoryWorkflowRunStore`
 production store, so a run can be returned on two consecutive pages or skipped
 entirely. Every test in `tests/api/test_workflows_router.py` uses the in-memory
 store, which is why it passed review and shipped.
+
+#### Correction (2026-08-29) — what execution actually found
+
+No defect existed and nothing shipped to `prod` needed reverting. Task 1 of the
+sprint investigated the claim above rather than implementing against it, and it
+does not hold:
+
+- The two adapters **agree** on what `offset` counts. For whatever
+  `knowledge_base_id`/`status` filters were passed to `list_runs`, both index
+  into the same newest-first sequence of matching runs: in-memory filters and
+  slices its list (`agent/adapters/in_memory.py::list_runs`); Redis reads the
+  one ZSET `_listing_index_key` selects for that exact combination
+  (`CREATED_INDEX` when both args are `None`, one of three pre-filtered indexes
+  otherwise — all four maintained on every write). `RedisWorkflowRunStore` also
+  prunes stale entries and compensates `next_offset` synchronously *within* a
+  single `list_runs` call, so `scan_offset + consumed` stays a valid resume
+  cursor.
+- Sprint 2026-35's fix (`92958a92`) was already adapter-symmetric. Reverting it
+  and re-running the new parity coverage reproduces the *original* defect
+  identically under both stores.
+- **What was missing was proof, not a fix.** The delivered commit `ecc4c165` is
+  test-and-comment only: real-Redis parity coverage plus the invariant recorded
+  where it would break.
+
+Consequence for this spec's framing: this sprint fixed **no** defect that was
+live on `prod`. The three criticals attributed to 2026-35 in "Why" above are
+unaffected by this correction; only `api.30`'s classification changes.
+
+A genuine, narrower Redis-only divergence *was* found during the investigation
+(a second concurrent scanner pruning a stale ZSET entry before a client's saved
+offset can skip a run) and is deliberately deferred — see `docs/backlog/api.md`
+story `api.30` "Known limitation".
 
 ### `monitoring.22` is the sprint's design story and gates one other
 
