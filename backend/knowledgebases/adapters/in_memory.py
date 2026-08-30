@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from knowledgebases._helpers import build_knowledge_base_summary_updates
-from knowledgebases.models import MAX_DOCUMENT_WARNING_REASONS, DocumentRecord
+from knowledgebases._helpers import (
+    build_knowledge_base_summary_updates,
+    build_stage_document_warning_updates,
+)
+from knowledgebases.models import DocumentRecord
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 
@@ -137,12 +140,13 @@ class InMemoryKnowledgeBaseRepository:
         kb_documents[document_id] = updated
         return updated
 
-    def record_document_warnings(
+    def set_stage_document_warnings(
         self,
         knowledge_base_id: str,
         document_id: str,
         *,
-        additional_count: int,
+        stage: str,
+        count: int,
         reasons: list[str],
     ) -> DocumentRecord | None:
         kb_documents = self._documents.get(knowledge_base_id)
@@ -151,39 +155,14 @@ class InMemoryKnowledgeBaseRepository:
         document = kb_documents.get(document_id)
         if document is None:
             return None
-        combined_reasons = (document.warning_reasons + reasons)[
-            :MAX_DOCUMENT_WARNING_REASONS
-        ]
-        updated = document.model_copy(
-            update={
-                "warning_count": document.warning_count + additional_count,
-                "warning_reasons": combined_reasons,
-            }
+        updates = build_stage_document_warning_updates(
+            document, stage=stage, count=count, reasons=reasons
         )
+        if not updates:
+            return document
+        updated = document.model_copy(update=updates)
         kb_documents[document_id] = updated
         return updated
-
-    def set_document_warnings(
-        self,
-        knowledge_base_id: str,
-        document_id: str,
-        *,
-        count: int,
-        reasons: list[str],
-    ) -> None:
-        kb_documents = self._documents.get(knowledge_base_id)
-        if kb_documents is None:
-            return
-        document = kb_documents.get(document_id)
-        if document is None:
-            return
-        updated = document.model_copy(
-            update={
-                "warning_count": count,
-                "warning_reasons": reasons[:MAX_DOCUMENT_WARNING_REASONS],
-            }
-        )
-        kb_documents[document_id] = updated
 
     def delete_document(
         self,

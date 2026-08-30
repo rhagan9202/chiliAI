@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import cast
 
 import pytest
@@ -11,8 +12,9 @@ from config.schema import RecordEntityMapping, RecordFeedConfig, RecordsConfig
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.in_memory import InMemoryRawRecordStore
-from records.exceptions import RecordFeedNotFoundError
+from records.exceptions import RecordFeedNotFoundError, RecordPersistenceError
 from events.protocols import EventBus
+from records.models import RawRecordKey
 from records.service import RecordsService, create_records_service
 from records.service_models import RecordIngestReceipt
 from records.service_models import RecordSubmission
@@ -540,3 +542,72 @@ def test_a_rollback_keeps_a_row_the_failed_call_did_not_insert() -> None:
         )
     }
     assert surviving == {"shared"}
+
+
+class _PublishAlwaysFails:
+    """Event bus whose every publish attempt fails."""
+
+    def publish(self, event: object) -> None:
+        raise RuntimeError("event bus unavailable")
+
+    def subscribe(self, event_type: str, handler: object) -> None:
+        return None
+
+
+def test_a_failed_publish_does_not_strand_the_client_on_a_duplicate() -> None:
+    """The rollback must free the submission hash as well as the rows.
+
+    Under the pre-2026-36 two-call rollback (a row delete, then a hash
+    discard, each its own transaction) a failure between the two left rows
+    deleted and the hash retained, so the client's identical retry returned
+    duplicate=True with zero rows -- forever, since nothing would ever publish
+    an event for rows that no longer exist. This test used to force that
+    interleave with a double overriding the discard step; both steps are gone
+    now, replaced by the single atomic ``rollback_submission``, so there is no
+    boundary left to inject a fault at and the plain store is the honest
+    subject. What it still pins is the outcome: the retry after a failed
+    publish is accepted, not refused as a duplicate.
+    """
+    store = InMemoryRawRecordStore()
+    bus = _PublishFailsOnce()
+    service = create_records_service(
+        store, event_bus=cast(EventBus, bus), records_config=_records_config()
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    with pytest.raises(Exception):
+        _push(service, rows)
+
+    receipt = cast(RecordIngestReceipt, _push(service, rows))  # the client's retry
+    assert receipt.duplicate is False, "the retry was refused as a duplicate"
+    assert receipt.accepted_count == len(rows)
+
+
+class _StoreWhoseRollbackAlsoFails(InMemoryRawRecordStore):
+    """A store whose rollback path always fails outright."""
+
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
+    ) -> int:
+        raise RecordPersistenceError("Failed to roll back the submission.")
+
+
+def test_the_publish_error_is_not_replaced_by_a_storage_error() -> None:
+    """The bare `raise` that re-surfaces the publish failure only runs if the
+    rollback succeeds. Otherwise a Redis outage is reported as "Record storage
+    failure", pointing the operator at the wrong subsystem.
+    """
+    store = _StoreWhoseRollbackAlsoFails()
+    service = create_records_service(
+        store,
+        event_bus=cast(EventBus, _PublishAlwaysFails()),
+        records_config=_records_config(),
+    )
+    rows: list[dict[str, object]] = [{"claim_id": "c1", "amount": "10"}]
+
+    with pytest.raises(RuntimeError, match="event bus"):
+        _push(service, rows)

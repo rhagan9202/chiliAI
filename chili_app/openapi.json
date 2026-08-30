@@ -94,7 +94,8 @@
           "reason": {
             "enum": [
               "not_found",
-              "invalid_transition"
+              "invalid_transition",
+              "concurrent_modification"
             ],
             "title": "Reason",
             "type": "string"

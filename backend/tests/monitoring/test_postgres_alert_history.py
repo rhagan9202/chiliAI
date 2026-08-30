@@ -13,7 +13,11 @@ import monitoring.adapters.postgres as postgres_module
 from config.schema import DatabaseConfig
 from database.runtime import create_connection_provider
 from monitoring.adapters.postgres import PostgresAlertHistoryStore
-from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
+from monitoring.exceptions import (
+    AlertConcurrentModificationError,
+    AlertLifecycleError,
+    MonitoringSourceError,
+)
 from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord
 from playbooks.models import PlaybookRef
@@ -594,14 +598,17 @@ def test_concurrent_acknowledge_to_the_same_status_signals_retry_not_forbidden(
     code must fall through to the concurrent-retry signal instead of
     silently returning a stale/duplicated result.
 
-    That signal must reach the caller as MonitoringSourceError with its
-    original message intact, not re-wrapped by acknowledge's own broad
+    That signal must reach the caller as AlertConcurrentModificationError,
+    typed distinctly from MonitoringSourceError (a genuine persistence
+    failure) so a caller can tell "reload and retry me" apart from "the
+    database is down" -- and not re-wrapped by acknowledge's own broad
     except Exception handler into the generic "Failed to acknowledge alert."
-    text -- which would bury the retry hint at exc.__cause__.__cause__,
-    invisible to any caller that logs or renders str(exc). Asserting
-    str(loser_result) directly is what keeps the except-clause ordering
-    (AlertLifecycleError, then MonitoringSourceError, above the broad
-    except Exception) from silently regressing.
+    MonitoringSourceError text, which would bury the retry hint at
+    exc.__cause__.__cause__, invisible to any caller that logs or renders
+    str(exc). Asserting str(loser_result) directly is what keeps the
+    except-clause ordering (AlertLifecycleError, then
+    AlertConcurrentModificationError, then MonitoringSourceError, above the
+    broad except Exception) from silently regressing.
     """
     kb_id = "kb-alert-ack-cas-retry-test"
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
@@ -678,10 +685,11 @@ def test_concurrent_acknowledge_to_the_same_status_signals_retry_not_forbidden(
         assert results["analyst-1"].status == "acknowledged"
 
         loser_result = results["analyst-2"]
-        assert isinstance(loser_result, MonitoringSourceError)
+        assert isinstance(loser_result, AlertConcurrentModificationError)
         assert not isinstance(loser_result, AlertLifecycleError)
+        assert not isinstance(loser_result, MonitoringSourceError)
         assert str(loser_result) == (
-            "Alert status changed concurrently; retry the transition."
+            "Alert 'alert-ack-cas-retry-1' changed concurrently; reload it and retry."
         )
 
         row = store.get_alert("alert-ack-cas-retry-1")
@@ -976,12 +984,14 @@ def test_concurrent_transition_to_the_same_status_signals_retry_not_forbidden(
     code must fall through to the concurrent-retry signal instead of
     silently returning a stale/duplicated result.
 
-    That signal must reach the caller as ``MonitoringSourceError`` with its
-    original message intact, not re-wrapped by the method's own broad
-    ``except Exception`` handler into the generic "Failed to transition
-    alert status." text -- which would bury the retry hint at
-    ``exc.__cause__.__cause__``, invisible to any caller that logs or
-    renders ``str(exc)``.
+    That signal must reach the caller as
+    ``AlertConcurrentModificationError``, typed distinctly from
+    ``MonitoringSourceError`` (a genuine persistence failure) so a caller can
+    tell "reload and retry me" apart from "the database is down" -- and not
+    re-wrapped by the method's own broad ``except Exception`` handler into
+    the generic "Failed to transition alert status." ``MonitoringSourceError``
+    text, which would bury the retry hint at ``exc.__cause__.__cause__``,
+    invisible to any caller that logs or renders ``str(exc)``.
     """
     kb_id = "kb-alert-cas-retry-test"
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
@@ -1059,10 +1069,11 @@ def test_concurrent_transition_to_the_same_status_signals_retry_not_forbidden(
         assert results["analyst-1"].status == "resolved"
 
         loser_result = results["analyst-2"]
-        assert isinstance(loser_result, MonitoringSourceError)
+        assert isinstance(loser_result, AlertConcurrentModificationError)
         assert not isinstance(loser_result, AlertLifecycleError)
+        assert not isinstance(loser_result, MonitoringSourceError)
         assert str(loser_result) == (
-            "Alert status changed concurrently; retry the transition."
+            "Alert 'alert-cas-retry-1' changed concurrently; reload it and retry."
         )
 
         row = store.get_alert("alert-cas-retry-1")

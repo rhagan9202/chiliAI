@@ -801,44 +801,50 @@ so that rule updates do not require a full service redeploy.
 ## Story monitoring.22: Signal a lost write race instead of returning 500
 
 **ID:** monitoring.22
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-08-29 · `0eac424c`, `fae0c60e` · `fix/sprint-2026-36-stabilisation` (Sprint 2026-36 stabilisation, Task 2)
 
 **As a** fraud analyst acknowledging an alert someone else is also acting on,
 **I need** a losing concurrent write to come back as a retryable conflict rather than a server error,
 **so that** the UI can say "someone changed this, reload" instead of showing a 500 that looks like an outage.
 
 ### Current State
-- Sprint 2026-35 added compare-and-set to the alert transition writes, so a lost race no longer silently overwrites. It raises `MonitoringSourceError("...retry the transition.")` (`backend/monitoring/adapters/postgres.py`).
-- `cases/` already has the shape this needs: `CaseConcurrentModificationError` (`backend/cases/exceptions.py:34`) makes a lost race structurally distinguishable from a database failure. `monitoring/exceptions.py` has no equivalent — one exception type covers both a lost CAS and a genuine outage, separable only by message text.
-- `InMemoryCaseRepository.update` was given a `threading.Lock` around its compare-and-write; the monitoring in-memory adapter has no CAS at all, so the two backends do not have the semantics they are documented to share and a concurrency test against the in-memory adapter cannot reproduce the race.
-- No caller anywhere converts a lost race into a `409`. A grep of `api/` returns no handler for `MonitoringSourceError`, and the bulk alert route catches only `AlertLifecycleError` — so a lost race escapes as a generic 500 partway through a batch.
-- Consequence recorded at the time (Ruling D11): with no distinguishable exception, skip-and-continue inside a bulk update would silently misreport a real outage as ordinary skipped rows, so aborting the batch is currently the only safe choice. The exception gap is what forces that.
-- `InMemoryCaseRepository.delete_by_kb` still does an unlocked read-then-delete loop (uncontended today, same class of gap).
+- `monitoring/exceptions.py` now has `AlertConcurrentModificationError(MonitoringError, ConcurrentModificationError)` (`backend/monitoring/exceptions.py:47`) — structurally distinguishable from `MonitoringSourceError`, which is now reserved for genuine store failures. The second base is new: `shared.exceptions.ConcurrentModificationError` (`backend/shared/exceptions.py`), a cross-module marker so `cases`' (still-unmigrated, see below) and a future `conversations` concurrency exception can share one recognisable type. `cases/exceptions.py:34`'s `CaseConcurrentModificationError` was the shape this was modelled on.
+- Both `PostgresAlertHistoryStore.acknowledge`/`.transition_status` (`backend/monitoring/adapters/postgres.py`) raise the typed error on a CAS miss — replacing the old `MonitoringSourceError("...retry the transition.")` — and re-validate against the fresh row first, so a race that landed on a now-forbidden transition still raises `AlertLifecycleError` instead.
+- `InMemoryAlertHistoryWriter.acknowledge`/`.transition_status` (`backend/monitoring/adapters/in_memory.py`) gained the CAS the in-memory adapter previously had none of: an unguarded read of the observed status, then a `threading.Lock`-guarded re-check-and-write, mirroring both `PostgresAlertHistoryStore`'s semantics and `InMemoryCaseRepository.update`'s prior-sprint fix. Both adapters are proven under a deliberately widened compare-to-write window (not GIL luck) — see Verification.
+- The single-alert routes (`build_alert_acknowledge_payload`, `build_alert_status_update_payload` in `backend/api/dependencies.py`) now map `AlertConcurrentModificationError` to `HTTPException(409, detail=str(exc))`, which names the alert (the exception message is `"Alert '<id>' changed concurrently; reload it and retry."`).
+- The bulk route (`build_alert_bulk_status_update_payload`) now treats a lost race as a per-row skip (`AlertBulkRejection(reason="concurrent_modification")`, new `Literal` value on `api/contracts.py`) and continues the batch, resolving Ruling D11: the two causes (lost race vs. genuine outage) are now separable, so a genuine `MonitoringSourceError` still aborts the batch as 500 while a lost race — which never commits anything — no longer needs to.
+- The contract (what raises the error, what it means to a caller, what future modules should do) is written down in `backend/monitoring/README.md` (new).
+- **Deferred, explicitly out of scope for this story** — recorded here per review, not implemented: `InMemoryCaseRepository.delete_by_kb` (`backend/cases/adapters/in_memory.py`) still does an unlocked read-then-delete loop. This is a `cases`-module gap, not a `monitoring` one; it belongs with a future `cases`-scoped story (candidate: alongside whichever story gives `conversations` the same concurrency contract), not under monitoring.22. Left untouched.
 
 ### Acceptance Criteria
-- [ ] `monitoring/exceptions.py` gains a dedicated concurrency exception (mirroring `CaseConcurrentModificationError`) raised only when a CAS matched zero rows, with `MonitoringSourceError` left for genuine store failures.
-- [ ] Every monitoring CAS write raises the new type on a lost race; no caller has to inspect message text to tell the two apart.
-- [ ] The monitoring in-memory adapter implements compare-and-set under a `threading.Lock` spanning compare AND write, so both adapters have the semantics they are documented to share.
-- [ ] `InMemoryCaseRepository.delete_by_kb` takes the same lock as `update`, closing the unlocked read-then-delete loop.
-- [ ] The alert routes (single and bulk) map the concurrency exception to `409` with a body that names the alert, distinct from the `500` a store failure still produces.
-- [ ] The bulk route's behaviour on a lost race is re-decided now that the two causes are separable — skip-and-continue with a per-row "skipped" result, rather than aborting the batch, provided the audit invariant still holds on every exit path.
-- [ ] `docs/wiki/flows/` and `backend/monitoring/README.md` record the 409 contract.
+- [x] `monitoring/exceptions.py` gains a dedicated concurrency exception (mirroring `CaseConcurrentModificationError`) raised only when a CAS matched zero rows, with `MonitoringSourceError` left for genuine store failures.
+- [x] Every monitoring CAS write raises the new type on a lost race; no caller has to inspect message text to tell the two apart.
+- [x] The monitoring in-memory adapter implements compare-and-set under a `threading.Lock` spanning compare AND write, so both adapters have the semantics they are documented to share.
+- [x] The alert routes (single and bulk) map the concurrency exception to `409` with a body that names the alert, distinct from the `500` a store failure still produces.
+- [x] The bulk route's behaviour on a lost race is re-decided now that the two causes are separable — skip-and-continue with a per-row "skipped" result, rather than aborting the batch, provided the audit invariant still holds on every exit path.
+- [x] `docs/wiki/flows/` and `backend/monitoring/README.md` record the 409 contract. Delivered in `backend/monitoring/README.md` (the full module contract) and a new "Concurrency Contract (monitoring.22)" section in `docs/wiki/modules/monitoring.md` (a short summary linking back to the README rather than duplicating it — `docs/wiki/flows/` is this repo's *flow*-narrative directory, e.g. `auth-flow.md`/`query-flow.md`; a per-module contract note belongs in `docs/wiki/modules/monitoring.md`, which already existed and is where this landed). **Corrected record:** a fix-round-1 review ruling asserted `docs/wiki/flows/` does not exist in this repository; that was false — the directory exists, tracked, with four maintained files (`auth-flow.md`, `ingestion-flow.md`, `query-flow.md`, `records-ingestion-flow.md`), and `docs/wiki/modules/monitoring.md` already existed too. The false claim (and the AC-unachievable conclusion drawn from it) has been removed; the AC was achievable all along and is now genuinely satisfied. See `docs/wiki/CHANGELOG.md`'s 2026-08-29 entry.
+- **Removed from this story's AC, not deferred-and-forgotten:** "`InMemoryCaseRepository.delete_by_kb` takes the same lock as `update`, closing the unlocked read-then-delete loop." This criterion was also a task-brief scoping error — `cases/` is out of `monitoring.22`'s module boundary — and per review is recorded in Current State above as an explicit, un-implemented gap rather than left as a permanently-unchecked box under a `done` story. It needs its own story (or a slot in whichever future story extends this contract to `conversations`) before it is tracked as planned work again.
 
 ### Verification
-- [ ] A threaded test (barrier-synchronised, widened window — not GIL luck) proves a lost race raises the concurrency exception and not `MonitoringSourceError`, against BOTH adapters.
-- [ ] A route test proves a lost race returns `409` and a store failure still returns `500`.
-- [ ] A bulk-update test proves the audit invariant holds when one row loses a race mid-batch.
-- [ ] `backend/.venv/bin/pytest tests/monitoring tests/cases tests/api -q` green; `pyright` (bare) and `ruff check --no-cache .` clean.
+- [x] A threaded test (barrier-synchronised, widened window — not GIL luck) proves a lost race raises the concurrency exception and not `MonitoringSourceError`, against BOTH adapters. In-memory: `test_a_racing_acknowledge_does_not_silently_land_over_a_winning_dismissal` (proves real data loss on the pre-fix adapter, not merely an import error — the reviewer independently reverted the adapter and reproduced the same RED) and `test_racing_to_the_same_target_status_signals_concurrent_modification` in `backend/tests/monitoring/test_alert_history_writer.py`. Postgres: `test_concurrent_acknowledge_to_the_same_status_signals_retry_not_forbidden` and `test_concurrent_transition_to_the_same_status_signals_retry_not_forbidden` in `backend/tests/monitoring/test_postgres_alert_history.py` (updated from asserting `MonitoringSourceError` to `AlertConcurrentModificationError`).
+- [x] A route test proves a lost race returns `409` and a store failure still returns `500`. `test_a_lost_write_race_surfaces_as_409_not_500` and the pre-existing `test_a_failure_midway_through_a_bulk_update_leaves_no_unaudited_transition` (unchanged, still asserts 500 for a genuine `MonitoringSourceError`) in `backend/tests/api/test_alerts_router.py`.
+- [x] A bulk-update test proves the audit invariant holds when one row loses a race mid-batch. `test_a_lost_race_in_a_bulk_update_is_skipped_not_aborted` — asserts the skipped alert gets no audit event while its batch-mates do.
+- [x] `backend/.venv/bin/pytest tests/monitoring tests/api -q` green (125 passed: `tests/monitoring/` + `tests/api/test_alerts_router.py`; `tests/api/test_dependencies.py` also re-run since `shared/exceptions.py` is imported there, 70 passed); bare `pyright` and `ruff check --no-cache .` clean. **Deviation:** the original AC's command also named `tests/cases` — `cases/` was not touched by this story (see the deferred `delete_by_kb` gap above), so that subtree was not re-run here.
 
 ### Code touch points
-- `backend/monitoring/exceptions.py` (modify — new concurrency exception)
-- `backend/monitoring/adapters/postgres.py`, `backend/monitoring/adapters/in_memory.py` (modify — raise it; add in-memory CAS under a lock)
-- `backend/cases/adapters/in_memory.py` (modify — lock `delete_by_kb`)
-- `backend/api/routers/alerts.py` (modify — 409 mapping, bulk-loop decision)
-- `backend/monitoring/README.md`, `docs/wiki/flows/` (modify)
-- `backend/tests/monitoring/**`, `backend/tests/cases/**`, `backend/tests/api/**` (modify/new)
+- `backend/monitoring/exceptions.py` (modified — new concurrency exception)
+- `backend/monitoring/adapters/postgres.py`, `backend/monitoring/adapters/in_memory.py` (modified — raise it; add in-memory CAS under a lock)
+- `backend/shared/exceptions.py` (modified — new `ConcurrentModificationError` cross-module marker base, not in the original touch list)
+- `backend/api/dependencies.py` (modified — 409 mapping, bulk-loop decision; the original AC named `backend/api/routers/alerts.py`, but this repo's routers are thin and delegate response-shaping to `api/dependencies.py` payload builders, which is where the exception handling actually lives)
+- `backend/api/contracts.py` (modified — `AlertBulkRejection.reason` gained `"concurrent_modification"`; `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts` regenerated)
+- `backend/monitoring/README.md` (new)
+- `backend/README.md` (modified — linked the new module README, added an Alert Feed Notes bullet)
+- `docs/wiki/modules/monitoring.md` (modified — new "Concurrency Contract (monitoring.22)" section), `docs/wiki/CHANGELOG.md` (modified — dated entry)
+- `backend/tests/monitoring/**`, `backend/tests/api/test_alerts_router.py` (modified/new)
+- **Not touched, deferred (see Current State):** `backend/cases/adapters/in_memory.py` only
 
 ---

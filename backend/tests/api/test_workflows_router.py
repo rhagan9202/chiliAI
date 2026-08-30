@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Generator
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+import os
 import time
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.adapters.redis_store import RedisWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.service import create_agent_service
 from api.app import create_app
@@ -19,6 +25,7 @@ from api.middleware.session_store import InMemorySessionStore, SessionRecord
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
+from shared.utils import generate_id
 
 
 def _domain_with_auth() -> DomainConfig:
@@ -92,6 +99,69 @@ def _app_with_workflows_and_scoped_user(
         knowledge_base_ids=["kb-1"],
     )
     return app
+
+
+def _app_with_store_and_scoped_user(
+    *,
+    store: WorkflowRunStoreProtocol,
+    roles: list[str],
+) -> FastAPI:
+    """Like `_app_with_workflows_and_scoped_user`, but takes an already-built
+    store instead of always constructing an `InMemoryWorkflowRunStore` --
+    needed so the pagination parity tests can wire in a real
+    `RedisWorkflowRunStore` too."""
+    app = create_app()
+    agent_service = create_agent_service(store, event_bus=InMemoryEventBus())
+    app.dependency_overrides[get_domain_config] = _domain_with_auth
+    app.dependency_overrides[get_agent_service] = lambda: agent_service
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        user_id="scoped-user",
+        roles=roles,
+        email="scoped-user@example.com",
+        knowledge_base_ids=["kb-1"],
+    )
+    return app
+
+
+@contextmanager
+def _seeded_store(
+    store_name: str, runs: list[WorkflowRun]
+) -> Generator[WorkflowRunStoreProtocol]:
+    """Build a workflow-run store of the given adapter kind, seeded with
+    `runs`.
+
+    ``"redis"`` exercises the real `RedisWorkflowRunStore` against a live
+    Redis instance -- there was previously no fixture doing this for workflow
+    runs at all (`tests/agent/test_runtime.py` only does an `isinstance`
+    check against a capturing double). Follows the same
+    `CHILI_TEST_REDIS_URL`-skip-if-unset pattern as
+    `tests/api/test_session_store.py::TestRedisSessionStore`; the dev stack's
+    `chiliai-redis-1` container (defaulted by `tests/conftest.py`) makes this
+    a live run rather than a skip in the normal dev/CI environment.
+    """
+    if store_name == "in_memory":
+        yield InMemoryWorkflowRunStore(runs=runs)
+        return
+    if store_name != "redis":
+        raise ValueError(f"unknown store_name: {store_name!r}")
+
+    redis_url = os.environ.get("CHILI_TEST_REDIS_URL")
+    if not redis_url:
+        pytest.skip("CHILI_TEST_REDIS_URL is not set; skipping Redis parity test.")
+    key_prefix = f"test:workflows-router:{generate_id()}:"
+    store = RedisWorkflowRunStore(redis_url=redis_url, key_prefix=key_prefix)
+    health = store.check_health()
+    if health.status != "ok":
+        pytest.skip(f"Redis is unavailable at CHILI_TEST_REDIS_URL: {health.error}")
+    for run in runs:
+        store.save_run(run)
+    try:
+        yield store
+    finally:
+        keys = list(store.client.scan_iter(match=f"{key_prefix}*"))
+        if keys:
+            store.client.delete(*keys)
+        store.close()
 
 
 def test_list_workflows_requires_authentication_when_auth_enabled() -> None:
@@ -302,97 +372,362 @@ def test_list_workflows_uses_store_cursor_for_scoped_second_page() -> None:
     assert second_body["next_offset"] is None
 
 
-def test_pagination_does_not_drop_accessible_runs_inside_a_page() -> None:
+def _filled_early_scenario_runs() -> list[WorkflowRun]:
+    """Same shape as `test_pagination_does_not_drop_accessible_runs_inside_a_page`:
+    two denied runs occupy the entire first store page (limit=3), so the scan
+    has to fetch a second page to fill the limit, and only the first two of
+    that second page's three items are needed -- "wf-d" is the item a naive
+    cursor drops. Reused here to run the *same* scenario against both stores.
+    """
+    return [
+        WorkflowRun(
+            workflow_id="denied-0",
+            knowledge_base_id="kb-2",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="denied-1",
+            knowledge_base_id="kb-2",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 9, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-a",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-b",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 7, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-c",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 6, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-d",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        ),
+        WorkflowRun(
+            workflow_id="wf-e",
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        ),
+    ]
+
+
+def _expected_accessible_order(
+    runs: list[WorkflowRun], *, knowledge_base_id: str
+) -> list[str]:
+    accessible = [run for run in runs if run.knowledge_base_id == knowledge_base_id]
+    accessible.sort(key=lambda run: run.created_at, reverse=True)
+    return [run.workflow_id for run in accessible]
+
+
+# The "redis" case is marked `integration` (matching `test_pagination_survives_a_stale_redis_index_entry`
+# and the `test_redis_workflow_run_store_real_redis_contract` / `TestRedisSessionStore`
+# precedents) so its skip-if-unreachable behavior is consistent with the rest
+# of the suite's real-Redis coverage.
+_STORE_PARAMS = ["in_memory", pytest.param("redis", marks=pytest.mark.integration)]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_does_not_drop_accessible_runs_inside_a_page(
+    store_name: str,
+) -> None:
     """The inner scan loop breaks as soon as the limit is filled, which can
     happen partway through an underlying store page. next_offset must resume
     at the first unconsumed item in that page, not at the page's end -- else
-    every accessible run between the two is silently skipped.
+    every accessible run between the two is silently skipped. Also asserts
+    `has_more` on that mid-page-filled response under both stores, closing
+    api.30's AC that `has_more` is correct when the limit fills mid-page.
 
     Two denied runs occupy all of the first store page (limit=3), so the scan
     has to fetch a second page to fill the limit. That second page holds
     three items but only the first two are needed to reach the limit --
-    "wf-D" is the unconsumed third item that the bug drops.
+    "wf-d" is the unconsumed third item a naive cursor drops.
     """
-    app = _app_with_workflows_and_scoped_user(
-        roles=["viewer"],
-        runs=[
-            WorkflowRun(
-                workflow_id="denied-0",
-                knowledge_base_id="kb-2",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="denied-1",
-                knowledge_base_id="kb-2",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 9, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-a",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-b",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 7, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-c",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 6, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-d",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
-            ),
-            WorkflowRun(
-                workflow_id="wf-e",
-                knowledge_base_id="kb-1",
-                trigger_event_type="documents.uploaded",
-                status=WorkflowRunStatus.RUNNING,
-                steps=[WorkflowStepState(step_name="parse")],
-                created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
-            ),
-        ],
-    )
+    runs = _filled_early_scenario_runs()
 
-    first_response = TestClient(app).get(
-        "/workflows", params={"limit": 3, "offset": 0}
-    )
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
 
-    assert first_response.status_code == 200
-    first_body = first_response.json()
-    assert [item["id"] for item in first_body["items"]] == ["wf-a", "wf-b", "wf-c"]
-    assert first_body["has_more"] is True
+        first_response = client.get(
+            "/workflows", params={"limit": 3, "offset": 0}
+        )
+        assert first_response.status_code == 200
+        first_body = first_response.json()
+        assert [item["id"] for item in first_body["items"]] == [
+            "wf-a",
+            "wf-b",
+            "wf-c",
+        ]
+        assert first_body["has_more"] is True
 
-    second_response = TestClient(app).get(
-        "/workflows", params={"limit": 3, "offset": first_body["next_offset"]}
-    )
+        second_response = client.get(
+            "/workflows", params={"limit": 3, "offset": first_body["next_offset"]}
+        )
+        assert second_response.status_code == 200
+        second_body = second_response.json()
 
-    assert second_response.status_code == 200
-    second_body = second_response.json()
-    # "wf-d" is the run the buggy cursor skips -- it must be the first item
-    # on the next page, not "wf-e".
+    # "wf-d" is the run a naive cursor skips -- it must be the first item on
+    # the next page, not "wf-e".
     assert [item["id"] for item in second_body["items"]] == ["wf-d", "wf-e"]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_a_run_appears_exactly_once_across_consecutive_pages(store_name: str) -> None:
+    """The router's cursor must mean the same thing to both stores.
+
+    `_list_accessible_workflows` returns `scan_offset + consumed`, counting
+    items in the page the store returned. Whether that is a valid offset
+    *for that store* is the thing under test -- the entitlement filter runs
+    in the router, so neither store's own next_offset accounts for it.
+    """
+    runs = _filled_early_scenario_runs()
+
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        first = client.get("/workflows", params={"limit": 3, "offset": 0}).json()
+        second = client.get(
+            "/workflows", params={"limit": 3, "offset": first["next_offset"]}
+        ).json()
+
+    seen = [item["id"] for item in first["items"] + second["items"]]
+    assert len(seen) == len(set(seen)), f"a run was returned twice: {seen}"
+    expected = _expected_accessible_order(runs, knowledge_base_id="kb-1")
+    assert seen == expected, f"a run was skipped or reordered: seen={seen} expected={expected}"
+
+
+def _filtered_scenario_runs() -> list[WorkflowRun]:
+    """`_filled_early_scenario_runs` plus completed runs interleaved through it.
+
+    With `status=running` the visible sequence collapses back to exactly the
+    unfiltered scenario, so the same mid-page-fill assertions apply while the
+    stores are genuinely filtering. Every pagination test in this file before
+    these two called `GET /workflows` with limit/offset only, so the filtered
+    paths -- the ones the frontend actually calls
+    (`chili_app/src/api/workflows.ts`) -- had no router-level coverage at all.
+    """
+    noise = [
+        ("noise-newest", "kb-1", datetime(2026, 1, 10, 12, tzinfo=timezone.utc)),
+        ("noise-middle", "kb-2", datetime(2026, 1, 8, 12, tzinfo=timezone.utc)),
+        ("noise-oldest", "kb-1", datetime(2026, 1, 5, 12, tzinfo=timezone.utc)),
+    ]
+    return _filled_early_scenario_runs() + [
+        WorkflowRun(
+            workflow_id=workflow_id,
+            knowledge_base_id=knowledge_base_id,
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.COMPLETED,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=created_at,
+        )
+        for workflow_id, knowledge_base_id, created_at in noise
+    ]
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_holds_when_a_status_filter_is_passed(store_name: str) -> None:
+    """The router forwards `status` straight to the store, so the cursor
+    agreement `_list_accessible_workflows` depends on has to hold with a
+    filter applied, not only for the both-`None` case the other pagination
+    tests cover. Same mid-page-fill scenario, same invariant, now with
+    entitlement-denied runs *and* a store-level filter in play.
+
+    Scope, honestly: this asserts the observable contract -- each matching run
+    once, in order, `has_more` correct -- under both adapters. It does not pin
+    *which* Redis ZSET is read. I mutation-checked that: forcing
+    `_listing_index_key` to fall back to `CREATED_INDEX` for the status-only
+    case still passes here, because Redis derives `next_offset` from ranks in
+    whichever index it actually read, and for this data the two cursors happen
+    to land on the same run. `tests/agent/test_redis_workflow_run_store.py`
+    covers index selection at the store level, which is where it belongs.
+    """
+    runs = _filtered_scenario_runs()
+
+    with _seeded_store(store_name, runs) as store:
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        first = client.get(
+            "/workflows", params={"status": "running", "limit": 3, "offset": 0}
+        ).json()
+        assert [item["id"] for item in first["items"]] == ["wf-a", "wf-b", "wf-c"]
+        assert first["has_more"] is True
+
+        second = client.get(
+            "/workflows",
+            params={
+                "status": "running",
+                "limit": 3,
+                "offset": first["next_offset"],
+            },
+        ).json()
+
+    # "wf-d" is the item a naive page-boundary cursor drops; no completed run
+    # may leak into a status=running listing under either adapter.
+    assert [item["id"] for item in second["items"]] == ["wf-d", "wf-e"]
+    seen = [item["id"] for item in first["items"] + second["items"]]
+    assert seen == _expected_accessible_order(
+        [run for run in runs if run.status is WorkflowRunStatus.RUNNING],
+        knowledge_base_id="kb-1",
+    )
+
+
+@pytest.mark.parametrize("store_name", _STORE_PARAMS)
+def test_pagination_holds_when_both_filters_are_passed(store_name: str) -> None:
+    """The both-filters-set combination. Paging right through must return
+    every matching run exactly once, in the same order, under both adapters.
+
+    Weaker than the status-only case above by construction: entitlement is
+    per-knowledge-base, so once the caller filters to a knowledge base they
+    can access, no run in the result is denied and the router never reaches
+    its `scan_offset + consumed` branch -- it just round-trips each store's
+    own `next_offset`. What this pins is that the two stores agree on the
+    filtered sequence and that the router forwards both query params, which
+    nothing at this level previously checked.
+    """
+    runs = _filtered_scenario_runs()
+    expected = _expected_accessible_order(
+        [run for run in runs if run.status is WorkflowRunStatus.RUNNING],
+        knowledge_base_id="kb-1",
+    )
+
+    seen: list[str] = []
+    with _seeded_store(store_name, runs) as store:
+        client = TestClient(
+            _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        )
+        offset: int | None = 0
+        while offset is not None:
+            body = client.get(
+                "/workflows",
+                params={
+                    "knowledge_base_id": "kb-1",
+                    "status": "running",
+                    "limit": 2,
+                    "offset": offset,
+                },
+            ).json()
+            seen.extend(item["id"] for item in body["items"])
+            offset = body["next_offset"] if body["has_more"] else None
+
+    assert seen == expected, f"seen={seen} expected={expected}"
+
+
+@pytest.mark.integration
+def test_pagination_survives_a_stale_redis_index_entry() -> None:
+    """A prior review suspected the skew specifically came from Redis
+    encountering a "stale" ZSET entry (an index id whose backing run no
+    longer resolves -- e.g. deleted outside `delete_run`, a maintenance
+    operation, or a race) mid-scan, combined with the store's own
+    `next_offset -= stale_count` compensation.
+
+    This pins down that exact mechanism: the stale entry sits inside the
+    *same* store page that fills the router's limit partway through (the
+    `filled_early` branch, which does its own `scan_offset + consumed`
+    arithmetic instead of using the store's compensated `next_offset`).
+
+    Conclusion: that compensation happens synchronously within a single
+    `list_runs` call, before it returns, so it does not skew the router's
+    naive arithmetic here -- this test locks that in as regression coverage
+    for the exact scenario a future change (e.g. deferring or batching the
+    pruning) could break.
+    """
+    redis_url = os.environ.get("CHILI_TEST_REDIS_URL")
+    if not redis_url:
+        pytest.skip("CHILI_TEST_REDIS_URL is not set; skipping Redis parity test.")
+    key_prefix = f"test:workflows-router-stale:{generate_id()}:"
+    store = RedisWorkflowRunStore(redis_url=redis_url, key_prefix=key_prefix)
+    health = store.check_health()
+    if health.status != "ok":
+        pytest.skip(f"Redis is unavailable at CHILI_TEST_REDIS_URL: {health.error}")
+
+    def _run(workflow_id: str, kb: str, minutes_ago: int) -> WorkflowRun:
+        return WorkflowRun(
+            workflow_id=workflow_id,
+            knowledge_base_id=kb,
+            trigger_event_type="documents.uploaded",
+            status=WorkflowRunStatus.RUNNING,
+            steps=[WorkflowStepState(step_name="parse")],
+            created_at=datetime(2026, 1, 20, tzinfo=timezone.utc)
+            - timedelta(minutes=minutes_ago),
+        )
+
+    # Newest -> oldest: denied, denied, wf-a, wf-b, GHOST(stale), wf-c, wf-d,
+    # wf-e. "ghost" sits between wf-b and wf-c, inside the same underlying
+    # store page that fills the router's limit (3) partway through.
+    runs = [
+        _run("denied-0", "kb-2", 0),
+        _run("denied-1", "kb-2", 1),
+        _run("wf-a", "kb-1", 2),
+        _run("wf-b", "kb-1", 3),
+        _run("ghost", "kb-1", 4),
+        _run("wf-c", "kb-1", 5),
+        _run("wf-d", "kb-1", 6),
+        _run("wf-e", "kb-1", 7),
+    ]
+    try:
+        for run in runs:
+            store.save_run(run)
+        # Simulate staleness: remove the backing record directly, bypassing
+        # `delete_run`, so the ZSET index entry for it lingers.
+        deleted = store.client.delete(f"{key_prefix}workflow:ghost")
+        assert deleted == 1, "test setup: ghost run must exist before deletion"
+
+        app = _app_with_store_and_scoped_user(store=store, roles=["viewer"])
+        client = TestClient(app)
+
+        seen: list[str] = []
+        offset = 0
+        for _ in range(10):
+            body = client.get(
+                "/workflows", params={"limit": 3, "offset": offset}
+            ).json()
+            seen.extend(item["id"] for item in body["items"])
+            if not body["has_more"]:
+                break
+            assert body["next_offset"] is not None
+            offset = body["next_offset"]
+        else:
+            pytest.fail("pagination did not terminate within 10 pages")
+
+        assert len(seen) == len(set(seen)), f"a run was returned twice: {seen}"
+        assert seen == ["wf-a", "wf-b", "wf-c", "wf-d", "wf-e"], (
+            f"a run was skipped or reordered: {seen}"
+        )
+    finally:
+        keys = list(store.client.scan_iter(match=f"{key_prefix}*"))
+        if keys:
+            store.client.delete(*keys)
+        store.close()
 
 
 def test_list_workflows_with_limit_zero_returns_no_items() -> None:

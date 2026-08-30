@@ -19,7 +19,7 @@ from typing import cast
 
 import pytest
 
-from tests.e2e.stack_gate import resolve_stack
+from tests.e2e.stack_gate import require_stack_condition, resolve_stack
 
 pytestmark = pytest.mark.integration
 
@@ -169,8 +169,10 @@ def _psql(sql: str) -> str:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}",
+    )
     return result.stdout.strip()
 
 
@@ -212,8 +214,10 @@ def _worker_step_states(workflow_id: str) -> dict[str, dict[str, object]]:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}",
+    )
     return cast("dict[str, dict[str, object]]", json.loads(result.stdout.strip().splitlines()[-1]))
 
 

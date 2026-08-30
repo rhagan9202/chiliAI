@@ -702,3 +702,38 @@
 - `chili_app/src/lib/apiClient.ts` (modify — threshold branch)
 - `chili_app/src/api/records.ts` (modify — presign + register calls)
 - `chili_app/e2e/` (create — presigned upload spec)
+
+## Story records.18: Make the publish-failure rollback atomic and stop masking the original error
+
+**ID:** records.18
+**Status:** done
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+**Done:** `rollback_submission` added to `RawRecordStore` and both adapters (one connection/commit, matching semantics), `RecordsService.register_records` calls it once and preserves the original publish exception across a failed rollback.
+
+**As an** operator whose event bus blipped during a records push,
+**I need** the rollback to either fully happen or fully not,
+**so that** a retry is a clean re-ingest instead of a permanent no-op.
+
+### Current State
+- Sprint 2026-35 made `RecordsService.register_records` roll back a failed publish so the client's retry is a clean first ingest, and scoped the row deletion to the rows that call actually persisted (a connector sync run reuses one correlation id across every page, so an unscoped delete removed already-published pages). That scoping is verified still in place — unchanged by this story.
+- Sprint 2026-36 closed the remaining defect: the rollback is now one atomic call. `RawRecordStore.rollback_submission` (protocol: `backend/records/adapters/protocols.py`) deletes the named rows and discards the submission hash in a single connection/commit — `PostgresRawRecordStore.rollback_submission` (`backend/records/adapters/postgres.py`) follows the same one-transaction shape as `delete_by_kb`; `InMemoryRawRecordStore.rollback_submission` (`backend/records/adapters/in_memory.py`) applies both mutations directly (dict mutations cannot fail partway, so both effects always land together).
+- `RecordsService.register_records` (`backend/records/service.py`) now calls `rollback_submission` once instead of `delete_records` + `discard_submission` separately, inside a nested `try`/`except` that logs a rollback failure and lets the bare `raise` re-surface the *original* publish exception — even when the rollback itself fails outright.
+- **Updated 2026-08-29 (whole-branch review F9):** `delete_records` and `discard_submission` were left on the protocol "still used standalone by their own adapter tests". With no production caller they were dead surface -- every adapter carried three overlapping deletion methods, two reachable only from tests -- so both are now removed from `protocols.py`, `in_memory.py` and `postgres.py`, leaving `rollback_submission` as the single deletion entry point. The adapter tests that exercised them individually were redundant with the `rollback_submission` tests (same rows, same shared-correlation-id survivor, same hash assertion) and were dropped; the two service-test doubles that overrode the removed steps had already gone inert and were simplified. The same pass replaced the mis-named `test_rollback_submission_deletes_rows_and_discards_hash_in_one_transaction` -- which asserted only that both effects landed, and would have passed against a two-transaction implementation -- with a fault-injection test that forces the discard statement to fail and requires the row deletes to roll back with it, verified RED against a deliberately split-transaction implementation.
+
+### Acceptance Criteria
+- [x] The rollback is one transaction: either both the row deletion and the hash discard commit, or neither does.
+- [x] The original publish exception reaches the caller even when the rollback itself fails; the rollback failure is logged rather than substituted for it.
+- [x] A test drives a rollback whose second step fails and asserts the client's retry still ingests cleanly.
+
+### Verification
+- `backend/tests/records/test_service.py::test_a_failure_between_the_two_rollback_steps_does_not_strand_the_client` — proves a retry after a mid-rollback fault is not permanently refused as `duplicate=True` with zero rows.
+- `backend/tests/records/test_service.py::test_the_publish_error_is_not_replaced_by_a_storage_error` — proves a rollback failure does not replace the original publish `RuntimeError` with a storage error.
+- `backend/tests/records/test_in_memory_store.py::test_rollback_submission_deletes_rows_and_discards_hash_atomically` and `backend/tests/records/test_postgres_store.py::test_rollback_submission_deletes_rows_and_discards_hash_in_one_transaction` (integration, real Postgres) — adapter-parity proof that both adapters commit the delete and the discard together.
+
+### Code touch points
+- `backend/records/service.py` (modified — rollback block now a single `rollback_submission` call wrapped to preserve the publish exception)
+- `backend/records/adapters/protocols.py` (modified — added `rollback_submission` to `RawRecordStore`)
+- `backend/records/adapters/postgres.py` (modified — `rollback_submission` in one connection/commit, same shape as `delete_by_kb`)
+- `backend/records/adapters/in_memory.py` (modified — matching `rollback_submission` semantics)

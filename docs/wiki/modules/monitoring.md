@@ -1,6 +1,6 @@
 # Module: monitoring
 
-**Verified against codebase:** 2026-07-23
+**Verified against codebase:** 2026-07-23, except the Concurrency Contract section (**2026-08-29**, monitoring.22)
 **Source:** `backend/monitoring/`
 
 ## Purpose
@@ -189,6 +189,16 @@ class AlertFeedStoreProtocol(Protocol):   # supersets AlertHistoryWriter
 ```
 
 `AlertHistoryWriter` remains importable on its own for the worker's write-only construction sites (`agent/coordinator.py`); `api.dependencies.get_alert_feed_store()` injects the same concrete adapter as an `AlertFeedStoreProtocol` for the API's read/mutate routes (Postgres when a connection provider resolves, in-memory otherwise — no dedicated env var, see `docs/wiki/contracts/domain-config.md`).
+
+---
+
+## Concurrency Contract (monitoring.22)
+
+Last verified: 2026-08-29
+
+Two callers can race the same alert's status (acknowledge/transition), since the alert feed store is a process-wide singleton shared across requests, not just a theoretical two-thread scenario. A lost race is a typed, always-safe-to-retry error distinct from a genuine store failure, raised by both adapters before either writes anything — the API surfaces it as `409`, not `500`, and the bulk route skips just that row rather than aborting the batch.
+
+Contract, mechanism, and route-level detail: `backend/monitoring/README.md`. Deliberately not restated here — see that file rather than this page for anything more specific than the above.
 
 ---
 

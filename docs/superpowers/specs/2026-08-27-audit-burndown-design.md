@@ -71,6 +71,13 @@ baseline.
 | `2026-35` | 2026-08-27 → 2026-09-09 | 26 | Correctness and security |
 | `2026-36` | 2026-09-10 → 2026-09-23 | 27 | RAG truth, frontend state, test honesty, layering |
 
+> **Superseded 2026-08-29.** This two-sprint plan assumed 2026-35 would ship
+> clean. Its whole-branch review found regressions instead, so the slot that
+> was to be sprint 2 became `2026-36` *stabilisation* (21 SP — see
+> `docs/project/planning/sprints/2026-36.md`), and the burn-down remainder
+> below (`BL-059`–`BL-066`, 27 SP) moved to `2026-37`. The theme and story
+> list for sprint 2 are unchanged; only the sprint number and dates moved.
+
 Sprint 1 takes every finding whose failure is silent data corruption or a security hole.
 Sprint 2 takes every finding whose failure is a wrong answer, a stuck UI, or a test that
 cannot fail. Story ids continue from `BL-052`.

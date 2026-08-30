@@ -18,7 +18,7 @@ from typing import cast
 
 import pytest
 
-from tests.e2e.stack_gate import resolve_stack
+from tests.e2e.stack_gate import require_stack_condition, resolve_stack
 
 pytestmark = pytest.mark.integration
 
@@ -27,6 +27,10 @@ _TIMEOUT_SECONDS = 90
 _GATED_CAPABILITY = "connector.sync.status"
 _POSTGRES_CONTAINER = os.environ.get("CHILI_E2E_PG_CONTAINER", "chiliai-postgres-1")
 _WORKER_CONTAINER = os.environ.get("CHILI_E2E_WORKER_CONTAINER", "chiliai-worker-1")
+# Free-form version tags recorded on a score run, not validated against a
+# real catalog -- matching the values analytics/score_runs' own unit tests use.
+_SCORE_MODEL_VERSION = "risk-linear-v1"
+_SCORE_CATALOG_VERSION = "cms-fraud-features-v1"
 
 
 def _requests():
@@ -61,8 +65,10 @@ def _psql(sql: str) -> str:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_POSTGRES_CONTAINER}: {result.stderr.strip()}",
+    )
     return result.stdout.strip()
 
 
@@ -86,8 +92,10 @@ def _reassign_requester(workflow_id: str, actor_user_id: str) -> None:
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        pytest.skip(f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}")
+    require_stack_condition(
+        result.returncode == 0,
+        f"Cannot reach {_WORKER_CONTAINER}: {result.stderr.strip()}",
+    )
 
 
 def _create_kb(base_url: str, name: str) -> str:
@@ -247,20 +255,128 @@ def test_rejecting_a_parked_run_fails_it_with_the_reason(base_url: str) -> None:
     assert _json(rejected)["last_error"] == "insufficient evidence"
 
 
+def _push_carrier_claims(base_url: str, kb_id: str, *, row_count: int) -> None:
+    """Ingest via the JSON api-push route -- no filesystem/bind-mount needed.
+
+    Same feed and column shape ``test_connector_sync_flow.py`` writes as a
+    CSV; pushed as JSON here since this file has no reason to depend on the
+    worker's ``/imports`` mount just to get entities into the graph.
+    """
+    requests = _requests()
+    rows = [
+        {
+            "CLM_ID": f"E2ESCORE{index:05d}",
+            "DESYNPUF_ID": f"E2ESCOREBENE{index % 3:03d}",
+            "PRF_PHYSN_NPI_1": f"E2ESCORENPI{2000000 + index}",
+            "CLM_FROM_DT": "20100101",
+            "CLM_THRU_DT": "20100105",
+            "LINE_NCH_PMT_AMT_1": index * 100,
+            "provider_specialty": "internal_medicine",
+            "provider_state": "TN",
+            "service_mix": "office",
+        }
+        for index in range(1, row_count + 1)
+    ]
+    response = requests.post(
+        f"{base_url}/records/{kb_id}/push",
+        json={"feed_name": "carrier_claims_a", "rows": rows},
+        timeout=30,
+    )
+    assert response.status_code == 202, response.text
+
+
+def _poll_kb_entity_count(base_url: str, kb_id: str, *, minimum: int) -> None:
+    """Wait for the records workflow to land entities in the graph.
+
+    ``GET /knowledgebases/{id}`` recomputes ``entity_count`` live from graph
+    metrics on every read (see ``api/_kb_projection.py``), so this needs no
+    docker exec -- an HTTP poll is enough to know the ingest landed.
+    """
+    requests = _requests()
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    last: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        response = requests.get(f"{base_url}/knowledgebases/{kb_id}", timeout=30)
+        assert response.status_code == 200, response.text
+        last = _json(response)
+        entity_count = last.get("entity_count")
+        if isinstance(entity_count, int) and entity_count >= minimum:
+            return
+        time.sleep(2)
+    pytest.fail(
+        f"KB {kb_id} never reached {minimum} entities in {_TIMEOUT_SECONDS}s; "
+        f"last seen: {last}"
+    )
+
+
+def _start_score_run(base_url: str, kb_id: str, *, idempotency_key: str) -> str:
+    requests = _requests()
+    response = requests.post(
+        f"{base_url}/knowledgebases/{kb_id}/score-runs",
+        json={
+            "model_version": _SCORE_MODEL_VERSION,
+            "catalog_version": _SCORE_CATALOG_VERSION,
+            "idempotency_key": idempotency_key,
+        },
+        timeout=30,
+    )
+    assert response.status_code == 200, response.text
+    run = cast("dict[str, object]", _json(response)["run"])
+    run_id = run["id"]
+    assert isinstance(run_id, str)
+    return run_id
+
+
+def _poll_score_run(
+    base_url: str, kb_id: str, run_id: str, *, statuses: set[str]
+) -> dict[str, object]:
+    requests = _requests()
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    last: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        response = requests.get(
+            f"{base_url}/knowledgebases/{kb_id}/score-runs/{run_id}", timeout=30
+        )
+        assert response.status_code == 200, response.text
+        last = cast("dict[str, object]", _json(response)["run"])
+        if last.get("status") in statuses:
+            return last
+        time.sleep(2)
+    pytest.fail(
+        f"Score run {run_id} never reached {sorted(statuses)} in {_TIMEOUT_SECONDS}s; "
+        f"last seen: {last}"
+    )
+
+
 def test_a_replayed_score_run_executes(base_url: str) -> None:
     """Live-confirmed broken 2026-08-07: the replayed run stayed queued forever.
 
     `replay_failed_batches` published only a status *notification*, which the
     worker does not consume, so the replay was inert.
+
+    Drives its own completed score run rather than scavenging the `score_runs`
+    table for one left behind by something else. Nothing in the pipeline
+    creates a `score_runs` row as a side effect of ingest -- that's a
+    *different*, per-entity analytics fan-out (`assess_entities`/the risk
+    service, fired from `agent/coordinator.py`'s records handler), not the
+    batch-oriented score-all runs this feature replays. So no test in this
+    suite could ever have supplied the row the old version scavenged,
+    whatever order they ran in; the rows it found were residue in the shared
+    dev `chili` database from an earlier run or `make demo-cms`. On CI's fresh
+    Postgres -- `down -v` each run, `alembic upgrade head` with no seed step
+    before pytest -- there is nothing to scavenge and the test could only
+    skip. See cicd.22.
     """
     requests = _requests()
-    completed = _psql(
-        "select id, knowledge_base_id from score_runs "
-        "where status = 'completed' order by created_at desc limit 1"
+    kb_id = _create_kb(base_url, "Approval E2E Score Replay")
+    _push_carrier_claims(base_url, kb_id, row_count=10)
+    _poll_kb_entity_count(base_url, kb_id, minimum=1)
+
+    run_id = _start_score_run(
+        base_url, kb_id, idempotency_key=f"e2e-score-{int(time.time())}"
     )
-    if not completed:
-        pytest.skip("No completed score run available to replay.")
-    run_id, kb_id = completed.split("|")
+    initial = _poll_score_run(base_url, kb_id, run_id, statuses={"completed", "failed"})
+    assert initial["status"] == "completed", initial
 
     _psql(
         f"update score_batches set status='failed' where run_id='{run_id}'; "
@@ -290,8 +406,10 @@ def test_a_replayed_score_run_executes(base_url: str) -> None:
     assert state == "completed", status
     # The three counters must partition the run. This assertion used to be
     # `scored + failed == total`, which held only because `failed` was a
-    # remainder that swallowed every skipped entity — the run this test drives
-    # scores nothing and skips all 57.
+    # remainder that swallowed every skipped entity. The "all 57 skipped"
+    # this once named belonged to the run scavenged from the connector-sync
+    # test's CSV; this test drives its own much smaller run, so assert the
+    # partition invariant itself rather than any particular count.
     assert int(scored) + int(failed) + int(skipped) == int(total), status
 
 

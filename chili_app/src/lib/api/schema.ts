@@ -2251,7 +2251,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "not_found" | "invalid_transition";
+            reason: "not_found" | "invalid_transition" | "concurrent_modification";
         };
         /**
          * AlertBulkStatusUpdateRequest

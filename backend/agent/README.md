@@ -59,6 +59,49 @@ stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
 when a database is configured, else `InMemorySourceDocumentStatusStore`
 (`ingestion/adapters/`).
 
+### Per-stage document warning accounting (agent.22)
+
+Two handlers write a document's ingestion-diagnostics warnings, shown to
+users as the warning chip on the KB document inventory (`DocumentSummary.warning_count` /
+`warning_reasons`, `api/routers/knowledgebases.py`): `handle_documents_parsed`
+(parse-stage warnings from the parser) and `handle_entities_extracted`
+(`~coordinator.py:2045`, extract-stage warnings from entity/relationship
+validation). Both write through `KnowledgeBaseRepository.set_stage_document_warnings(
+knowledge_base_id, document_id, stage=..., count=..., reasons=...)`
+(`backend/knowledgebases/README.md`), each with its own `stage` key
+(`"parse"`, `"extract"`).
+
+The setter is **absolute per stage, not additive overall**: a stage's write
+replaces exactly that stage's prior contribution, and the document-level
+`warning_count`/`warning_reasons` are maintained as the sum / sampled union
+across every stage that has written. This closes two failure modes at once
+that a single flat counter cannot close together:
+
+- **Replay inflation** — both handler bodies re-run on retry and on
+  at-least-once Redis Streams redelivery. An additive write (`count = count
+  + additional`) run twice for the same stage double-counts that stage's
+  contribution.
+- **Cross-stage data loss** — an absolute write with no stage key would make
+  extract's write overwrite parse's (or vice versa on a parse replay after
+  extract already ran), since there would be nowhere to keep a different
+  stage's prior value.
+
+Both handlers call the setter **unconditionally**, including when the stage
+produced no warnings. They used to write only when there were warnings to
+report, which meant a reprocess that *fixed* a problem (2 warnings → 0) never
+wrote the zero: the stale count stayed and the document total could only ever
+rise. Since the per-stage dicts are the source of truth for that total, a
+stage going quiet has to say so. A zero write with no reasons removes that
+stage's entry (absent means zero), and a write that would change nothing is
+elided before it reaches the store — see
+`backend/knowledgebases/README.md` § Per-stage document warning accounting.
+
+Sprint 2026-35 fixed only `handle_documents_parsed` (an absolute, but
+stage-blind, setter); Sprint 2026-36 (agent.22) extended the same fix to
+`handle_entities_extracted` and moved both onto the per-stage setter, which
+is why the setter is keyed by stage in the first place. The unconditional
+write came out of that sprint's whole-branch review (finding F11).
+
 ### Stage timeouts are an alarm, not a deadline
 
 `StagePolicy.timeout_seconds` (per event type, via `CHILI_STAGE_POLICY_JSON`)

@@ -12,10 +12,43 @@ Two failure modes this guards against, both of which report success today:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from _pytest.outcomes import Failed, Skipped
 
-from tests.e2e.stack_gate import StackProbe, resolve_stack
+from tests.e2e.stack_gate import StackProbe, require_stack_condition, resolve_stack
+
+
+def assert_fails_rather_than_skips(call: Callable[[], object]) -> None:
+    """Assert ``call`` raises ``Failed`` -- and specifically not ``Skipped``.
+
+    ``with pytest.raises(Failed):`` is NOT enough here, and using it makes this
+    suite unable to detect the one regression it exists to detect. ``Failed``
+    and ``Skipped`` are *siblings* (both derive directly from
+    ``OutcomeException``), so if the gate regresses to a bare ``pytest.skip``
+    the resulting ``Skipped`` is not caught by ``pytest.raises(Failed)``: it
+    propagates out of the context manager and pytest reports *this test* as
+    SKIPPED, which reads as green in a summary line. Deleting the whole
+    ``stack_is_required()`` branch used to leave this file at
+    "6 passed, 4 skipped, 0 failed".
+
+    Catching every outcome and asserting the type turns that back into a
+    failure, which is the only reporting state CI treats as red.
+    """
+    try:
+        call()
+    except Failed:
+        return
+    except BaseException as raised:  # noqa: BLE001 - the type IS the assertion
+        raise AssertionError(
+            "expected the gate to FAIL while CHILI_E2E_REQUIRE_STACK is set, "
+            f"but it raised {type(raised).__name__}: {raised}"
+        ) from raised
+    raise AssertionError(
+        "expected the gate to FAIL while CHILI_E2E_REQUIRE_STACK is set, "
+        "but the call returned normally"
+    )
 
 
 def _chili_stack(*, healthy: bool = True, is_chili: bool = True) -> StackProbe:
@@ -31,6 +64,18 @@ def _chili_stack(*, healthy: bool = True, is_chili: bool = True) -> StackProbe:
 
 def _no_listener(path: str) -> tuple[int, str]:
     raise ConnectionError("connection refused")
+
+
+@pytest.fixture(autouse=True)
+def isolated_from_the_ambient_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every test below asserts specific CHILI_E2E_REQUIRE_STACK behaviour.
+
+    Without this, a shell (or a CI job) that happens to export the flag for
+    the whole run flips the "stack is optional" tests from skip to fail --
+    the same class of leakage this suite exists to prevent in the real
+    live-stack tests, just aimed at this file instead.
+    """
+    monkeypatch.delenv("CHILI_E2E_REQUIRE_STACK", raising=False)
 
 
 class TestTheGateSkipsWhenTheStackIsOptional:
@@ -52,16 +97,72 @@ class TestTheGateFailsWhenTheStackIsRequired:
     ) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack("http://localhost:8000", probe=_no_listener)
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack("http://localhost:8000", probe=_no_listener)
+        )
 
     def test_an_unhealthy_stack_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack(
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack(
                 "http://localhost:8000", probe=_chili_stack(healthy=False)
             )
+        )
+
+
+class TestRequireStackConditionGatesAnyLiveStackPrecondition:
+    """``require_stack_condition`` is the general-purpose form of ``_unavailable``.
+
+    ``resolve_stack`` is only the base-URL probe. Every other live-stack
+    precondition in ``tests/e2e/`` -- a docker exec into ``chiliai-postgres-1``
+    or ``chiliai-worker-1``, a missing connector-imports directory -- must
+    route through this so a broken-but-listening stack cannot go green by
+    quietly skipping past the part that would have caught it.
+    """
+
+    def test_a_true_condition_is_a_no_op(self) -> None:
+        require_stack_condition(True, "unreachable reason")
+
+    def test_a_false_condition_skips_when_the_stack_is_optional(self) -> None:
+        with pytest.raises(Skipped, match="Cannot reach chiliai-postgres-1"):
+            require_stack_condition(False, "Cannot reach chiliai-postgres-1: exit 1.")
+
+    def test_a_non_probe_skip_also_fails_when_the_stack_is_required(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The regression this file exists for: before ``require_stack_condition``,
+        every docker-exec and missing-directory precondition in ``tests/e2e/``
+        called ``pytest.skip`` directly and stayed a skip under
+        CHILI_E2E_REQUIRE_STACK=1.
+        """
+        monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
+
+        assert_fails_rather_than_skips(
+            lambda: require_stack_condition(
+                False, "Cannot reach chiliai-worker-1: exit 1."
+            )
+        )
+
+
+class TestABarePytestSkipIsNeverGated:
+    """Permanent regression coverage for the defect ``require_stack_condition`` fixes.
+
+    Not testing this module's code -- testing ``pytest.skip``'s own behaviour,
+    which is exactly why it exists. Before cicd.22, every non-probe live-stack
+    precondition in ``tests/e2e/`` called ``pytest.skip`` directly (the shape
+    reproduced below), so ``CHILI_E2E_REQUIRE_STACK=1`` never touched it --
+    committed here so the next person does not have to take a report's word
+    for what the TDD RED actually showed.
+    """
+
+    def test_a_bare_skip_stays_a_skip_no_matter_how_the_flag_is_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
+
+        with pytest.raises(Skipped):
+            pytest.skip("Cannot reach chiliai-postgres-1: exit 1")
 
 
 class TestTheGateRejectsAForeignService:
@@ -78,7 +179,8 @@ class TestTheGateRejectsAForeignService:
     ) -> None:
         monkeypatch.setenv("CHILI_E2E_REQUIRE_STACK", "1")
 
-        with pytest.raises(Failed):
-            resolve_stack(
+        assert_fails_rather_than_skips(
+            lambda: resolve_stack(
                 "http://localhost:8000", probe=_chili_stack(is_chili=False)
             )
+        )

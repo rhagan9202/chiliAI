@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared.exceptions import ConcurrentModificationError
+
 
 class MonitoringError(Exception):
     """Base exception for monitoring module failures."""
@@ -42,8 +44,27 @@ class AlertLifecycleError(MonitoringError):
         self.new_status = new_status
 
 
+class AlertConcurrentModificationError(MonitoringError, ConcurrentModificationError):
+    """Raised when an alert's status changed between the caller's read and its write.
+
+    Distinct from ``MonitoringSourceError``, which means the underlying
+    observation source or store itself failed -- that one may not be safe to
+    retry. This one always is: reload the alert and resubmit the transition.
+    Both adapters (``PostgresAlertHistoryStore`` via a `WHERE status = %s`
+    compare-and-set, ``InMemoryAlertHistoryWriter`` via a lock held across
+    its read-validate-write) raise this on the same condition.
+    """
+
+    def __init__(self, alert_id: str) -> None:
+        super().__init__(
+            f"Alert '{alert_id}' changed concurrently; reload it and retry."
+        )
+        self.alert_id = alert_id
+
+
 __all__ = [
     "AlertAlreadyResolvedError",
+    "AlertConcurrentModificationError",
     "AlertLifecycleError",
     "AlertNotFoundError",
     "MonitoringConfigurationError",

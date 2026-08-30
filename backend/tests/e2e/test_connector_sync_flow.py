@@ -22,7 +22,7 @@ from typing import cast
 
 import pytest
 
-from tests.e2e.stack_gate import resolve_stack
+from tests.e2e.stack_gate import require_stack_condition, resolve_stack
 
 pytestmark = pytest.mark.integration
 
@@ -65,11 +65,24 @@ def base_url() -> str:
 def csv_file() -> Iterator[str]:
     """Write a feed-conformant CSV into the worker's import directory."""
 
-    if not _IMPORTS_DIR.is_dir():
-        pytest.skip(
-            f"{_IMPORTS_DIR} does not exist; it is the host side of the worker's "
-            f"{_CONTAINER_ROOT} mount."
-        )
+    require_stack_condition(
+        _IMPORTS_DIR.is_dir(),
+        f"{_IMPORTS_DIR} does not exist; it is the host side of the worker's "
+        f"{_CONTAINER_ROOT} mount.",
+    )
+    # Existing is not enough: it has to be writable by *this* user. Docker
+    # creates a missing bind-mount source as a root-owned 0755 directory, so
+    # a stack brought up before the directory existed leaves `is_dir()` True
+    # and `write_text` below raising an opaque PermissionError from inside a
+    # fixture. That is an environment precondition like any other here, so it
+    # routes through the same gate and gets a reason that names the cause.
+    require_stack_condition(
+        os.access(_IMPORTS_DIR, os.W_OK),
+        f"{_IMPORTS_DIR} exists but is not writable by this user; Docker "
+        "creates a missing bind-mount source as root. Remove it and re-create "
+        "it as yourself (`sudo rm -rf` it, then `mkdir -p`), then restart the "
+        "stack.",
+    )
     name = f"e2e-carrier-{int(time.time())}.csv"
     target = _IMPORTS_DIR / name
     rows = "".join(

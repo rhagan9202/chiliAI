@@ -194,6 +194,22 @@ class RedisWorkflowRunStore:
                 break
             scan_start += len(workflow_ids)
 
+        # This compensation, plus pruning every stale entry found *before
+        # returning* (below), is what keeps `next_offset` a valid resume
+        # cursor across calls despite staleness: by the time any caller
+        # reuses this offset, the ZSET has already been shifted to match it.
+        # `api/routers/workflows.py::_list_accessible_workflows` leans on
+        # this synchronous-pruning-within-one-call property for its own
+        # `scan_offset + consumed` arithmetic (see the comment there) --
+        # change the timing of this pruning (e.g. deferring it, or batching
+        # it across calls) and that arithmetic breaks. Investigated in
+        # sprint 2026-36 Task 1 (api.30): this call-scoped pruning is also
+        # exactly what a *second*, concurrent caller can race -- one caller
+        # prunes a stale entry at a position before another caller's
+        # already-saved offset, shifting that caller's window and skipping a
+        # run. Deliberately not fixed; see docs/backlog/api.md (story
+        # api.30) "Known limitation". Note this makes `list_runs` -- called
+        # from a read endpoint, `GET /workflows` -- perform writes (`zrem`).
         if has_more and next_offset is not None:
             next_offset -= sum(
                 1 for _, index_position in stale_entries if index_position < next_offset

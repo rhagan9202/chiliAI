@@ -169,7 +169,7 @@ class AlertBulkRejection(BaseModel):
     """One alert skipped by a bulk lifecycle mutation."""
 
     alert_id: str
-    reason: Literal["not_found", "invalid_transition"]
+    reason: Literal["not_found", "invalid_transition", "concurrent_modification"]
 
 
 class AlertBulkStatusUpdateResponse(BaseModel):

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import timedelta
 
+from monitoring.exceptions import AlertConcurrentModificationError
 from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.models import AlertTriageEvent
@@ -82,6 +84,33 @@ class InMemoryAlertHistoryWriter:
 
     def __init__(self) -> None:
         self._records: dict[tuple[str, str], AlertHistoryRecord] = {}
+        # Postgres gets a compare-and-set for free from a `WHERE status = %s`
+        # guarded UPDATE: a lost race there re-reads and either raises
+        # AlertLifecycleError (the retried transition is no longer valid) or
+        # AlertConcurrentModificationError (it is still valid, but something
+        # else committed first -- reload and retry). acknowledge and
+        # transition_status below reproduce the same two-step shape -- an
+        # unguarded read of the status a caller is transitioning *from*,
+        # then a lock-guarded re-check-and-write -- so two callers sharing
+        # this process-wide singleton (get_alert_feed_store is
+        # @lru_cache(maxsize=1), reused across every threadpool request) get
+        # identical semantics to the Postgres adapter instead of a silent
+        # lost write: without the lock, both can pass validation against the
+        # same stale status and both write, the second silently discarding
+        # the first's transition (and its own from_status audit claim going
+        # stale with it).
+        self._transition_lock = threading.Lock()
+
+    def _find_by_alert_id(
+        self, alert_id: str, knowledge_base_id: str | None
+    ) -> tuple[tuple[str, str], AlertHistoryRecord] | None:
+        for key, record in self._records.items():
+            if record.alert_id == alert_id and (
+                knowledge_base_id is None
+                or record.knowledge_base_id == knowledge_base_id
+            ):
+                return key, record
+        return None
 
     def write_alerts(self, records: list[AlertHistoryRecord]) -> int:
         written = 0
@@ -192,29 +221,40 @@ class InMemoryAlertHistoryWriter:
         knowledge_base_id: str | None = None,
         actor: str = "system",
     ) -> AlertHistoryRecord | None:
-        for key, record in self._records.items():
-            if record.alert_id == alert_id and (
-                knowledge_base_id is None or record.knowledge_base_id == knowledge_base_id
-            ):
-                validate_alert_transition(record.status, "acknowledged")
-                now = utc_now()
-                event = AlertTriageEvent(
-                    event_type="status_changed",
-                    actor=actor,
-                    occurred_at=now,
-                    from_status=record.status,
-                    to_status="acknowledged",
-                )
-                updated = record.model_copy(
-                    update={
-                        "status": "acknowledged",
-                        "updated_at": now,
-                        "triage_history": [*record.triage_history, event],
-                    }
-                )
-                self._records[key] = updated
-                return updated
-        return None
+        found = self._find_by_alert_id(alert_id, knowledge_base_id)
+        if found is None:
+            return None
+        key, observed = found
+        validate_alert_transition(observed.status, "acknowledged")
+        with self._transition_lock:
+            current = self._records.get(key)
+            if current is None:
+                return None
+            if current.status != observed.status:
+                # Someone else's write landed between our unguarded read
+                # above and this lock. Re-validate against the row as it
+                # actually stands: still forbidden -> let AlertLifecycleError
+                # propagate with the real from_status; still valid -> the
+                # race, not the lifecycle, is the problem.
+                validate_alert_transition(current.status, "acknowledged")
+                raise AlertConcurrentModificationError(alert_id)
+            now = utc_now()
+            event = AlertTriageEvent(
+                event_type="status_changed",
+                actor=actor,
+                occurred_at=now,
+                from_status=current.status,
+                to_status="acknowledged",
+            )
+            updated = current.model_copy(
+                update={
+                    "status": "acknowledged",
+                    "updated_at": now,
+                    "triage_history": [*current.triage_history, event],
+                }
+            )
+            self._records[key] = updated
+            return updated
 
     def assign(
         self,
@@ -255,28 +295,36 @@ class InMemoryAlertHistoryWriter:
         reason: str | None = None,
     ) -> AlertHistoryRecord | None:
         key = (knowledge_base_id, alert_id)
-        record = self._records.get(key)
-        if record is None:
+        observed = self._records.get(key)
+        if observed is None:
             return None
-        validate_alert_transition(record.status, status)
-        now = utc_now()
-        event = AlertTriageEvent(
-            event_type="status_changed",
-            actor=actor,
-            occurred_at=now,
-            from_status=record.status,
-            to_status=status,
-            reason=reason,
-        )
-        updated = record.model_copy(
-            update={
-                "status": status,
-                "updated_at": now,
-                "triage_history": [*record.triage_history, event],
-            }
-        )
-        self._records[key] = updated
-        return updated
+        validate_alert_transition(observed.status, status)
+        with self._transition_lock:
+            current = self._records.get(key)
+            if current is None:
+                return None
+            if current.status != observed.status:
+                # See acknowledge()'s identical guard above.
+                validate_alert_transition(current.status, status)
+                raise AlertConcurrentModificationError(alert_id)
+            now = utc_now()
+            event = AlertTriageEvent(
+                event_type="status_changed",
+                actor=actor,
+                occurred_at=now,
+                from_status=current.status,
+                to_status=status,
+                reason=reason,
+            )
+            updated = current.model_copy(
+                update={
+                    "status": status,
+                    "updated_at": now,
+                    "triage_history": [*current.triage_history, event],
+                }
+            )
+            self._records[key] = updated
+            return updated
 
     def count_by_statuses(self, statuses: set[str]) -> int:
         return sum(

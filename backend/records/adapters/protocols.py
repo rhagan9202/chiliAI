@@ -48,21 +48,29 @@ class RawRecordStore(Protocol):
         """Record that a submission hash has been accepted for a KB."""
         ...
 
-    def discard_submission(
-        self, *, knowledge_base_id: str, submission_hash: str
-    ) -> None:
-        """Forget a submission hash so an identical retry is not a duplicate."""
-        ...
-
-    def delete_records(
-        self, *, knowledge_base_id: str, keys: Sequence[RawRecordKey]
+    def rollback_submission(
+        self,
+        *,
+        knowledge_base_id: str,
+        keys: Sequence[RawRecordKey],
+        submission_hash: str,
     ) -> int:
-        """Delete exactly the named rows; return the count removed.
+        """Delete the named rows and forget the submission hash atomically.
 
-        Deliberately keyed on row identity rather than correlation id: a
-        connector sync run assigns one correlation id and reuses it for every
-        page, so a correlation-scoped delete would also remove pages that were
-        already persisted and published.
+        Either both happen or neither does. This replaced a pair of
+        independently committed steps (a row delete, then a hash discard),
+        which left a window where a failure between them deleted the rows but
+        kept the hash -- making the client's identical retry a permanent
+        no-op: ``duplicate=True`` with zero rows, forever, because nothing
+        will ever publish an event for rows that no longer exist. Those two
+        steps were removed once this replaced them at the only call site
+        (``RecordsService.register_records``), so the non-atomic path cannot
+        be reintroduced by accident.
+
+        Keyed on row identity rather than correlation id: a connector sync run
+        assigns one correlation id and reuses it for every page, so a
+        correlation-scoped delete would also remove pages that were already
+        persisted and published. Returns the count of rows removed.
         """
         ...
 

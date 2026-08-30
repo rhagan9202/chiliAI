@@ -11,7 +11,11 @@ import json
 from datetime import datetime
 from typing import cast
 
-from conversations.exceptions import ConversationPersistenceError
+from conversations.exceptions import (
+    ConversationConcurrentModificationError,
+    ConversationNotFoundError,
+    ConversationPersistenceError,
+)
 from conversations.models import Conversation, ConversationMessage
 from database.protocols import ConnectionProvider, Row
 
@@ -31,14 +35,10 @@ _GET_SQL = f"""
     WHERE conversation_id = %s
 """
 
-_UPSERT_SQL = f"""
-    INSERT INTO conversations ({_COLUMNS})
-    VALUES (%s, %s, %s, %s::jsonb, %s, %s)
-    ON CONFLICT (conversation_id) DO UPDATE
-    SET title = EXCLUDED.title,
-        knowledge_base_id = EXCLUDED.knowledge_base_id,
-        messages = EXCLUDED.messages,
-        updated_at = EXCLUDED.updated_at
+_UPDATE_GUARDED_SQL = """
+    UPDATE conversations
+    SET title = %s, knowledge_base_id = %s, messages = %s::jsonb, updated_at = %s
+    WHERE conversation_id = %s AND updated_at = %s
 """
 
 _LIST_BY_KB_SQL = f"""
@@ -81,11 +81,37 @@ class PostgresConversationRepository:
             raise ConversationPersistenceError("Failed to load conversation.") from exc
         return None if row is None else _row_to_conversation(row)
 
-    def save(self, conversation: Conversation) -> Conversation:
+    def save(
+        self, conversation: Conversation, *, expected_updated_at: datetime
+    ) -> Conversation:
         try:
             with self._provider.connection() as conn:
-                conn.execute(_UPSERT_SQL, self._row_params(conversation))
+                cursor = conn.execute(
+                    _UPDATE_GUARDED_SQL,
+                    (
+                        conversation.title,
+                        conversation.knowledge_base_id,
+                        _messages_to_json(conversation.messages),
+                        conversation.updated_at,
+                        conversation.id,
+                        expected_updated_at,
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    # Either the row never existed, or another writer changed
+                    # it between our read and this write. Re-read (after
+                    # committing, so we see any concurrent writer's own
+                    # commit) to tell the two failures apart.
+                    conn.commit()
+                    existing = conn.execute(
+                        _GET_SQL, (conversation.id,)
+                    ).fetchone()
+                    if existing is None:
+                        raise ConversationNotFoundError(conversation.id)
+                    raise ConversationConcurrentModificationError(conversation.id)
                 conn.commit()
+        except (ConversationNotFoundError, ConversationConcurrentModificationError):
+            raise
         except Exception as exc:
             raise ConversationPersistenceError("Failed to save conversation.") from exc
         return conversation

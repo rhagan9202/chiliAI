@@ -16,16 +16,17 @@
 <!-- BEGIN: status-rollup -->
 | File | Planned | In-progress | Done | Dropped | Total | % done |
 |------|---------|-------------|------|---------|-------|--------|
-| _cicd.md | 20 | 1 | 0 | 0 | 21 | 0% |
+| _cicd.md | 20 | 1 | 1 | 0 | 22 | 4% |
 | _infra.md | 19 | 0 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _security.md | 9 | 0 | 3 | 0 | 12 | 25% |
-| agent.md | 21 | 0 | 1 | 0 | 22 | 4% |
+| agent.md | 20 | 0 | 2 | 0 | 22 | 9% |
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
-| api.md | 27 | 0 | 1 | 1 | 29 | 3% |
+| api.md | 27 | 0 | 2 | 1 | 30 | 6% |
 | config.md | 14 | 0 | 1 | 0 | 15 | 6% |
+| conversations.md | 0 | 0 | 1 | 0 | 1 | 100% |
 | database.md | 12 | 0 | 1 | 0 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 1 | 0 | 17 | 5% |
@@ -34,14 +35,14 @@
 | ingestion.md | 23 | 0 | 12 | 0 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 0 | 17 | 0% |
-| monitoring.md | 21 | 0 | 1 | 0 | 22 | 4% |
+| monitoring.md | 20 | 0 | 2 | 0 | 22 | 9% |
 | rag.md | 17 | 0 | 0 | 0 | 17 | 0% |
-| records.md | 14 | 2 | 1 | 0 | 17 | 5% |
+| records.md | 14 | 2 | 2 | 0 | 18 | 11% |
 | scorecards.md | 3 | 0 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 417 | 8 | 34 | 3 | 462 | 7% |
+| **Total** | 415 | 8 | 40 | 3 | 466 | 8% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -68,7 +69,6 @@
 - [agent.11] agent — size M — prereqs done
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
-- [agent.22] agent — size M — prereqs done
 - [analytics.33] analytics — size M — prereqs done
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
@@ -77,7 +77,8 @@
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
 - [embeddings.06] embeddings — size M — prereqs done
-- …41 more
+- [events.17] events — size M — prereqs done
+- …39 more
 <!-- END: ready-set -->
 
 ## Critical path
@@ -144,6 +145,7 @@
 - [monitoring.md](monitoring.md) — claim stream consumer, alert generation
 - [rag.md](rag.md) — query → embed → search → graph expand → LLM
 - [records.md](records.md) — structured/tabular ingestion (CSV/JSONL/api-push + pull-based origins)
+- [conversations.md](conversations.md) — durable RAG chat persistence
 - [scorecards.md](scorecards.md) — durable scorecard templates, evaluation, export
 - [shared.md](shared.md) — domain types, protocols, utilities
 - [storage.md](storage.md) — object storage protocol + adapters

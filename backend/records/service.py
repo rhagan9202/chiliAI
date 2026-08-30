@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from config.schema import RecordFeedConfig, RecordsConfig
 from events.protocols import EventBus
 from events.types import RecordsIngestedEvent
@@ -16,6 +18,8 @@ from records.service_models import RecordIngestReceipt, RecordSubmission
 from records.validation import derive_record_id, validate_rows_partition
 from shared.metrics import ingestion_dedup_suppressed_total
 from shared.utils import generate_id, utc_now
+
+logger = logging.getLogger(__name__)
 
 
 class RecordsService:
@@ -126,14 +130,31 @@ class RecordsService:
                 # already published and very likely already consumed. Rows this
                 # call did not insert (a record id an earlier page already
                 # landed) are likewise not ours to remove.
-                self._store.delete_records(
-                    knowledge_base_id=knowledge_base_id,
-                    keys=inserted_keys,
-                )
-                self._store.discard_submission(
-                    knowledge_base_id=knowledge_base_id,
-                    submission_hash=submission_hash,
-                )
+                #
+                # rollback_submission deletes the rows and discards the hash
+                # in one transaction, so a failure partway through never
+                # leaves rows deleted with the hash retained — the one state
+                # that would permanently strand an identical retry behind
+                # duplicate=True with zero rows. If the rollback itself fails
+                # outright, that failure is logged and swallowed here so the
+                # *original* publish exception still reaches the caller: an
+                # operator seeing this needs to know the event bus is down,
+                # not that storage is.
+                try:
+                    self._store.rollback_submission(
+                        knowledge_base_id=knowledge_base_id,
+                        keys=inserted_keys,
+                        submission_hash=submission_hash,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Rollback after a publish failure also failed "
+                        "(knowledge_base_id=%s correlation_id=%s); rows and "
+                        "the submission hash may still be present. "
+                        "Re-raising the original publish error.",
+                        knowledge_base_id,
+                        correlation_id,
+                    )
                 raise
         # Rows whose record_id already existed are silently dropped by the
         # store's per-row dedup during persist() (dedup behavior itself is

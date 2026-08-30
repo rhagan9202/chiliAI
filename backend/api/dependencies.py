@@ -97,6 +97,7 @@ from cases.adapters.protocols import CaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
+from conversations.exceptions import ConversationConcurrentModificationError
 from conversations.models import Conversation, ConversationMessage
 from conversations.service import ConversationService, create_conversation_service
 from rag.service_models import RagQueryRequest
@@ -275,7 +276,11 @@ from monitoring.adapters.protocols import (
     ObservationSourceProtocol,
     ObservationWriter,
 )
-from monitoring.exceptions import AlertLifecycleError, MonitoringSourceError
+from monitoring.exceptions import (
+    AlertConcurrentModificationError,
+    AlertLifecycleError,
+    MonitoringSourceError,
+)
 from monitoring.models import AlertHistoryRecord, AlertTriageEvent
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
@@ -1806,13 +1811,21 @@ def get_chat_message_payload(
             filters=payload.filters,
         )
     )
-    updated = service.append_messages(
-        conversation_id,
-        [
-            build_user_message(payload.content),
-            build_assistant_message(rag_response),
-        ],
-    )
+    try:
+        updated = service.append_messages(
+            conversation_id,
+            [
+                build_user_message(payload.content),
+                build_assistant_message(rag_response),
+            ],
+        )
+    except ConversationConcurrentModificationError as exc:
+        # append_messages retries a lost race internally (appending is a
+        # pure merge), so this only surfaces once that retry budget is
+        # exhausted -- a genuinely contended row, not the common case. Still
+        # a "reload and retry" signal per the shared ConcurrentModification
+        # contract, so 409 rather than 500.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return project_conversation(updated)
 
 
@@ -3268,6 +3281,8 @@ def build_alert_acknowledge_payload(
         )
     except AlertLifecycleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AlertConcurrentModificationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(
             status_code=404, detail=f"Alert '{alert_id}' was not found."
@@ -3337,6 +3352,8 @@ def build_alert_status_update_payload(
         )
     except AlertLifecycleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AlertConcurrentModificationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(
             status_code=404, detail=f"Alert '{alert_id}' was not found."
@@ -3367,13 +3384,19 @@ def build_alert_bulk_status_update_payload(
     the whole loop -- the batch-after approach leaves committed-but-unaudited
     transitions behind if a later alert in the batch raises.
 
-    A ``MonitoringSourceError`` raised mid-loop (for example the durable
-    store's lost optimistic-concurrency race, or a genuine persistence
-    failure -- the store does not distinguish the two by exception type)
-    is not treated as a per-row rejection like ``AlertLifecycleError``.
-    Silently skipping it here could mask a real infrastructure outage as a
-    handful of ordinary skipped rows, so it aborts the batch as a 500
-    instead. Because ``on_transitioned`` already ran for every alert
+    A lost optimistic-concurrency race (``AlertConcurrentModificationError``)
+    is now typed separately from a genuine persistence failure
+    (``MonitoringSourceError``), so the two can finally be told apart here.
+    Nothing is committed on the lost-race branch -- both adapters raise
+    before writing -- so treating it as a per-row rejection (like
+    ``AlertLifecycleError``) is safe: the row is reported back as skipped
+    and the batch continues, rather than aborting every other alert in it
+    over one caller's bad luck on a shared row.
+
+    A ``MonitoringSourceError`` raised mid-loop (a genuine persistence
+    failure) still aborts the batch as a 500: it is not safe to assume the
+    rest of the batch would fare any better against a store that is
+    actually down. Because ``on_transitioned`` already ran for every alert
     committed before the failure, the audit invariant still holds: no
     alert is ever committed as transitioned without its audit row.
     """
@@ -3397,6 +3420,11 @@ def build_alert_bulk_status_update_payload(
         except AlertLifecycleError:
             rejected_alerts.append(
                 AlertBulkRejection(alert_id=alert_id, reason="invalid_transition")
+            )
+            continue
+        except AlertConcurrentModificationError:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="concurrent_modification")
             )
             continue
         except MonitoringSourceError as exc:

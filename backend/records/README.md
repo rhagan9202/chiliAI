@@ -23,8 +23,18 @@ could not help either, because `persist()` dedupes by `record_id` and the rows
 already existed under the *original* correlation id.
 
 The publish is therefore wrapped: on failure the service calls
-`delete_records(keys=...)` and `discard_submission(...)` before re-raising, so
-the client's retry is a clean first ingest.
+`rollback_submission(keys=..., submission_hash=...)` before re-raising, so
+the client's retry is a clean first ingest. That call deletes the rows and
+discards the submission hash **atomically, in one transaction** — either both
+happen or neither does. Two independently-committed steps would leave a
+window where a failure between them deletes the rows but keeps the hash,
+which makes the client's identical retry a permanent no-op (`duplicate=True`,
+zero rows, no event, forever). `PostgresRawRecordStore.rollback_submission`
+follows the same one-connection/one-commit shape as `delete_by_kb`;
+`InMemoryRawRecordStore.rollback_submission` applies both mutations directly.
+If the rollback call itself fails outright, that failure is logged and
+swallowed so the *original* publish exception still reaches the caller —
+an operator seeing it needs to know the event bus is down, not storage.
 
 The rollback is scoped to **row identity, never the correlation id**.
 `persist()` returns the `RawRecordKey`s it actually inserted (Postgres gets
@@ -34,8 +44,19 @@ connector path: `connectors/executor` assigns one correlation id per sync run
 and reuses it for every page, so rolling back page N would also delete pages
 1..N-1 — rows whose `records.ingested` events were already published and very
 likely already consumed. Rows this call did not insert (a record id an earlier
-page already landed) are equally not its to remove. Both store adapters
-implement the two methods.
+page already landed) are equally not its to remove.
+
+`rollback_submission` is the only *submission-scoped* deletion entry point on
+`RawRecordStore`. (`delete_by_kb` also deletes, but at whole-KB granularity,
+for teardown -- `knowledgebases/cleanup.py` calls it.)
+The standalone `delete_records(keys=...)` / `discard_submission(...)` pair it
+replaced was removed from the protocol and both adapters once nothing called
+them, so the two-transaction rollback -- rows deleted, hash retained, the
+client's retry a permanent `duplicate=True` no-op -- cannot be reassembled by
+accident. Postgres's single-transaction guarantee is asserted, not inferred:
+`test_rollback_submission_rolls_the_deletes_back_if_the_discard_fails` forces
+the second statement to fail and requires the row deletes to roll back with
+it.
 
 ## Layout
 

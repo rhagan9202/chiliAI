@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from conversations.models import Conversation
@@ -19,8 +20,18 @@ class ConversationRepository(Protocol):
         """Return one conversation by id, or ``None`` if absent."""
         ...
 
-    def save(self, conversation: Conversation) -> Conversation:
-        """Upsert a conversation (e.g. after appending messages) and return it."""
+    def save(
+        self, conversation: Conversation, *, expected_updated_at: datetime
+    ) -> Conversation:
+        """Persist ``conversation`` (e.g. after appending messages), guarded.
+
+        ``expected_updated_at`` is the ``updated_at`` the caller last read.
+        The write is only applied if the stored row still has that
+        ``updated_at`` -- otherwise another writer committed first and this
+        raises ``conversations.exceptions.ConversationConcurrentModificationError``
+        instead of silently overwriting that writer's message. Raises
+        ``ConversationNotFoundError`` if the conversation no longer exists.
+        """
         ...
 
     def list_by_kb(
