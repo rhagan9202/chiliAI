@@ -26,7 +26,7 @@
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
 | api.md | 27 | 0 | 2 | 1 | 30 | 6% |
 | config.md | 14 | 0 | 1 | 0 | 15 | 6% |
-| conversations.md | 1 | 0 | 0 | 0 | 1 | 0% |
+| conversations.md | 0 | 0 | 1 | 0 | 1 | 100% |
 | database.md | 12 | 0 | 1 | 0 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 1 | 0 | 17 | 5% |
@@ -42,7 +42,7 @@
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 416 | 8 | 39 | 3 | 466 | 8% |
+| **Total** | 415 | 8 | 40 | 3 | 466 | 8% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -52,7 +52,6 @@
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
-- [conversations.06] conversations — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
@@ -78,7 +77,8 @@
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
 - [embeddings.06] embeddings — size M — prereqs done
-- …40 more
+- [events.17] events — size M — prereqs done
+- …39 more
 <!-- END: ready-set -->
 
 ## Critical path

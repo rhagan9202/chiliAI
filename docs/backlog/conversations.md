@@ -8,10 +8,11 @@
 ## Story conversations.06: Guard the conversation read-modify-write against concurrent turns
 
 **ID:** conversations.06
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** `save` compare-and-sets on `updated_at` in both adapters and raises `ConversationConcurrentModificationError` (a `ConcurrentModificationError` subclass, the marker's second subscriber after alerts) on a lost race. `ConversationService.append_messages` retries that error up to `_MAX_APPEND_ATTEMPTS` rather than surfacing it, since appending is a pure merge — both turns belong in the final list regardless of order — so the resolution is re-read and re-apply, not a caller-visible 409.
 
 **As an** analyst in a RAG chat,
 **I need** two turns landing at once to both be kept,
@@ -25,10 +26,10 @@
 - Found by the sprint 2026-35 whole-branch review.
 
 ### Acceptance Criteria
-- [ ] A concurrent append cannot silently discard another turn's messages.
-- [ ] Both adapters implement the same guard, including the in-memory one.
-- [ ] Signalling follows whatever `monitoring.22` settles rather than introducing another lost-race contract.
-- [ ] A barrier-synchronised test demonstrates the loss against the unguarded code first.
+- [x] A concurrent append cannot silently discard another turn's messages.
+- [x] Both adapters implement the same guard, including the in-memory one.
+- [x] Signalling follows whatever `monitoring.22` settles rather than introducing another lost-race contract.
+- [x] A barrier-synchronised test demonstrates the loss against the unguarded code first.
 
 ### Verification
 - Two-thread test through `ConversationService.append_messages` asserting both turns survive, run against both adapters.
