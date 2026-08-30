@@ -10,10 +10,15 @@ from conversations.exceptions import (
 from conversations.models import Conversation, ConversationMessage
 from shared.utils import generate_id, utc_now
 
-__all__ = ["ConversationService", "create_conversation_service"]
+__all__ = ["MAX_APPEND_ATTEMPTS", "ConversationService", "create_conversation_service"]
 
 _DEFAULT_TITLE = "Untitled investigation chat"
 
+# Public rather than module-private: the bound is part of this module's
+# documented behaviour (conversations/README.md, docs/backlog/conversations.md)
+# and its exhaustion is the one caller-visible artefact of the guard, so tests
+# assert against it by name instead of restating the literal.
+#
 # Appending is a pure merge (list concatenation): unlike a status transition,
 # there is no legitimate reason two concurrent appends can't both land, so a
 # lost CAS race here is always safe to resolve by re-reading and retrying --
@@ -21,7 +26,7 @@ _DEFAULT_TITLE = "Untitled investigation chat"
 # unbounded so a pathologically hot conversation fails loudly (as
 # ConversationConcurrentModificationError, still a "reload and retry" signal
 # per the contract) instead of spinning forever.
-_MAX_APPEND_ATTEMPTS = 10
+MAX_APPEND_ATTEMPTS = 10
 
 
 class ConversationService:
@@ -71,7 +76,7 @@ class ConversationService:
         state, and try again.
         """
         last_error: ConversationConcurrentModificationError | None = None
-        for _ in range(_MAX_APPEND_ATTEMPTS):
+        for _ in range(MAX_APPEND_ATTEMPTS):
             existing = self._repository.get(conversation_id)
             if existing is None:
                 raise ConversationNotFoundError(conversation_id)

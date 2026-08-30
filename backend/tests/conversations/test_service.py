@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
-from conversations.exceptions import ConversationNotFoundError
-from conversations.models import ConversationMessage
-from conversations.service import create_conversation_service
+from conversations.exceptions import (
+    ConversationConcurrentModificationError,
+    ConversationNotFoundError,
+)
+from conversations.models import Conversation, ConversationMessage
+from conversations.service import MAX_APPEND_ATTEMPTS, create_conversation_service
 
 
 def test_create_defaults_title_when_absent() -> None:
@@ -83,3 +88,42 @@ def test_appending_messages_advances_updated_at_in_every_adapter(
         reloaded = repository.get(created.id)
         assert reloaded is not None
         assert reloaded.updated_at == appended.updated_at
+
+
+class _AlwaysLosesTheRace(InMemoryConversationRepository):
+    """A repository whose ``save`` never wins the CAS.
+
+    Stands in for a pathologically contended row. The service's retry loop is
+    bounded precisely so this fails loudly instead of spinning forever, and
+    the exception it ends on is the one caller-visible artefact of
+    conversations.06 -- ``api.dependencies`` turns it into a 409.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.save_attempts = 0
+
+    def save(
+        self, conversation: Conversation, *, expected_updated_at: datetime
+    ) -> Conversation:
+        self.save_attempts += 1
+        raise ConversationConcurrentModificationError(conversation.id)
+
+
+def test_append_gives_up_after_the_retry_budget_instead_of_spinning() -> None:
+    """``append_messages`` retries a lost race because appending is a pure
+    merge, but the loop is bounded at ``MAX_APPEND_ATTEMPTS``. On a row that
+    never lets a write land it must surface the typed error -- the "reload and
+    retry" signal the shared contract defines -- not loop forever and not
+    raise something the gateway would turn into a 500.
+    """
+    repository = _AlwaysLosesTheRace()
+    service = create_conversation_service(repository)
+    conversation = service.create(knowledge_base_id="kb-1")
+
+    with pytest.raises(ConversationConcurrentModificationError):
+        service.append_messages(
+            conversation.id, [ConversationMessage(id="m-1", role="user", content="hi")]
+        )
+
+    assert repository.save_attempts == MAX_APPEND_ATTEMPTS

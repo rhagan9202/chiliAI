@@ -64,7 +64,7 @@ This follows the lost-write-race contract established in
   `conversations` makes a different, deliberate choice: `append_messages`
   **retries internally** on `ConversationConcurrentModificationError` — it
   re-reads the conversation, re-applies the same messages on top of the
-  fresh state, and re-saves, up to `_MAX_APPEND_ATTEMPTS` (10) times. This is
+  fresh state, and re-saves, up to `MAX_APPEND_ATTEMPTS` (10) times. This is
   safe specifically *because* appending is a pure merge: unlike a case
   update (arbitrary field changes) or an alert status transition (order- and
   lifecycle-sensitive), two concurrent turns have no legitimate reason not

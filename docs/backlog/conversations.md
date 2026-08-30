@@ -12,7 +12,7 @@
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
-**Done:** `save` compare-and-sets on `updated_at` in both adapters and raises `ConversationConcurrentModificationError` (a `ConcurrentModificationError` subclass, the marker's second subscriber after alerts) on a lost race. `ConversationService.append_messages` retries that error up to `_MAX_APPEND_ATTEMPTS` rather than surfacing it, since appending is a pure merge — both turns belong in the final list regardless of order — so the resolution is re-read and re-apply, not a caller-visible 409.
+**Done:** `save` compare-and-sets on `updated_at` in both adapters and raises `ConversationConcurrentModificationError` (a `ConcurrentModificationError` subclass, the marker's second subscriber after alerts) on a lost race. `ConversationService.append_messages` retries that error up to `MAX_APPEND_ATTEMPTS` rather than surfacing it, since appending is a pure merge — both turns belong in the final list regardless of order — so the resolution is re-read and re-apply, not a caller-visible 409.
 
 **As an** analyst in a RAG chat,
 **I need** two turns landing at once to both be kept,

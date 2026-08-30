@@ -137,6 +137,15 @@ class _StoreRaisingConcurrentModificationOn(InMemoryAlertHistoryWriter):
     ) -> AlertHistoryRecord | None:
         raise AlertConcurrentModificationError(alert_id)
 
+    def acknowledge(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str | None = None,
+        actor: str = "system",
+    ) -> AlertHistoryRecord | None:
+        raise AlertConcurrentModificationError(alert_id)
+
 
 def _client(*, store: AlertFeedStoreProtocol, audit: AuditLogService) -> TestClient:
     app = create_app()
@@ -218,6 +227,27 @@ def test_a_lost_write_race_surfaces_as_409_not_500() -> None:
     response = client.patch(
         "/alerts/alert-1/status",
         json={"knowledge_base_id": "kb-1", "status": "acknowledged"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_a_lost_acknowledge_race_surfaces_as_409_not_500() -> None:
+    """``POST /alerts/{id}/acknowledge`` is the second caller-visible site
+    handling this error, and it was the one left untested.
+
+    ``build_alert_acknowledge_payload`` has its own
+    ``except AlertConcurrentModificationError`` (`api/dependencies.py`), a
+    separate branch from the ``PATCH .../status`` one covered above -- same
+    contract, same commit range, so it gets the same assertion rather than
+    resting on the sibling's coverage.
+    """
+    audit = RecordingAuditLogService()
+    store = _StoreRaisingConcurrentModificationOn("alert-1")
+    client = _client_allowing_server_errors(store=store, audit=audit)
+
+    response = client.post(
+        "/alerts/alert-1/acknowledge", params={"knowledge_base_id": "kb-1"}
     )
 
     assert response.status_code == 409

@@ -10,15 +10,24 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
+from datetime import datetime
 from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_api_state, get_domain_config, get_session_store
+from api.dependencies import (
+    get_api_state,
+    get_conversation_repository,
+    get_domain_config,
+    get_session_store,
+)
 from api.middleware.session_store import InMemorySessionStore, SessionRecord
 from api.state import ApiState
+from conversations.adapters.in_memory import InMemoryConversationRepository
+from conversations.exceptions import ConversationConcurrentModificationError
+from conversations.models import Conversation
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 from rag.protocols import RagServiceProtocol
@@ -418,3 +427,45 @@ def test_conversation_routes_require_a_knowledge_base() -> None:
         ).status_code
         == 422
     )
+
+
+class _AlwaysLosesTheRace(InMemoryConversationRepository):
+    """A conversation repository whose ``save`` never wins the CAS.
+
+    ``ConversationService.append_messages`` retries a lost race internally
+    (appending is a pure merge), so the 409 below is reachable only once that
+    bounded retry budget is exhausted -- a genuinely contended row. Nothing
+    covered it, which made the single caller-visible artefact of
+    conversations.06 an untested branch while the docstring in
+    ``conversations/exceptions.py`` promised it.
+    """
+
+    def save(
+        self, conversation: Conversation, *, expected_updated_at: datetime
+    ) -> Conversation:
+        raise ConversationConcurrentModificationError(conversation.id)
+
+
+def test_a_conversation_append_that_never_wins_the_race_is_a_409_not_a_500() -> None:
+    """Same contract as the alerts routes: a lost write race is "reload and
+    retry", which a caller can act on, not an opaque 500 which it cannot.
+    """
+    app = create_app()
+    repository = InMemoryConversationRepository()
+    app.dependency_overrides[get_conversation_repository] = lambda: repository
+    client = TestClient(app, raise_server_exceptions=False)
+    conversation_id = _new_conversation_id(client)
+
+    # Swap in the losing repository only after the conversation exists, so the
+    # 409 comes from the append guard rather than from a missing row.
+    losing = _AlwaysLosesTheRace()
+    losing.create(cast(Conversation, repository.get(conversation_id)))
+    app.dependency_overrides[get_conversation_repository] = lambda: losing
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
+        json={"content": "Why was claim 42 denied?"},
+    )
+
+    assert response.status_code == 409, response.text
