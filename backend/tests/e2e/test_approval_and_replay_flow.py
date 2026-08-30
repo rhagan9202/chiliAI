@@ -355,16 +355,17 @@ def test_a_replayed_score_run_executes(base_url: str) -> None:
     worker does not consume, so the replay was inert.
 
     Drives its own completed score run rather than scavenging the `score_runs`
-    table for one left behind by another test. Nothing in the pipeline creates
-    a `score_runs` row as a side effect of ingest -- that's a *different*,
-    per-entity analytics fan-out (`assess_entities`/the risk service, fired
-    from `agent/coordinator.py`'s records handler), not the batch-oriented
-    score-all runs this feature replays. Scavenging previously depended on
-    pytest's collection order placing the one test that ingests real data
-    (`test_connector_sync_flow.py::test_connector_sync_ingests_records_end_to_end`)
-    before this one -- true only by accident, and false in CI, which brings up
-    a fresh Postgres with no seed step between `alembic upgrade head` and
-    pytest. See cicd.22.
+    table for one left behind by something else. Nothing in the pipeline
+    creates a `score_runs` row as a side effect of ingest -- that's a
+    *different*, per-entity analytics fan-out (`assess_entities`/the risk
+    service, fired from `agent/coordinator.py`'s records handler), not the
+    batch-oriented score-all runs this feature replays. So no test in this
+    suite could ever have supplied the row the old version scavenged,
+    whatever order they ran in; the rows it found were residue in the shared
+    dev `chili` database from an earlier run or `make demo-cms`. On CI's fresh
+    Postgres -- `down -v` each run, `alembic upgrade head` with no seed step
+    before pytest -- there is nothing to scavenge and the test could only
+    skip. See cicd.22.
     """
     requests = _requests()
     kb_id = _create_kb(base_url, "Approval E2E Score Replay")
