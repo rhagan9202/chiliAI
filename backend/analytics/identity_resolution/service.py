@@ -9,6 +9,7 @@ from typing import Any
 from analytics.identity_resolution.models import (
     IdentityCandidateEntity,
     IdentityCandidateScore,
+    IdentityLinkRecord,
     IdentityMatchConfidence,
     IdentityMatchReason,
     IdentityRelationshipProjectionRequest,
@@ -17,6 +18,7 @@ from analytics.identity_resolution.models import (
     IdentityReviewState,
 )
 from shared.types import Entity, Relationship
+from shared.utils import utc_now
 
 type Normalizer = Callable[[Any], str]
 
@@ -104,6 +106,59 @@ class IdentityResolutionService:
                 )
             )
         return relationships
+
+    def materialize_link_records(
+        self,
+        *,
+        knowledge_base_id: str,
+        source_entity_id: str,
+        candidates: list[IdentityCandidateScore],
+        relationship_type: str = "resolved_identity",
+        decision_source: str = "identity_resolution.candidate_scoring",
+        source_refs: list[str] | None = None,
+    ) -> list[IdentityLinkRecord]:
+        """Convert scored candidates into durable identity-link records.
+
+        Scoring alone is not enough for the workbench: ``GET
+        /identity/canonical/{entity_id}`` reads the link repository. Materializing
+        here closes the gap so pairings are findable without a separate build step.
+        """
+
+        refs = list(source_refs) if source_refs is not None else []
+        now = utc_now()
+        records: list[IdentityLinkRecord] = []
+        for candidate in candidates:
+            records.append(
+                IdentityLinkRecord(
+                    id=_identity_relationship_id(
+                        knowledge_base_id,
+                        candidate.entity_id,
+                        source_entity_id,
+                    ),
+                    knowledge_base_id=knowledge_base_id,
+                    canonical_entity_id=candidate.entity_id,
+                    source_entity_id=source_entity_id,
+                    relationship_type=relationship_type,
+                    confidence=candidate.confidence,
+                    score=candidate.score,
+                    review_state=candidate.review_state,
+                    decision_source=decision_source,
+                    source_refs=refs,
+                    match_reasons=[
+                        {
+                            "field": reason.field,
+                            "reason": reason.reason,
+                            "source_value": reason.source_value,
+                            "candidate_value": reason.candidate_value,
+                            "score_contribution": reason.score_contribution,
+                        }
+                        for reason in candidate.match_reasons
+                    ],
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        return records
 
     def _score_candidate(
         self,

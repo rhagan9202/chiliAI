@@ -16564,7 +16564,7 @@
     },
     "/identity/resolve-candidates": {
       "post": {
-        "description": "Score a source identity against connector-provided canonical candidates.",
+        "description": "Score a source identity against connector-provided canonical candidates.\n\nPersists scored pairings as identity links so canonical lookup and steward\ndecisions work without a separate build step.",
         "operationId": "resolve_identity_candidates_identity_resolve_candidates_post",
         "requestBody": {
           "content": {

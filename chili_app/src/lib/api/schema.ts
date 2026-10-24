@@ -1131,6 +1131,9 @@ export interface paths {
         /**
          * Resolve Identity Candidates
          * @description Score a source identity against connector-provided canonical candidates.
+         *
+         *     Persists scored pairings as identity links so canonical lookup and steward
+         *     decisions work without a separate build step.
          */
         post: operations["resolve_identity_candidates_identity_resolve_candidates_post"];
         delete?: never;

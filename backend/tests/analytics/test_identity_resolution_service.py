@@ -62,8 +62,7 @@ def test_identity_resolution_scores_candidates_with_auditable_reasons() -> None:
     assert result.candidates[0].score > result.candidates[1].score
     assert result.candidates[0].review_state == "auto_linkable"
     assert {
-        (reason.field, reason.reason)
-        for reason in result.candidates[0].match_reasons
+        (reason.field, reason.reason) for reason in result.candidates[0].match_reasons
     } == {
         ("source_provider_id", "natural_key_match"),
         ("npi", "identifier_match"),
@@ -99,7 +98,9 @@ def test_identity_resolution_excludes_candidates_outside_request_kb() -> None:
     assert result.excluded_candidate_ids == ["canonical:other-kb"]
 
 
-def test_identity_resolution_projects_graph_relationships_with_confidence_metadata() -> None:
+def test_identity_resolution_projects_graph_relationships_with_confidence_metadata() -> (
+    None
+):
     service = IdentityResolutionService()
     source_entity = _entity(
         "source:1",
@@ -165,3 +166,49 @@ def test_identity_resolution_projects_graph_relationships_with_confidence_metada
             "score_contribution": 0.3,
         },
     ]
+
+
+def test_identity_resolution_materializes_durable_link_records() -> None:
+    service = IdentityResolutionService()
+    source_entity = _entity(
+        "source:1",
+        source_provider_id="SRC-001",
+        npi="123-45-6789",
+    )
+    result = service.score_candidates(
+        IdentityResolutionRequest(
+            knowledge_base_id="kb1",
+            source_entity=source_entity,
+            candidates=[
+                IdentityCandidateEntity(
+                    knowledge_base_id="kb1",
+                    entity=_entity(
+                        "canonical:strong",
+                        source_provider_id="SRC-001",
+                        npi="123456789",
+                    ),
+                )
+            ],
+            natural_key_fields=["source_provider_id"],
+            identifier_fields=["npi"],
+        )
+    )
+
+    links = service.materialize_link_records(
+        knowledge_base_id="kb1",
+        source_entity_id=source_entity.id,
+        candidates=result.candidates,
+        source_refs=["source-system:a"],
+    )
+
+    assert len(links) == 1
+    link = links[0]
+    assert link.id == "identity_link:kb1:canonical-strong:source-1"
+    assert link.canonical_entity_id == "canonical:strong"
+    assert link.source_entity_id == "source:1"
+    assert link.relationship_type == "resolved_identity"
+    assert link.confidence == "high"
+    assert link.review_state == "auto_linkable"
+    assert link.decision_source == "identity_resolution.candidate_scoring"
+    assert link.source_refs == ["source-system:a"]
+    assert link.match_reasons[0]["field"] == "source_provider_id"

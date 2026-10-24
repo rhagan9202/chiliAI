@@ -93,9 +93,14 @@ def get_canonical_identity_detail(
 def resolve_identity_candidates(
     payload: IdentityResolutionRequestPayload,
     service: IdentityResolutionService = Depends(get_identity_resolution_service),
+    repository: IdentityLinkRepository = Depends(get_identity_link_repository),
     user: User = Depends(require_role("analyst")),
 ) -> IdentityResolutionResponse:
-    """Score a source identity against connector-provided canonical candidates."""
+    """Score a source identity against connector-provided canonical candidates.
+
+    Persists scored pairings as identity links so canonical lookup and steward
+    decisions work without a separate build step.
+    """
 
     _require_knowledge_base_access(user, payload.knowledge_base_id)
     result = service.score_candidates(
@@ -110,6 +115,27 @@ def resolve_identity_candidates(
             address_fields=list(payload.address_fields),
         )
     )
+    for record in service.materialize_link_records(
+        knowledge_base_id=result.knowledge_base_id,
+        source_entity_id=result.source_entity_id,
+        candidates=result.candidates,
+    ):
+        existing = repository.get_link(
+            knowledge_base_id=record.knowledge_base_id,
+            link_id=record.id,
+        )
+        if existing is not None and existing.decision_history:
+            # Steward decisions win over a re-score of the same pairing.
+            continue
+        if existing is not None:
+            record = record.model_copy(
+                update={
+                    "created_at": existing.created_at,
+                    "decision_history": list(existing.decision_history),
+                },
+                deep=True,
+            )
+        repository.upsert_link(record)
     return _resolution_response(result)
 
 
@@ -172,8 +198,7 @@ def _resolution_response(
                 confidence=candidate.confidence,
                 review_state=candidate.review_state,
                 match_reasons=[
-                    _match_reason_response(reason)
-                    for reason in candidate.match_reasons
+                    _match_reason_response(reason) for reason in candidate.match_reasons
                 ],
             )
             for candidate in result.candidates

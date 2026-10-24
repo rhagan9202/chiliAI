@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Callable, cast
 
 import pytest
@@ -10,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from analytics.identity_resolution import (
     IdentityDecisionService,
+    IdentityLinkDecisionRecord,
+    IdentityLinkRecord,
     IdentityResolutionService,
     InMemoryIdentityLinkRepository,
 )
@@ -22,7 +25,32 @@ from auditlog.service import AuditLogService
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
-from tests.analytics.test_identity_resolution_repository import _link
+
+
+def _sample_link(
+    link_id: str = "identity_link:kb1:canonical-1:source-1",
+) -> IdentityLinkRecord:
+    return IdentityLinkRecord(
+        id=link_id,
+        knowledge_base_id="kb1",
+        canonical_entity_id="canonical:1",
+        source_entity_id="source:1",
+        relationship_type="resolved_identity",
+        confidence="medium",
+        score=0.55,
+        review_state="steward_review",
+        decision_source="identity_resolution.candidate_scoring",
+        source_refs=["source-system:a"],
+        match_reasons=[
+            {
+                "field": "source_provider_id",
+                "reason": "natural_key_match",
+                "score_contribution": 0.55,
+            }
+        ],
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
 
 
 def _override_dependency(app: FastAPI, name: str, value: object) -> None:
@@ -45,7 +73,9 @@ def _identity_client() -> tuple[
     _override_dependency(app, "get_identity_link_repository", repository)
     _override_dependency(app, "get_event_bus", event_bus)
     _override_dependency(app, "get_audit_log_service", audit_service)
-    _override_dependency(app, "get_identity_resolution_service", IdentityResolutionService())
+    _override_dependency(
+        app, "get_identity_resolution_service", IdentityResolutionService()
+    )
     _override_dependency(
         app,
         "get_identity_decision_service",
@@ -79,7 +109,9 @@ def _auth_identity_client(
     _override_dependency(app, "get_identity_link_repository", repository)
     _override_dependency(app, "get_event_bus", event_bus)
     _override_dependency(app, "get_audit_log_service", audit_service)
-    _override_dependency(app, "get_identity_resolution_service", IdentityResolutionService())
+    _override_dependency(
+        app, "get_identity_resolution_service", IdentityResolutionService()
+    )
     _override_dependency(
         app,
         "get_identity_decision_service",
@@ -94,9 +126,9 @@ def _auth_identity_client(
 
 def test_get_canonical_identity_detail_lists_kb_scoped_source_links() -> None:
     client, repository, _, _ = _identity_client()
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
     repository.upsert_link(
-        _link("identity_link:kb2:canonical-1:source-1").model_copy(
+        _sample_link("identity_link:kb2:canonical-1:source-1").model_copy(
             update={"knowledge_base_id": "kb2"},
             deep=True,
         )
@@ -158,9 +190,125 @@ def test_resolve_identity_candidates_scores_connector_payload() -> None:
     assert payload["candidates"][0]["match_reasons"]
 
 
+def test_resolve_identity_candidates_persists_links_for_canonical_lookup() -> None:
+    """Resolve must materialize pairings so workbench lookup finds them."""
+
+    client, repository, _, _ = _identity_client()
+
+    resolve = client.post(
+        "/identity/resolve-candidates",
+        json={
+            "knowledge_base_id": "kb1",
+            "source_entity": {
+                "id": "source:1",
+                "type": "provider_source",
+                "properties": {
+                    "provider_name": "General Hospital",
+                    "npi": "1234567890",
+                },
+            },
+            "candidates": [
+                {
+                    "knowledge_base_id": "kb1",
+                    "entity": {
+                        "id": "canonical:1",
+                        "type": "provider",
+                        "properties": {
+                            "provider_name": "General Hospital",
+                            "npi": "1234567890",
+                        },
+                    },
+                }
+            ],
+            "natural_key_fields": ["provider_name"],
+            "identifier_fields": ["npi"],
+        },
+    )
+    assert resolve.status_code == 200
+
+    detail = client.get(
+        "/identity/canonical/canonical%3A1",
+        params={"knowledge_base_id": "kb1"},
+    )
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["total"] == 1
+    assert payload["links"][0]["id"] == "identity_link:kb1:canonical-1:source-1"
+    assert payload["links"][0]["source_entity_id"] == "source:1"
+    assert payload["links"][0]["confidence"] == "high"
+    assert payload["links"][0]["review_state"] == "auto_linkable"
+    assert (
+        repository.get_link(
+            knowledge_base_id="kb1",
+            link_id="identity_link:kb1:canonical-1:source-1",
+        )
+        is not None
+    )
+
+
+def test_resolve_identity_candidates_preserves_steward_decisions_on_rescore() -> None:
+    client, repository, _, _ = _identity_client()
+    repository.upsert_link(
+        _sample_link().model_copy(
+            update={
+                "review_state": "merged",
+                "decision_history": [
+                    IdentityLinkDecisionRecord(
+                        decision="approve_merge",
+                        actor_user_id="steward-1",
+                        comment="confirmed",
+                        created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                    )
+                ],
+            },
+            deep=True,
+        )
+    )
+
+    resolve = client.post(
+        "/identity/resolve-candidates",
+        json={
+            "knowledge_base_id": "kb1",
+            "source_entity": {
+                "id": "source:1",
+                "type": "provider_source",
+                "properties": {
+                    "provider_name": "General Hospital",
+                    "npi": "1234567890",
+                },
+            },
+            "candidates": [
+                {
+                    "knowledge_base_id": "kb1",
+                    "entity": {
+                        "id": "canonical:1",
+                        "type": "provider",
+                        "properties": {
+                            "provider_name": "General Hospital",
+                            "npi": "1234567890",
+                        },
+                    },
+                }
+            ],
+            "natural_key_fields": ["provider_name"],
+            "identifier_fields": ["npi"],
+        },
+    )
+    assert resolve.status_code == 200
+
+    stored = repository.get_link(
+        knowledge_base_id="kb1",
+        link_id="identity_link:kb1:canonical-1:source-1",
+    )
+    assert stored is not None
+    assert stored.review_state == "merged"
+    assert len(stored.decision_history) == 1
+    assert stored.decision_history[0].decision == "approve_merge"
+
+
 def test_record_identity_decision_returns_link_and_writes_audit_metadata() -> None:
     client, repository, event_bus, audit_service = _identity_client()
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
 
     response = client.post(
         "/identity/links/identity_link%3Akb1%3Acanonical-1%3Asource-1/decision",
@@ -200,7 +348,7 @@ def test_caller_supplied_tenant_id_cannot_reach_the_audit_ledger() -> None:
     """
 
     client, repository, _, audit_service = _identity_client()
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
 
     response = client.post(
         "/identity/links/identity_link%3Akb1%3Acanonical-1%3Asource-1/decision",
@@ -229,7 +377,7 @@ def test_get_canonical_identity_detail_hides_unauthorized_kb() -> None:
     client, repository, _, _ = _auth_identity_client(
         User(user_id="viewer-1", roles=["viewer"], knowledge_base_ids=["kb-allowed"])
     )
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
 
     response = client.get(
         "/identity/canonical/canonical%3A1",
@@ -265,7 +413,7 @@ def test_record_identity_decision_uses_authenticated_actor_metadata() -> None:
             knowledge_base_ids=["kb1"],
         )
     )
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
 
     response = client.post(
         "/identity/links/identity_link%3Akb1%3Acanonical-1%3Asource-1/decision",
@@ -296,7 +444,7 @@ def test_record_identity_decision_hides_unauthorized_kb() -> None:
     client, repository, event_bus, audit_service = _auth_identity_client(
         User(user_id="analyst-1", roles=["analyst"], knowledge_base_ids=["kb-allowed"])
     )
-    repository.upsert_link(_link())
+    repository.upsert_link(_sample_link())
 
     response = client.post(
         "/identity/links/identity_link%3Akb1%3Acanonical-1%3Asource-1/decision",
