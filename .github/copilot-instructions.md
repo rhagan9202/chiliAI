@@ -52,6 +52,7 @@
   - `ruff`'s cache dir may not be writable in sandboxed agent runs — use `ruff check --no-cache .`.
   - Bare `pyright` (no args) is the real gate — `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too; per-file `pyright <file>` can miss include-scoped test errors.
   - The repo-root `tools/` package is typechecked by its own `tools/pyrightconfig.json` (a separate CI step, "Type-check tools/"), not folded into `backend/pyproject.toml`'s `[tool.pyright]`, whose `include` is scoped to `backend/`. The split originated with a since-deleted `backend/tools/` that shared the bare name (removed 2026-07-24); it is kept for isolation, not for a live collision.
+  - MinIO uses `cgr.dev/chainguard/minio` (Docker Hub removed `minio/minio`; quay.io now needs a login). It runs as uid 65532, so a `minio-data` volume from the old root image fails with "Unable to write to the backend": `docker run --rm -v chiliai_minio-data:/data alpine chown -R 65532:65532 /data` once (keeps the data), or `make clean`.
   - Playwright `page.route` patterns must be `/api/`-anchored — unanchored patterns also intercept SPA page navigations and render JSON as the page body.
   - Regenerate frontend contracts after ANY frontend-consumed Pydantic change: `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json` (repo root), then `cd chili_app && npm run codegen:api`. CI fails on drift.
 
