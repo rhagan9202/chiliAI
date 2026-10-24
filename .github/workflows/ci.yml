@@ -207,6 +207,23 @@ jobs:
             $IGNORES \
             || pip-audit --skip-editable $IGNORES
 
+      - name: Save stack logs on failure
+        # The live-stack e2e tests run in this job, and their failures are
+        # usually explained only by the api/worker logs, which the teardown
+        # below destroys. Full logs as an artifact: a --tail in the job log
+        # cuts off the early part of a 12-minute run.
+        if: failure()
+        working-directory: ${{ github.workspace }}
+        run: docker compose -f docker-compose.dev.yaml logs --no-color --timestamps > stack-logs.txt
+
+      - name: Upload stack logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-stack-logs
+          path: stack-logs.txt
+          if-no-files-found: warn
+
       - name: Tear down the service stack
         if: always()
         working-directory: ${{ github.workspace }}
