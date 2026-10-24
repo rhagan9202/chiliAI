@@ -27,10 +27,11 @@ _TIMEOUT_SECONDS = 90
 _GATED_CAPABILITY = "connector.sync.status"
 _POSTGRES_CONTAINER = os.environ.get("CHILI_E2E_PG_CONTAINER", "chiliai-postgres-1")
 _WORKER_CONTAINER = os.environ.get("CHILI_E2E_WORKER_CONTAINER", "chiliai-worker-1")
-# Free-form version tags recorded on a score run, not validated against a
-# real catalog -- matching the values analytics/score_runs' own unit tests use.
+# The model version is a free-form tag. The catalog version is NOT: the score
+# batch executor fails a run whose catalog differs from the worker's active
+# pack (`catalog_version_changed`), so it is read from the live stack's
+# `/config/domain` rather than hardcoded to one pack's value.
 _SCORE_MODEL_VERSION = "risk-linear-v1"
-_SCORE_CATALOG_VERSION = "cms-fraud-features-v1"
 
 
 def _requests():
@@ -309,13 +310,23 @@ def _poll_kb_entity_count(base_url: str, kb_id: str, *, minimum: int) -> None:
     )
 
 
+def _active_catalog_version(base_url: str) -> str:
+    requests = _requests()
+    response = requests.get(f"{base_url}/config/domain", timeout=10)
+    assert response.status_code == 200, response.text
+    catalog = cast("dict[str, object]", _json(response)["feature_catalog"])
+    version = catalog["version"]
+    assert isinstance(version, str)
+    return version
+
+
 def _start_score_run(base_url: str, kb_id: str, *, idempotency_key: str) -> str:
     requests = _requests()
     response = requests.post(
         f"{base_url}/knowledgebases/{kb_id}/score-runs",
         json={
             "model_version": _SCORE_MODEL_VERSION,
-            "catalog_version": _SCORE_CATALOG_VERSION,
+            "catalog_version": _active_catalog_version(base_url),
             "idempotency_key": idempotency_key,
         },
         timeout=30,
@@ -430,6 +441,18 @@ def test_a_stalled_connector_sync_run_is_reconciled(base_url: str) -> None:
     )
     assert started.status_code == 200, started.text
     run_id = _json(started)["run_id"]
+
+    # Let the worker finish the real (empty) sync first. Forging `running`
+    # while it is still in flight races it: the worker's own completion then
+    # overwrites the forged row and the reconciler correctly skips it.
+    deadline = time.monotonic() + _TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        settled = _psql(
+            f"select status from connector_sync_runs where run_id='{run_id}'"
+        )
+        if settled not in ("queued", "running"):
+            break
+        time.sleep(1)
 
     _psql(
         "update connector_sync_runs set status='running', "
