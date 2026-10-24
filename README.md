@@ -81,6 +81,8 @@ Platform notes for fresh checkouts: `make dev`/`make prod` create the gitignored
 
 The development Compose stack wires API and worker through Redis Streams, shared local filesystem object storage, and Neo4j graph persistence via `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (the default pack for `make dev`/`make prod`; see `backend/config/README.md` for the full pack list and the `CHILI_CONFIG_OVERLAY_PATH` environment-overlay mechanism). The smoke script creates a temporary KB, uploads a Medicare-domain JSON document, waits for the graph pipeline, validates Investigation search/detail/neighborhood APIs, and prints an Investigation route containing a real generated entity ID.
 
+> **`make prod` caveat**: `docker-compose.yaml` (the prod stack) defines no Postgres service and sets no `DATABASE_URL`, while the default pack pins `database.backend: postgres` — so as shipped, opening the database raises `DatabaseConnectionError` (`DATABASE_URL` is not set) and it is not a working full stack. Supply an external Postgres and `DATABASE_URL` (e.g. via `.env`) before relying on it; `make dev` is the working full stack.
+
 | Service | Dev URL | Prod URL |
 |---------|---------|----------|
 | Frontend (Vite / nginx) | http://localhost:5173 | http://localhost |
@@ -95,7 +97,7 @@ See `make help` for all available commands.
 ### Prerequisites
 
 - Python ≥ 3.12
-- Node.js ≥ 20
+- Node.js ≥ 22.22 (react-router v8's engine floor; CI and the frontend Dockerfile use Node 22)
 - Redis 7+ (for event streaming)
 - A graph database (Neo4j 5 recommended for local dev)
 

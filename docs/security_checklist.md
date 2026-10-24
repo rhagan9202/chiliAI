@@ -13,11 +13,11 @@ owner: Platform Security
 > (Jan / Apr / Jul / Oct), plus ad-hoc when a new external integration lands.
 >
 > The header previously read 2026-05-12 while the Findings log already carried a
-> dated 2026-07-26 entry — the stamp now matches the body. **A09 is out of date:**
-> it lists only correlation IDs, structlog and Prometheus, but an admin-gated
-> append-only audit ledger shipped with SAFE-CMS-009 (`backend/auditlog/`,
-> `GET /audit/events`, migration `0016_audit_log`). A full A01–A10 re-review
-> against the surge has not been done.
+> dated 2026-07-26 entry — the stamp now matches the body. A09 previously
+> listed only correlation IDs, structlog and Prometheus; the audit-ledger bullet
+> below was added 2026-10-24 as a factual inventory correction, **not** a
+> review. A full A01–A10 re-review against the surge has not been done, and the
+> October quarterly review is due.
 
 This checklist maps OWASP Top 10 (2021) categories to specific chiliAI
 mitigations and the modules / story IDs that implement them. It is intentionally
@@ -210,6 +210,13 @@ require a documented justification in this file.
   endpoint is no longer public by default: it is annotated with
   `require_role("service")` and therefore requires a service-or-higher session
   whenever auth is enabled.
+- **Audit ledger.** SAFE-CMS-009 added an append-only ledger of material
+  analyst/system actions (`backend/auditlog/`, table `audit_log`, migration
+  `0016_audit_log`). The repository protocol exposes only `append` and `list`.
+  `AuditLogService.record` is non-blocking: a failed write is kept in a
+  bounded in-process buffer (default 100) rather than failing the action.
+  `GET /audit/events` and `GET /audit/status` (write-failure count) are both
+  `require_role("admin")`. Not yet assessed in a quarterly review.
 
 ### Cookie CSRF posture — tracked finding
 

@@ -697,3 +697,31 @@
 - `backend/events/types.py` (modify — `RagCompletionReference.tenant_id`)
 - `backend/api/_rag_bridges.py` (modify — guard pulls tenant from context)
 - `backend/api/state.py` (modify — drop singleton if per-tenant decision lands)
+
+---
+
+## Story rag.18: BL-059 — RAG answers tell the truth about scope and citations
+
+**ID:** rag.18
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** [conversations.07]
+**Estimated size:** L
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-059, 5 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `backend/rag/service.py` (~:132 as of 2026-10-24) still retrieves from `knowledge_base_ids[0]` only, while `RagQueryResponse.knowledge_base_ids` echoes the full scope resolved by `resolve_kb_scope` — so a pack's `default_reference_kb_id` (policy KB) is reported as searched but never is.
+- Citations are built from the full retrieved set, including chunks that `_fit_context_to_budget` (in `api/_rag_bridges.py`) dropped or truncated before the LLM saw them.
+
+### Acceptance Criteria
+- [ ] Retrieval, graph expansion and generation cover every id in `knowledge_base_ids`, or the response reports only the KBs actually searched.
+- [ ] Citations (response and SSE `citations`) list only the chunks, and snippets, the model actually received after context budgeting.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `backend/rag/service.py`
+- `backend/api/_rag_bridges.py`

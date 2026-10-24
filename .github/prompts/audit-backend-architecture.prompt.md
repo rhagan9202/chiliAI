@@ -14,14 +14,14 @@ Perform a comprehensive code audit of the Python backend for contract consistenc
 
 Read these before auditing — they define the rules:
 
-- [Backend instructions](.github/instructions/backend.instructions.md) — typing, coupling, testing rules
-- [Architecture doc](docs/architecture.md) — module responsibilities, dependency rules, §5 package tree
-- [Copilot instructions](.github/copilot-instructions.md) — cross-module interaction paths
-- [Shared types](backend/shared/types.py) — domain-agnostic runtime types
-- [Shared protocols](backend/shared/protocols.py) — cross-module contracts
-- [Event protocols](backend/events/protocols.py) — EventBus contract
-- [Event types](backend/events/types.py) — typed event payloads and AnyEvent union
-- [Storage protocols](backend/storage/protocols.py) — ObjectStore contract
+- [Backend instructions](../instructions/backend.instructions.md) — typing, coupling, testing rules
+- [Architecture doc](../../docs/architecture.md) — module responsibilities, dependency rules, §5 package tree
+- [Copilot instructions](../copilot-instructions.md) — cross-module interaction paths
+- [Shared types](../../backend/shared/types.py) — domain-agnostic runtime types
+- [Shared protocols](../../backend/shared/protocols.py) — cross-module contracts
+- [Event protocols](../../backend/events/protocols.py) — EventBus contract
+- [Event types](../../backend/events/types.py) — typed event payloads and AnyEvent union
+- [Storage protocols](../../backend/storage/protocols.py) — ObjectStore contract
 
 ## Audit Procedure
 

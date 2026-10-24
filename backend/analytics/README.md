@@ -43,6 +43,29 @@ repository adapters and no service or events. `analytics/peerstats` computes
 record-column peer z-scores and persists derived risk signals consumed by
 `analytics/risk`.
 
+Three newer submodules also deviate from the template:
+
+- `analytics/features` — `FeatureCatalogService` reads the active pack's
+  versioned `feature_catalog` and `typologies` (no persistence of its own).
+  `FeatureValueRepositoryProtocol` has only an in-memory adapter, and
+  `list_entity_values` returns an empty list until durable feature values are
+  wired. Served by `GET /knowledgebases/{knowledge_base_id}/features/catalog`
+  and `/entities/{entity_type}/{entity_id}/features`.
+- `analytics/identity_resolution` — `IdentityResolutionService` (`service.py`)
+  scores a source identity against candidate canonical entities;
+  `repository.py` holds the `IdentityLinkRepository` protocol, its in-memory
+  implementation, and `IdentityDecisionService` (steward decisions);
+  `adapters/postgres.py` persists `identity_links` (migration `0018`). Served
+  by `api/routers/identity.py`; `POST /identity/resolve-candidates` persists
+  scored pairings as identity links without overwriting one that already
+  carries a steward decision.
+- `analytics/score_runs` — durable score-all runs and batches (`score_runs`,
+  `score_batches`; in-memory + Postgres adapters) behind `ScoreRunService`.
+  `executor.py` registers `score.run.queued` / `score.batch.queued` handlers
+  with the `execution/` dispatch seam and chains batch to batch;
+  `reconciler.py` (`ScoreRunReconciler`) fails stalled runs from the worker's
+  periodic tick. Served by `/knowledgebases/{knowledge_base_id}/score-runs`.
+
 `analytics/gnn` is a worked example of the protocol-plus-adapter pattern this
 guide prescribes, now live end to end: `GraphRepositorySnapshotSource`
 (`adapters/graph_repository_source.py`) implements `GraphSnapshotSourceProtocol`

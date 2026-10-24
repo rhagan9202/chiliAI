@@ -14,20 +14,20 @@ Create a complete backend service module at `backend/{moduleName}/` following th
 
 Before generating any code, read these files to understand conventions and the exemplar patterns:
 
-- [Backend instructions](.github/instructions/backend.instructions.md) — typing, coupling, and testing rules
-- [Architecture doc](docs/architecture.md) — module responsibilities and boundaries
-- [Ingestion protocols](backend/ingestion/protocols.py) — service protocol exemplar
-- [Ingestion models](backend/ingestion/models.py) — internal transport model exemplar  
-- [Ingestion service_models](backend/ingestion/service_models.py) — API boundary model exemplar
-- [Ingestion service](backend/ingestion/service.py) — service implementation exemplar
-- [Ingestion orchestrator protocols](backend/ingestion/orchestrators/protocols.py) — internal orchestration contracts
-- [Ingestion parser protocols](backend/ingestion/parsers/protocols.py) — adapter contracts exemplar
-- [Ingestion parser registry](backend/ingestion/parsers/registry.py) — adapter registry exemplar
-- [Shared types](backend/shared/types.py) — domain-agnostic runtime types
-- [Shared protocols](backend/shared/protocols.py) — cross-module contracts
-- [Event types](backend/events/types.py) — typed event payloads
-- [Event protocols](backend/events/protocols.py) — EventBus contract
-- [Storage protocols](backend/storage/protocols.py) — ObjectStore contract
+- [Backend instructions](../instructions/backend.instructions.md) — typing, coupling, and testing rules
+- [Architecture doc](../../docs/architecture.md) — module responsibilities and boundaries
+- [Ingestion protocols](../../backend/ingestion/protocols.py) — service protocol exemplar
+- [Ingestion models](../../backend/ingestion/models.py) — internal transport model exemplar  
+- [Ingestion service_models](../../backend/ingestion/service_models.py) — API boundary model exemplar
+- [Ingestion service](../../backend/ingestion/service.py) — service implementation exemplar
+- [Ingestion orchestrator protocols](../../backend/ingestion/orchestrators/protocols.py) — internal orchestration contracts
+- [Ingestion parser protocols](../../backend/ingestion/parsers/protocols.py) — adapter contracts exemplar
+- [Ingestion parser registry](../../backend/ingestion/parsers/registry.py) — adapter registry exemplar
+- [Shared types](../../backend/shared/types.py) — domain-agnostic runtime types
+- [Shared protocols](../../backend/shared/protocols.py) — cross-module contracts
+- [Event types](../../backend/events/types.py) — typed event payloads
+- [Event protocols](../../backend/events/protocols.py) — EventBus contract
+- [Storage protocols](../../backend/storage/protocols.py) — ObjectStore contract
 
 Also consult `docs/architecture.md` §5 for the module's position in the package tree and its responsibility description.
 

@@ -21,7 +21,7 @@
 - `RedisStreamsEventBus.consume` issues `XREADGROUP ">"` for never-delivered entries, while `RedisStreamsEventBus.reclaim_stale_pending` uses `XAUTOCLAIM` to recover stale pending deliveries when called by the worker.
 - `EventBusSettings.reclaim_min_idle_ms` is loaded from `CHILI_EVENT_RECLAIM_MIN_IDLE_MS`, can be supplied through `DomainConfig.events.reclaim_min_idle_ms`, and is passed into `agent.coordinator.drain_ingestion_events`, which reclaims before normal reads.
 - `InMemoryEventBus` tracks `delivered` per entry but does not model the Redis Streams Pending Entries List (PEL), so the in-memory adapter cannot exercise reclaim semantics (`backend/events/adapters/in_memory.py:13-77`).
-- The agent worker's retry/DLQ wrapper (`backend/agent/coordinator.py:2345-2412 run_handler_with_retry`) only protects in-flight handler invocations; once the process exits abnormally, the entry stays pending.
+- The agent worker's retry/DLQ wrapper (`backend/agent/coordinator.py` `run_handler_with_retry`, ~:4432 as of 2026-10-24) only protects in-flight handler invocations; once the process exits abnormally, the entry stays pending.
 
 ### Acceptance Criteria
 - [x] `RedisStreamsEventBus.reclaim_stale_pending` reclaims entries idle longer than a configurable `min_idle_ms` via `XAUTOCLAIM`, so a healthy consumer can recover crashed-peer deliveries. _(Worker drains call this before `consume` when `reclaim_min_idle_ms` is set.)_
@@ -31,8 +31,8 @@
 - [ ] `RedisStreamsEventBus` exposes a typed counter for reclaim attempts and successes (or a callback hook) suitable for binding to a Prometheus counter in a follow-up observability story.
 - [x] The XPENDING/XCLAIM TODO comment is removed from `backend/events/adapters/redis_streams.py`.
 - [ ] `tests/events/test_redis_streams.py` adds an integration test (marked `@pytest.mark.integration`) that publishes an event, simulates a crashed consumer by reading without ack from one consumer name, then verifies a second consumer name reclaims the entry after `min_idle_ms`.
-- [ ] `pyright --strict` clean on `backend/events/`.
-- [ ] Backend coverage for `backend/events/` stays ≥ 85%.
+- [x] `pyright --strict` clean on `backend/events/`. _(`events` is in `tool.pyright.include`; `pyright events` reports 0 errors, 2026-10-24.)_
+- [x] Backend coverage for `backend/events/` stays ≥ 85%. _(93% from `pytest tests/events --cov=events`, 2026-10-24; reclaim covered by `test_redis_streams_event_bus_reclaims_stale_pending_deliveries` and siblings, which are unit tests, not the integration test AC#7 asks for.)_
 
 ### Verification
 - Run `cd backend && pytest tests/events -q`.
@@ -195,7 +195,7 @@
 - [ ] `EventBase` gains optional `traceparent: str | None = None` and `tracestate: str | None = None` fields, persisted in the JSON body and exposed as transport-level fields by `encode_event`.
 - [ ] A producer-side helper (in `events/tracing.py` or `events/codec.py`) injects the current OTel span context into a fresh event before publish; call sites that already have a span (API routers, coordinator handlers) use it.
 - [ ] `RedisStreamsEventBus.publish` and `InMemoryEventBus.publish` either accept a pre-stamped event or auto-stamp from the current OTel context if the fields are unset, so producers do not have to remember.
-- [ ] On consume, a helper extracts the trace context from the delivery and starts a consumer span linked to the producer's span; the coordinator's `run_handler_with_retry` (`backend/agent/coordinator.py:2345-2412`) uses it before invoking the handler.
+- [ ] On consume, a helper extracts the trace context from the delivery and starts a consumer span linked to the producer's span; the coordinator's `run_handler_with_retry` (`backend/agent/coordinator.py`, ~:4432 as of 2026-10-24) uses it before invoking the handler.
 - [ ] If `traceparent` is malformed or missing, the consumer span is started fresh and a structured log records the gap (no exception).
 - [ ] `docs/ledger/event-catalog.md` notes that every event envelope carries optional W3C trace context.
 - [ ] Tests cover: producer-side injection, consumer-side extraction, missing-context fallback.
@@ -350,7 +350,7 @@
 
 ### Current State
 - There is no script under `scripts/` for replaying Redis stream entries (no `XRANGE`/`XREVRANGE` consumer exists outside the live consumer loop).
-- The only retry path is the in-flight one in `backend/agent/coordinator.py:2345-2412 run_handler_with_retry`, which routes to DLQ on retry exhaustion rather than replaying earlier entries.
+- The only retry path is the in-flight one in `backend/agent/coordinator.py` `run_handler_with_retry` (~:4432 as of 2026-10-24), which routes to DLQ on retry exhaustion rather than replaying earlier entries.
 - DLQ replay is intentionally split into events.10; this story covers the live-stream replay surface. **events.10 has since shipped** (2026-07-15, BL-023): a dead-lettered event can be inspected and re-driven via `GET/POST /events/dlq*`. This story remains open and unchanged — it is a distinct capability (replaying arbitrary already-processed entries from a given Redis Stream position/range, not just re-driving one dead-lettered event by id).
 - `backend/events/adapters/redis_streams.py` exposes no `range`-style reader on the protocol.
 
@@ -576,7 +576,7 @@ operator playbook: `docs/runbooks/event-replay.md`; module docs:
 - [ ] `EventBase` gains optional `idempotency_key: str | None = None`, persisted and round-tripped by `codec.encode_event`/`decode_event`; existing events default to `None` and behaviour is unchanged.
 - [ ] Producers that need dedup (e.g. records ingestion, monitoring alert pipeline, risk scoring) set `idempotency_key` deterministically from the domain payload (documented per-event in `event-catalog.md`).
 - [ ] A new `events.dedup.DedupStore` protocol with Redis and in-memory adapters exposes `seen(key: str, ttl_seconds: int) -> bool`; `True` means the key has been seen within the TTL and the handler should skip.
-- [ ] The coordinator's `run_handler_with_retry` (`backend/agent/coordinator.py:2345-2412`) consults the dedup store before dispatch when `idempotency_key` is set; duplicates are ack'd without re-running the handler and a structured log records the skip.
+- [ ] The coordinator's `run_handler_with_retry` (`backend/agent/coordinator.py`, ~:4432 as of 2026-10-24) consults the dedup store before dispatch when `idempotency_key` is set; duplicates are ack'd without re-running the handler and a structured log records the skip.
 - [ ] Per-event-type opt-in/opt-out configuration lives in `EventBusSettings` (default opt-out so existing handlers retain their current behaviour); events that opt in document their idempotency-key derivation in the catalog.
 - [ ] Tests cover: encode/decode preserves `idempotency_key`; dispatcher skips duplicates; dedup store TTL expires correctly; multi-handler subscribers each get the event once on first delivery and skip on re-delivery.
 - [ ] `docs/ledger/event-catalog.md` gains an "Idempotency key" column per event identifying the derivation source.

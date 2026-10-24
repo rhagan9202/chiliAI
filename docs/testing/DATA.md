@@ -25,7 +25,7 @@ You need the public CMS archives downloaded once (see [Where to get the source d
 # 1. Stage the downloaded zips into the canonical sample_data/ layout.
 #    Override the source dir for your machine:
 CMS_DOWNLOADS_DIR=/path/to/your/downloads make data-setup
-#    (default source dir is /mnt/c/Users/rdhag/Downloads)
+#    (always set it: the script's built-in fallback is one developer's machine path)
 
 # 2. Bring up the full stack.
 make dev          # wait for healthy
@@ -120,6 +120,7 @@ Its *contents* stay gitignored — nothing generated into it is ever committed.
 | `docs/testing/knowledge_base_fixtures/medicare_fraud/*` | tracked | hand-crafted KB docs + `manifest.json` | manual / manifest-driven walkthroughs | expected graph counts + search queries; see its own README |
 | `docs/testing/knowledge_base_fixtures/air_force_housing/*_sample.csv` | tracked | synthetic Air Force housing feed exports covering **all 65 CONUS installations**, values deterministically calibrated to the pack's scorecard thresholds (≈45 pass / 14 warn / 6 fail) | `tools/seed_housing_demo.py` (`make seed-housing`) + manual walkthroughs for `department_air_force_housing.yaml` | maps `umd_sample.csv` -> `umd_authorizations`, `bah_sample.csv` -> `bah_rates`, `inventory_sample.csv` -> `housing_inventory`, `market_sample.csv` -> `market_availability`, `demographics_sample.csv` -> `area_demographics`, `resident_experience_sample.csv` -> `resident_experience`. **One snapshot period (2026-06-30) by design**: `sum` metrics (safety waivers, dispute payments) aggregate across all matching records with no period grouping, so a second snapshot in the same KB would double the sums and can flip grades (accepted red-cell finding C2 — a data rule, not a code rule). Reseed into a **fresh KB**: record ingestion is insert-only, re-uploads of changed rows silently no-op (the seed script refuses a same-named existing KB; upload receipts not distinguishing inserted-vs-skipped is a recorded follow-up risk). See the folder README |
 | `docs/testing/knowledge_base_fixtures/air_force_housing/installations_reference.csv` (+ `INSTALLATIONS.md`) | tracked | canonical 65-installation CONUS AF/SF reference set (IDs, branch, command, coordinates, per-row source notes + inclusion rule) — **not a feed** | frontend reference layer `chili_app/src/data/airForceInstallations.ts` (sync enforced by `src/data/__tests__/airForceInstallations.test.ts`); fixture generation | coordinates from OurAirports open data; installation IDs shared by every feed fixture |
+| `backend/tests/config/fixtures/medicare_fraud_dev_full_snapshot.yaml` | tracked | frozen copy of the retired full Medicare dev config | `backend/tests/config/test_overlay.py` (`test_medicare_dev_overlay_reproduces_old_full_config`) | **not data** — frozen golden pinning base ⊕ `overlays/medicare_fraud_dev.yaml` equivalence (BL-044). A deliberate base/overlay change is meant to break the test: mirror the same semantic change into the snapshot, or retire test and fixture together (see the test docstring) |
 | `tests/scripts/fixtures/*.md` | tracked | backlog-story markdown | `tests/scripts/test_backlog_consistency.py` | **not data** — fixtures for the backlog tooling |
 | `backend/data/` | runtime · ignored | local FS object-store (`base_path`) | the storage adapter at runtime | never commit |
 
@@ -147,7 +148,7 @@ All files are **public** CMS releases (synthetic — DE-SynPUF is CMS's de-ident
 ## How `make data-setup` works
 
 `scripts/setup_local_data.sh` (idempotent):
-1. Reads `CMS_DOWNLOADS_DIR` (default `/mnt/c/Users/rdhag/Downloads`).
+1. Reads `CMS_DOWNLOADS_DIR`. Set it to the directory holding your downloaded zips; the script's built-in fallback is a single developer's machine path, and it exits with `Set CMS_DOWNLOADS_DIR to where the CMS/NPPES .zip files live.` when that directory does not exist.
 2. For each `*DE1_0_*Sample*.zip`, extracts its inner CSV (already cleanly named — numeric filename prefixes like `176541_` are stripped) into `sample_data/CMS/`, skipping any already present.
 3. Ensures `sample_data/npidata_pfile_*.csv` exists, extracting it from the NPPES zip if missing.
 

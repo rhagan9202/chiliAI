@@ -10,15 +10,15 @@ Apply targeted code fixes for findings produced by the `/audit-backend-architect
 
 **Input**: $ARGUMENTS
 
-If the input is `all` or empty, first run the full audit yourself by following [audit-backend-architecture](.github/prompts/audit-backend-architecture.prompt.md), then fix every finding. Otherwise, parse the provided findings and fix each one.
+If the input is `all` or empty, first run the full audit yourself by following [audit-backend-architecture](./audit-backend-architecture.prompt.md), then fix every finding. Otherwise, parse the provided findings and fix each one.
 
 ## Required Context
 
 Read these to understand the rules each fix must satisfy:
 
-- [Backend instructions](.github/instructions/backend.instructions.md) — typing, coupling, testing rules
-- [Architecture doc](docs/architecture.md) — module responsibilities and boundary rules
-- [Copilot instructions](.github/copilot-instructions.md) — cross-module interaction paths
+- [Backend instructions](../instructions/backend.instructions.md) — typing, coupling, testing rules
+- [Architecture doc](../../docs/architecture.md) — module responsibilities and boundary rules
+- [Copilot instructions](../copilot-instructions.md) — cross-module interaction paths
 
 ## Fix Procedures by Check
 

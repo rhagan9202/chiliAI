@@ -37,9 +37,10 @@ _PROVENANCE_SNIPPET_MAX_CHARS = 160
 class ExplainabilityService:
     """Coordinate context loading, evidence assembly, and event publication."""
 
-    # TODO(production): Integrate SHAP/LIME for model-agnostic feature attribution.
-    # Add configurable evidence selection strategies (top-k by score, diversity
-    # sampling, subgraph-aware selection).
+    # Feature attribution is injected via ``feature_attributor`` (SHAP:
+    # adapters/shap_attribution.py ShapRiskAttributor; no LIME adapter exists).
+    # TODO(production): Add configurable evidence selection strategies (top-k by
+    # score, diversity sampling, subgraph-aware selection).
 
     def __init__(
         self,

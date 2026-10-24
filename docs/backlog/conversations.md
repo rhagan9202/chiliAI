@@ -38,3 +38,30 @@
 - `backend/conversations/service.py` (modify — `append_messages`)
 - `backend/conversations/adapters/postgres.py` (modify — guard the upsert)
 - `backend/conversations/adapters/in_memory.py` (modify — matching guard)
+
+---
+
+## Story conversations.07: BL-060 — Streaming chat persists its transcript
+
+**ID:** conversations.07
+**Status:** planned
+**Prerequisites:** [rag.18]
+**Unblocks:** []
+**Estimated size:** M
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-060, 3 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `POST /chat/conversations/{id}/messages?stream=true` (`backend/api/routers/rag.py`) returns a `StreamingResponse` over `_stream_sse`, which receives only the RAG service and never calls `append_messages`; the non-streaming branch persists both turns. A streamed exchange is lost on reload.
+- Spec sequencing: lands after BL-059 (`rag.18`) — both edit `rag/` and `api/routers/rag.py`.
+
+### Acceptance Criteria
+- [ ] The streaming branch durably stores the user message and assistant reply, matching the non-streaming branch; `GET /chat/conversations/{id}` returns them after a streamed turn.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `backend/api/routers/rag.py` (`_stream_sse` and the streaming branch)
+- `backend/conversations/service.py` (read — `append_messages`)

@@ -123,3 +123,32 @@
 - `backend/api/routers/scorecards.py` (modify — instrument error paths)
 - `backend/scorecards/README.md` (new — observability section)
 - `backend/tests/scorecards/test_metrics.py` (new)
+
+---
+
+## Story scorecards.04: BL-065 — Declared-but-unwired config
+
+**ID:** scorecards.04
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-065, 3 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `backend/scorecards/evaluation.py`: once `pass_min` or `warn_min` is set, `fail_max`/`fail_min` can never change the outcome — a value in the undefined middle band falls to the catch-all `fail`.
+- `backend/analytics/peerstats/peer_analysis.py`: `PeerCohortDefinitionConfig.min_cohort_size` is validated but `get_peer_analysis_service` never passes it, so the service keeps its hardcoded default of 5. Filed here with the scorecards finding because the spec makes them one story (configuration the schema validates and the code never consults).
+
+### Acceptance Criteria
+- [ ] Scorecard thresholds honour an explicit `fail_max`/`fail_min` band when pass/warn bounds are also set.
+- [ ] A configured `min_cohort_size` reaches `PeerAnalysisService` and drives its cohort-confidence result.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `backend/scorecards/evaluation.py`
+- `backend/analytics/peerstats/peer_analysis.py`
+- `backend/api/dependencies.py` (`get_peer_analysis_service`)

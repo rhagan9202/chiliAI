@@ -12,7 +12,9 @@ ObjectStore = ObjectStoreProtocol
 # - get_stream(key: str) -> Iterator[bytes] for large object streaming
 # - put_stream(key: str, chunks: Iterator[bytes], ...) -> StoredObjectWriteResult
 # - generate_presigned_url(key: str, expires_in: int) -> str (S3/GCS download links)
-# Add production adapters: S3ObjectStore, GCSObjectStore, MinioObjectStore.
+# Adapters: InMemoryObjectStore, LocalFsObjectStore (adapters/local_fs_adapter.py)
+# and S3ObjectStore (adapters/s3_adapter.py), which also serves the `minio`
+# backend. A GCS adapter is roadmap only.
 
 
 __all__ = [

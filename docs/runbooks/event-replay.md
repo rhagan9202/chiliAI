@@ -43,7 +43,7 @@ the durable persist itself failed (rare, logged when it happens).
 - **Role gates are enforced only when the active domain pack enables `auth`**
   (`require_role` short-circuits and returns the current user unchecked
   whenever `domain_config.auth` is `None` or `auth.enabled` is falsy —
-  `backend/api/middleware/rbac.py:65-67`). The default dev stack ships with
+  `backend/api/middleware/rbac.py:69-71`). The default dev stack ships with
   auth disabled, so in dev **every** route — including the `admin`-gated
   `/events/dlq/*/replay` and `/discard` mutations — is open regardless of the
   anonymous role; `CHILI_DEV_ANONYMOUS_ROLE` has no effect in this mode

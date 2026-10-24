@@ -3,6 +3,7 @@
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
 **Reviewed:** 2026-07-26 against the current working tree — analytics adapter names corrected, agent handler entries updated, and post-snapshot modules (`cases/`, `conversations/`, `knowledgebases/`, `policy/`, `scorecards/`) added.
 **Reviewed:** 2026-08-06 — the seven SAFE-CMS modules and three new `analytics/` submodules added below; the backend has **28 packages** (`ls backend/` is ground truth).
+**Reviewed:** 2026-10-24 — `execution/` (executor dispatch seam) and `config/deployment.py` added; the backend has **29 packages** (`ls backend/` is ground truth).
 
 Each entry covers: purpose, primary public exports, adapters (if any), and forbidden/allowed dependencies per CLAUDE.md.
 
@@ -174,7 +175,7 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Pipeline handlers:**
 - `handle_documents_uploaded` — document ingestion pipeline (parse → chunk → extract → upsert graph → embed → index)
-- `handle_records_ingested` — maps raw records to entities/relationships → graph upsert + vector embed/index [enhanced 2026-05-22 to add embed+index step]; also runs best-effort policy/peerstats/timeseries stages and (analytics.34) an in-process Flow B analytics fan-out
+- `handle_records_ingested` — maps raw records to entities/relationships → graph upsert + vector embed/index [enhanced 2026-05-22 to add embed+index step]; writes observations and evaluates them for threshold alerts (`_run_monitoring_stage`, 2026-10-24); also runs best-effort policy/peerstats/timeseries stages and (analytics.34) an in-process Flow B analytics fan-out
 - `handle_knowledge_base_deleted` — full 4-step retry cascade (graph → vector → raw_records → object_store) [added 2026-05-22]
 - `handle_graph_updated_for_analytics` (Flow 2) — Flow B: GNN → risk → explainability → alerts.created, plus graph property write-back and throttled entity-metric persistence
 - `handle_risk_scored_for_graph` (Flow 3) — risk score persistence + graph property snapshot
@@ -221,6 +222,8 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 - `LlmConfig.base_url` (custom endpoint)
 - `LlmConfig.fallback: LlmConfig | None` (recursive fallback chain)
 - `EntityDefinition.natural_key: list[str]` (populated in `medicare_fraud_cms_desynpuf.yaml`)
+
+**Deployment-shape guard:** `deployment.py` — `require_shared_state_stores(config, *, event_bus_backend=...)` raises `ConfigurationError` when the event bus is `redis` (API and worker are separate processes) but the database, graph or vector store is `in_memory` (`process_local_state_stores` names the offenders). Called at API boot (`api/app.py`), worker boot (`agent/coordinator.py`) and on every `POST /config/switch|apply` hot-swap candidate (`api/routers/config.py`).
 
 **Forbidden dependencies:** Everything except `shared`
 
@@ -441,6 +444,20 @@ The approval gate is server-side and fails closed. A parked run is `AWAITING_APP
 
 ---
 
+## `execution/` — Executor Dispatch Seam
+
+**Purpose:** Routes executor events from the worker to the module that executes them. The worker keeps owning the Redis loop (consume, reclaim, retry, DLQ, ack) and calls `dispatch`; this package only routes.
+
+**Key exports:** `dispatch`, `register_handler`, `registered_event_types`, `ExecutionHandler`, `ExecutionDeps` (`deps.py` — the deliberately narrow, all-optional subset of worker dependencies executors may use)
+
+**Adapters:** none.
+
+**Registered handlers:** importing `execution` imports the three executor modules for their registration side effect — `analytics/score_runs/executor.py` (`score.run.queued`, `score.batch.queued`), `connectors/executor.py` (`connector.page.queued`), `workflow_definitions/executor.py` (`workflow.step.queued`). `dispatch` returns 0 for an unregistered event type and lets handler exceptions propagate so `run_handler_with_retry` owns retry and dead-lettering. The worker's subscription list must be a superset of `registered_event_types()`.
+
+**Dependencies:** `events`, `config` and the protocols of the modules whose executors it carries; `agent/coordinator.py` imports `dispatch`/`ExecutionDeps`.
+
+---
+
 ## `analytics/features/` — Feature Catalog
 
 **Purpose:** Reads the domain pack's versioned typology/feature catalog.
@@ -459,7 +476,13 @@ The approval gate is server-side and fails closed. A parked run is `AWAITING_APP
 
 **Adapters:** `InMemoryIdentityLinkRepository`, `PostgresIdentityLinkRepository` (`identity_links`, migration `0018`)
 
-**Status:** no production path **creates** a link — `upsert_link`'s only non-test caller requires the link to exist already. `IdentityLinkDecisionRecordedEvent` is published with no consumer.
+**Status:** `POST /identity/resolve-candidates` scores candidates and persists
+matching pairings into the identity-link repository (preserving steward
+decision history on re-score). `GET /identity/canonical/{entity_id}` and
+steward decisions therefore find links without a separate build step.
+`IdentityLinkDecisionRecordedEvent` is still published with no consumer;
+graph projection via `project_identity_relationships` remains a caller-driven
+optional path.
 
 ---
 

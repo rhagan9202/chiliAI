@@ -176,14 +176,14 @@ not subject to HTTP upload limits.
 
 ## NPPES and DE-SynPUF Feeds (medicare_fraud domain)
 
-`config/defaults/medicare_fraud.yaml` (and the dev variant) declares two built-in feed definitions that exercise the records pipeline end-to-end:
+The NPPES and DE-SynPUF feeds live in `config/defaults/medicare_fraud_cms_desynpuf.yaml`, not in `medicare_fraud.yaml` (whose only feed is `claims_feed`; the `medicare_fraud_dev.yaml` overlay adds none). The ones the Tennessee demo subset exercises end-to-end:
 
-- **`nppes_providers`** — NPPES National Provider Identifier file. Each row maps to a `provider` entity with NPI, taxonomy, name, address, and state. Used by the Tennessee demo subset.
-- **`de_synpuf_inpatient`** / **`de_synpuf_outpatient`** — CMS DE-SynPUF synthetic Medicare claims. Inpatient rows map to `claim → provider` and `claim → beneficiary` relationships; outpatient rows are analogous. Used by the Tennessee demo subset.
+- **`nppes_providers`** — NPPES National Provider Identifier file. Each row maps to a `provider` entity with NPI, taxonomy, name, and practice address/state.
+- **`inpatient_claims`** / **`outpatient_claims`** — CMS DE-SynPUF synthetic Medicare claims. Rows map to `claim`, `beneficiary`, `provider`, and `facility` entities, with `billed_for` (`claim → beneficiary`), `submitted_by` and `performed_at` relationships.
 
 These feeds are config-only additions — no application code was changed. To add a new feed for a different domain, declare it in the domain YAML under `records.feeds` following the same pattern.
 
-The Tennessee subset materializer at `tools/sample_data/build_tennessee_subset.py` filters the full NPPES CSV and DE-SynPUF JSONL down to Tennessee providers and their associated claims. Run `python -m tools.sample_data.build_tennessee_subset --help` to see options.
+The Tennessee subset materializer at `tools/sample_data/build_tennessee_subset.py` (repo-root `tools/`) filters the full NPPES and DE-SynPUF CSVs (beneficiary summary, carrier, inpatient, outpatient) down to Tennessee providers and their associated claims, writing `*_tn.csv` files. Run `python -m tools.sample_data.build_tennessee_subset --help` from the repo root to see options.
 
 ## CMS Feed Inventory
 

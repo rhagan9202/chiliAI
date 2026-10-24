@@ -208,7 +208,11 @@ and the whole batch retries.
 Triggered by `RecordsIngestedEvent`. Maps raw records to `Entity`/`Relationship`
 objects and upserts them into the graph via `GraphService.upsert_records_graph`.
 Also embeds and indexes records-derived entities into the vector store so they
-are retrievable by RAG queries alongside document-derived content. When wired,
+are retrievable by RAG queries alongside document-derived content. It writes
+the feed's observations as one batch keyed by the ingest `correlation_id` and,
+when a `MonitoringService` is wired, evaluates that batch for threshold alerts
+(`_run_monitoring_stage`, best-effort; see `backend/monitoring/README.md`
+§ Where evaluation runs — `risk.scored` no longer runs monitoring). When wired,
 the handler then runs best-effort policy-rule evaluation over stored entities
 and throttled graph metrics, then two independent best-effort analytics
 stages — peerstats (`run_peerstats_stage`, cross-sectional peer-group
@@ -244,6 +248,10 @@ the handler is not dispatched until the active run completes.
 - **handle_graph_updated_for_analytics** (Flow 2) — Persists graph-scope metrics to `entity_metric_history` / `entity_metrics_current`, throttled per KB.
 - **handle_risk_scored_for_graph** (Flow 3) — Writes risk assessments to `risk_score_history` and snapshots scores onto graph entities.
 - **handle_alerts_created_for_graph** (Flow 4) — Writes alerts to `alert_history` and snapshots alert counts onto graph entities.
+
+### Executor events (`execution/` seam)
+
+Executor events fall through `handle_event` untouched and are routed by `execution.registry.dispatch` with a narrow `ExecutionDeps`, inside the same retried handler so an executor failure gets the normal retry + DLQ treatment. Registered handlers: `score.run.queued` / `score.batch.queued` (`analytics/score_runs/executor.py`), `connector.page.queued` (`connectors/executor.py`), and `workflow.step.queued` (`workflow_definitions/executor.py`). Each executor chains its own successor event, so the worker's periodic tick also runs `ScoreRunReconciler` and `ConnectorSyncReconciler` alongside `WorkflowEventTracker.reconcile_stale_runs` to fail runs that stopped making progress.
 
 ## Workflow submission & lifecycle
 

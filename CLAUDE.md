@@ -44,7 +44,7 @@ Monorepo layout: `backend/` (Python 3.12 / FastAPI), `chili_app/` (React 19 + TS
 ### Full stack (Docker)
 ```bash
 make dev          # docker compose -f docker-compose.dev.yaml up --build (hot reload)
-make dev-domain DOMAIN=<pack>  # dev stack under a named domain pack (backend/config/defaults/<pack>.yaml)
+make dev-domain DOMAIN=<pack>  # dev stack under a named domain pack (backend/config/defaults/<pack>.yaml; auto-layers config/overlays/<pack>_dev.yaml when present)
 make down         # stop dev stack
 make clean        # stop + remove volumes
 make api-shell    # shell into the API container
@@ -53,14 +53,14 @@ make test         # run backend pytest --cov via the host venv (against chili_te
 make test-e2e     # Playwright e2e against a fresh full dev stack
 make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
 make demo-cms     # CMS fraud demo bring-up: TN 1% staging + ingest + readiness probes; analytics fire natively on ingest (stack must be running; see docs/demo/)
-make prod         # production stack (built images, nginx, no hot reload)
+make prod         # production stack (built images, nginx, no hot reload); docker-compose.yaml has no Postgres/DATABASE_URL while the default pack pins postgres — needs an external DB to boot
 ```
 Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. Compose loads the gitignored `.env`; the stack-launching make targets (`dev`, `dev-domain`, `prod`, `test-e2e`) create it from `.env.example` automatically, but raw `docker compose` invocations need `cp .env.example .env` first. Host bind mounts in `docker-compose.dev.yaml` carry the `:z` flag for SELinux hosts (Fedora/RHEL) — keep it on any new bind mount.
 
 ### Backend (`cd backend`)
 ```bash
 uv venv && uv pip install -e ".[dev]"                    # env + base dev tools (uv manages the venv)
-uv pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers]"  # with optional adapters
+uv pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,auth,postgres,observability]"  # with optional extras (CI's install set)
 uvicorn api.app:create_app --factory --reload --port 8000  # API (note --factory: create_app is a factory)
 python -m agent.coordinator                               # pipeline worker
 pytest --cov                                              # all tests; standard is ≥ 85% per package (CI enforces aggregate --cov-fail-under=85)
@@ -70,7 +70,7 @@ pyright                                                   # strict type check (c
 ruff check .                                              # lint
 ```
 
-Optional dependencies are split per adapter (`[neo4j]`, `[qdrant]`, `[openai]`, `[anthropic]`, `[s3]`, `[sentence-transformers]`). Tests for optional adapters are marked `@pytest.mark.integration` and skipped unless the extra is installed.
+Optional dependencies are split per adapter (`[neo4j]`, `[qdrant]`, `[openai]`, `[anthropic]`, `[s3]`, `[sentence-transformers]`) plus capability extras: `[ocr]` (pdf2image/pytesseract), `[analytics]` (statsmodels, scikit-learn, networkx, shap), `[auth]` (python-jose), `[postgres]` (psycopg + Alembic — required for the database/migration tests) and `[observability]` (OpenTelemetry). CI installs every extra except `[ocr]`. Tests for optional adapters are marked `@pytest.mark.integration` and skipped unless the extra is installed.
 
 `pyright` is currently scoped via `tool.pyright.include` in `pyproject.toml` — when a module is hardened to strict mode, add it to `include`.
 
@@ -121,9 +121,9 @@ Backend FastAPI OpenAPI is the source of truth for HTTP request/response shapes.
 
 ## Backend Module Map (Target)
 
-`api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability,metrics,peerstats,features,identity_resolution,score_runs}/` · `agent/` (workflow coordinator) · `monitoring/` (entity metric threshold evaluation, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters) · `database/` (Postgres + TimescaleDB connection provider, Alembic migrations) · `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents) · `knowledgebases/` (KB/document metadata persistence) · `cases/` (durable investigation cases) · `conversations/` (durable RAG chat) · `policy/` (policy intelligence) · `scorecards/` (config-driven scorecard runs) · `auditlog/` (append-only material-action ledger) · `playbooks/` (versioned fraud playbooks + immutable published snapshots) · `workflow_definitions/` (user-authored workflow definitions) · `capabilities/` (typed capability/tool registry) · `connectors/` (pull connector definitions + sync runs) · `readiness/` (KB/domain readiness aggregation) · `governance/` (release readiness, eval runs, baseline approval).
+`api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability,metrics,peerstats,features,identity_resolution,score_runs}/` · `agent/` (workflow coordinator) · `monitoring/` (entity metric threshold evaluation, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters) · `database/` (Postgres + TimescaleDB connection provider, Alembic migrations) · `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents) · `knowledgebases/` (KB/document metadata persistence) · `cases/` (durable investigation cases) · `conversations/` (durable RAG chat) · `policy/` (policy intelligence) · `scorecards/` (config-driven scorecard runs) · `auditlog/` (append-only material-action ledger) · `playbooks/` (versioned fraud playbooks + immutable published snapshots) · `workflow_definitions/` (user-authored workflow definitions) · `capabilities/` (typed capability/tool registry) · `connectors/` (pull connector definitions + sync runs) · `readiness/` (KB/domain readiness aggregation) · `governance/` (release readiness, eval runs, baseline approval) · `execution/` (executor dispatch seam: `dispatch`/`register_handler` registry + `ExecutionDeps`; registers the score-run, connector-sync and workflow-definition executors).
 
-**28 backend packages** as of 2026-08-06. This list omitted the seven SAFE-CMS modules and three `analytics/` submodules for the whole surge — `ls backend/` is the ground truth if it looks stale again.
+**29 backend packages** as of 2026-10-24. This list omitted the seven SAFE-CMS modules and three `analytics/` submodules for the whole surge, and later `execution/` — `ls backend/` is the ground truth if it looks stale again.
 
 Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/backlog/README.md` (and the per-module files it links) for production-readiness gaps and dependency-ordered work items.
 

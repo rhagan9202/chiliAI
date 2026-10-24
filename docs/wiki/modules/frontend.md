@@ -280,7 +280,7 @@ Redirects to `/login` if `useSession()` reports `unauthenticated`; shows a loadi
 ## Test Locations
 
 - Unit tests: `src/**/__tests__/` (Vitest)
-- E2e tests: `chili_app/e2e/` (Playwright, 23 spec files as of 2026-07-24 — added `demo-walkthrough.spec.ts`, the D1 scripted-demo reference+live-mode walkthrough)
+- E2e tests: `chili_app/e2e/` (Playwright, 39 spec files as of 2026-10-24; `demo-walkthrough.spec.ts` is the D1 scripted-demo reference+live-mode walkthrough)
 
 Commands:
 ```bash

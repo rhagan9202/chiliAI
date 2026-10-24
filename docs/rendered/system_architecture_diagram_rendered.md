@@ -1,6 +1,6 @@
 # chiliAI Detailed System Architecture Diagram
 
-This diagram captures the current runtime shape of chiliAI: a React analyst workbench, a FastAPI gateway, Redis Streams for asynchronous orchestration, a Python worker pipeline, and adapter-backed graph, vector, object-storage, LLM, and embedding integrations.
+This diagram captures the current runtime shape of chiliAI: a React analyst workbench, a FastAPI gateway, Redis Streams for asynchronous orchestration, a Python worker pipeline (plus the `execution/` dispatch seam for score-all runs, connector syncs, and workflow-definition steps), the SAFE-CMS governance modules, and adapter-backed graph, vector, object-storage, LLM, and embedding integrations.
 
 Rendered SVG output is available at `docs/rendered/system_architecture_diagram_rendered.md`.
 

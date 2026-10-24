@@ -1153,3 +1153,32 @@ A genuine Redis-only pagination divergence exists — the one place the two adap
 - `backend/agent/adapters/redis_store.py` (comment only — invariant recorded near the stale-entry compensation block; no logic change; read for offset semantics)
 - `backend/agent/adapters/in_memory.py` (read — offset semantics)
 - `backend/tests/api/test_workflows_router.py` (modify — real-Redis fixture, parametrise the parity and mid-page-fill tests over both stores, new stale-entry regression test, plus the two filtered-path parity tests added 2026-08-29)
+
+---
+
+## Story api.31: BL-064 — Module boundary restoration
+
+**ID:** api.31
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-064, 4 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `backend/readiness/service.py` (and `capabilities/`) take concrete `ConnectorService`/`WorkflowDefinitionService` classes from other business modules instead of protocols — direct implementation coupling forbidden by CLAUDE.md Rule 1.
+- `backend/api/middleware/session_store.py`: `RedisSessionStore` uses the redis SDK directly outside any `adapters/` directory, with no `DomainConfig` backend literal or factory wiring; a Redis outage surfaces as an unhandled 500 from auth middleware rather than a typed error the gateway can map to 503.
+
+### Acceptance Criteria
+- [ ] `readiness/` and `capabilities/` depend on protocols, not other modules' concrete service classes.
+- [ ] Redis session storage sits behind a protocol + adapter, and a Redis failure surfaces as a typed error mapped to 503.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `backend/readiness/service.py`
+- `backend/capabilities/`
+- `backend/api/middleware/session_store.py`

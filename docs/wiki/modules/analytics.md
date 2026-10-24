@@ -5,7 +5,7 @@
 
 ## Purpose
 
-ML/AI capability modules. **Nine** sub-modules, most following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`). The three added by the SAFE-CMS surge are documented in `docs/ledger/module-map.md` and are **not** detailed below — `features/` (catalog reads; `list_entity_values` is a stub), `identity_resolution/` (canonical links; no production writer), `score_runs/` (run state; no executor):
+ML/AI capability modules. **Nine** sub-modules, most following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`). The three added by the SAFE-CMS surge are documented in `docs/ledger/module-map.md` and are **not** detailed below — `features/` (catalog reads; `list_entity_values` is a stub), `identity_resolution/` (canonical links; written by `POST /identity/resolve-candidates`), `score_runs/` (run state; executed by `analytics/score_runs/executor.py` via `execution/`):
 
 | Sub-module | Responsibility |
 |-----------|---------------|

@@ -215,7 +215,12 @@ backend/
 │   ├── dependencies.py         # Dependency injection wiring
 │   ├── state.py                # Application state container assembled at startup
 │   ├── contracts.py            # API-facing request/response models
+│   ├── config_models.py        # Pack-management DTOs (/config/packs, validate/apply/switch)
+│   ├── _analytics_overview.py  # GET /analytics/overview payload over durable stores
+│   ├── _graph_entity_payload.py # GET /graph/entities/{id} payload over durable stores
+│   ├── _conversation_payloads.py # Conversation → Chat* contract projection
 │   ├── _housing_read_model.py  # Housing overview/installation read models over feed records
+│   ├── _kb_cleanup.py          # DI assembly of the KB-delete cascade store bundle
 │   ├── _kb_busy.py             # Workflow/pending-cleanup mutation guard
 │   ├── _kb_projection.py       # KB read projection updated from events
 │   ├── _rag_bridges.py         # RAG <-> KB document/entity bridges
@@ -244,7 +249,17 @@ backend/
 │       ├── auth.py             # /auth/login, /auth/logout, /auth/me
 │       ├── _oidc_client.py     # OIDC client helpers used by auth router
 │       ├── policy.py           # Policy Intelligence items/triage (BL-011)
-│       ├── governance.py       # Release-readiness report (SAFE-CMS-020)
+│       ├── governance.py       # Release-readiness report + eval runs (SAFE-CMS-020)
+│       ├── audit.py            # Admin audit ledger reads (/audit/events, /audit/status)
+│       ├── identity.py         # Identity resolution (/identity/resolve-candidates persists links,
+│       │                       #   /identity/links/{id}/decision, /identity/canonical/{id})
+│       ├── capabilities.py     # Capability registry (/knowledgebases/{kb}/capabilities)
+│       ├── playbooks.py        # Playbook snapshots/publish (/knowledgebases/{kb}/playbooks)
+│       ├── workflow_definitions.py # Workflow definitions + runs (/knowledgebases/{kb}/workflow-definitions)
+│       ├── connectors.py       # Connector definitions + sync runs (/knowledgebases/{kb}/connectors)
+│       ├── score_runs.py       # Durable score-all runs (/knowledgebases/{kb}/score-runs)
+│       ├── readiness.py        # KB readiness aggregation (/knowledgebases/{kb}/readiness)
+│       ├── dev_seed.py         # Dev-only seeding (/admin/dev-seed)
 │       └── config.py           # Domain configuration endpoints
 ├── ingestion/                  # Document parsing & entity extraction
 │   ├── __init__.py
@@ -340,23 +355,47 @@ backend/
 │   │       ├── protocols.py    # EntityMetricRepository protocol
 │   │       ├── in_memory.py
 │   │       └── postgres.py     # PostgresEntityMetricRepository
-│   └── peerstats/              # Cross-sectional peer-group z-score analytics (gated: capabilities.peer_stats)
-│       ├── __init__.py
-│       ├── service.py          # PeerStatsService.compute() — aggregate → z-score → signal
-│       ├── service_models.py   # PeerStatsComputeRequest / PeerStatsComputeResponse
-│       ├── models.py           # PeerAggregate / DerivedRiskSignal
-│       ├── protocols.py        # RecordColumnSourceProtocol, DerivedRiskSignalWriterProtocol
-│       ├── aggregation.py      # Pure interval-bucketing + population z-score helpers
-│       ├── exceptions.py
+│   ├── peerstats/              # Cross-sectional peer-group z-score analytics (gated: capabilities.peer_stats)
+│   │   ├── __init__.py
+│   │   ├── service.py          # PeerStatsService.compute() — aggregate → z-score → signal
+│   │   ├── service_models.py   # PeerStatsComputeRequest / PeerStatsComputeResponse
+│   │   ├── models.py           # PeerAggregate / DerivedRiskSignal
+│   │   ├── protocols.py        # RecordColumnSourceProtocol, DerivedRiskSignalWriterProtocol
+│   │   ├── aggregation.py      # Pure interval-bucketing + population z-score helpers
+│   │   ├── exceptions.py
+│   │   └── adapters/
+│   │       ├── in_memory.py    # InMemoryRecordColumnSource / InMemoryDerivedRiskSignalWriter
+│   │       └── postgres.py     # PostgresRecordColumnSource (raw_records JSONB) / PostgresDerivedRiskSignalWriter (entity_derived_signals)
+│   ├── features/               # Config-backed feature catalog + feature-value store
+│   │   ├── service.py          # FeatureCatalogService / create_feature_catalog_service(config)
+│   │   ├── models.py, protocols.py  # FeatureValueRepositoryProtocol
+│   │   └── adapters/in_memory.py    # InMemoryFeatureValueRepository (no Postgres adapter yet)
+│   ├── identity_resolution/    # Candidate scoring + reviewed identity links (SAFE-CMS-012)
+│   │   ├── service.py          # IdentityResolutionService (candidate scoring)
+│   │   ├── repository.py       # IdentityLinkRepository protocol, InMemoryIdentityLinkRepository,
+│   │   │                       #   IdentityDecisionService (review decisions → auditlog)
+│   │   ├── models.py
+│   │   └── adapters/postgres.py # PostgresIdentityLinkRepository (identity_links, migration 0018)
+│   └── score_runs/             # Durable score-all runs, executed through execution/
+│       ├── service.py          # ScoreRunService — run/batch lifecycle
+│       ├── executor.py         # score.run.queued / score.batch.queued handlers (register_handler)
+│       ├── reconciler.py       # Stale score-run reconciliation
+│       ├── models.py, protocols.py
 │       └── adapters/
-│           ├── in_memory.py    # InMemoryRecordColumnSource / InMemoryDerivedRiskSignalWriter
-│           └── postgres.py     # PostgresRecordColumnSource (raw_records JSONB) / PostgresDerivedRiskSignalWriter (entity_derived_signals)
+│           ├── in_memory.py
+│           └── postgres.py     # score_runs / score_batches (migrations 0024, 0027)
+├── execution/                  # Executor dispatch seam (worker-side)
+│   ├── __init__.py             # Importing it registers the score_runs/connectors/workflow_definitions handlers
+│   ├── registry.py             # register_handler / dispatch / registered_event_types
+│   └── deps.py                 # ExecutionDeps — the dependency bundle every handler receives
 ├── agent/                      # Workflow / pipeline coordinator
 │   ├── __init__.py
 │   ├── coordinator.py          # Worker entrypoint + event consumer + Plan C handlers
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
 │   ├── health.py               # Optional health-check HTTP endpoint
 │   ├── workflow_tracking.py    # WorkflowEventTracker
+│   ├── status_projection.py    # Per-document status projection from pipeline events (BL-041)
+│   ├── definitions.py          # Pipeline step-plan registry
 │   └── adapters/               # WorkflowRunStore implementations
 │       ├── protocols.py
 │       ├── in_memory.py
@@ -367,6 +406,7 @@ backend/
 │   ├── protocols.py            # KnowledgeBaseRepository Protocol
 │   ├── models.py               # DocumentRecord
 │   ├── snapshots.py            # KnowledgeBaseStoreSnapshot (object-store serialization)
+│   ├── cleanup.py              # Authoritative KB-delete cascade step list (API + worker)
 │   ├── _helpers.py             # Shared internal helpers
 │   └── adapters/
 │       ├── in_memory.py        # InMemoryKnowledgeBaseRepository
@@ -375,6 +415,7 @@ backend/
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
 │   ├── metrics.py              # Threshold evaluation helpers
+│   ├── lifecycle.py            # Shared alert lifecycle rules
 │   └── adapters/
 │       ├── protocols.py
 │       ├── in_memory.py
@@ -397,6 +438,11 @@ backend/
 │   ├── loader.py               # Reads YAML/JSON domain config; applies overlays (below) before validation
 │   ├── overlay.py              # Base + environment overlay merge (ADR 0001)
 │   ├── schema.py               # Pydantic DomainConfig + sub-models
+│   ├── deployment.py           # require_shared_state_stores — boot/hot-swap guard: redis bus +
+│   │                           #   in-memory database/graph/vectorstore → ConfigurationError
+│   ├── store.py                # File-backed active-pack pointer store (hot-swap, §9.3)
+│   ├── display.py              # Config-driven entity display labels
+│   ├── feature_typology_index.py # Risk-factor name → fraud typology resolution
 │   ├── defaults/               # Complete, independently loadable domain packs
 │   │   ├── medicare_fraud.yaml               # generic exemplar; NOT loaded by any deploy surface
 │   │   ├── medicare_fraud_cms_desynpuf.yaml  # THE deployed CMS pack — DE-SynPUF + NPPES
@@ -411,9 +457,12 @@ backend/
 │   ├── types.py                # Event type definitions (incl. RecordsIngestedEvent)
 │   ├── codec.py                # Event serialization
 │   ├── runtime.py              # Bus selection / factory
+│   ├── dlq_models.py           # Durable DLQ record models (BL-023)
 │   └── adapters/
 │       ├── in_memory.py
-│       └── redis_streams.py
+│       ├── redis_streams.py
+│       ├── dlq_in_memory.py
+│       └── dlq_postgres.py     # event_dlq table (migration 0010)
 ├── storage/                    # Object / file storage abstraction
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract ObjectStore protocol
@@ -471,6 +520,47 @@ auditlog/                       # Append-only material-action ledger (SAFE-CMS-0
     └── adapters/
         ├── in_memory.py        # InMemoryAuditLogRepository
         └── postgres.py         # PostgresAuditLogRepository (audit_log, migration 0016_audit_log)
+playbooks/                      # Versioned fraud playbooks + immutable published snapshots
+    ├── models.py               # Domain-neutral playbook models
+    ├── repository.py           # Playbook repository protocol
+    ├── service.py              # PlaybookService — publish / export / import
+    └── adapters/
+        ├── in_memory.py
+        └── postgres.py         # fraud_playbook_snapshots (migrations 0019, 0020)
+workflow_definitions/           # User-authored workflow definitions + step executor
+    ├── models.py
+    ├── conditions.py           # Restricted step-condition grammar
+    ├── repository.py           # WorkflowDefinitionRepository protocol
+    ├── service.py              # WorkflowDefinitionService — definitions + runs (runs live in the
+    │                           #   agent WorkflowRunStore as agent.models.WorkflowRun)
+    ├── executor.py             # workflow.step.queued handler (registered with execution/)
+    ├── rag_adapter.py          # Workflow-facing adapter for the RAG query capability
+    └── adapters/
+        ├── in_memory.py
+        └── postgres.py         # workflow_definition_snapshots (migration 0021)
+capabilities/                   # Typed capability/tool registry (SAFE-CMS-015)
+    ├── models.py               # CapabilityManifest + compatibility models
+    ├── registry.py             # CapabilityRegistry + default manifest catalog
+    ├── service.py              # Registry service for APIs and workflow validation
+    ├── executors.py            # Capability id → callable map
+    └── builtin_executors.py    # Binds built-in capabilities (RAG, peerstats, connector status, …)
+connectors/                     # Pull connector definitions + sync runs (SAFE-CMS-017)
+    ├── models.py               # Connector definition, sync-run, quarantine models
+    ├── repository.py           # Connector repository protocol
+    ├── service.py              # ConnectorService — lifecycle
+    ├── executor.py             # connector.page.queued handler (registered with execution/);
+    │                           #   lands rows through records
+    ├── reconciler.py           # ConnectorSyncReconciler — stale sync-run reconciliation
+    ├── status_adapter.py       # Capability adapter for connector sync status
+    ├── exceptions.py
+    ├── sources/                # Pull-source protocol + filesystem source
+    └── adapters/
+        ├── in_memory.py
+        └── postgres.py         # connectors / connector_sync_runs / connector_quarantine_records
+                                #   (migrations 0025, 0026)
+readiness/                      # Read-only KB readiness aggregation (SAFE-CMS-018)
+    ├── models.py
+    └── service.py              # ReadinessService over KB, capability, connector, workflow state
 governance/                     # KB-scoped release readiness (SAFE-CMS-020)
     ├── models.py               # version inventory, eval runs/metrics/drift, approvals,
     │                           #   feedback trends, blockers
@@ -534,8 +624,12 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `analytics/metrics` | Entity-metric persistence: append history, upsert current snapshot | `database.ConnectionProvider` (Postgres adapter), `config` (backend selection) | domain logic, events, service modules |
 | `analytics/peerstats` | Cross-sectional peer-group z-scores → `entity_derived_signals` upsert; gated on `capabilities.peer_stats` | `database.ConnectionProvider`, `config` (PeerMetricSpec, capability flag), `records` raw_records (via SQL, not module import) | `api`, `ingestion`, other analytics sub-modules, direct `records` imports |
 | `analytics/timeseries` | Self-history anomaly detection (z-score/STL/isolation forest) → `timeseries_anomalies` upsert + `entity_derived_signals`; gated on `capabilities.timeseries` | `database.ConnectionProvider`, `config` (TimeseriesMetricSpec, capability flag), `analytics/peerstats` (`RecordColumnSourceProtocol`, reused aggregate SQL) | `api`, `ingestion`, other analytics sub-modules |
-| `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
-| `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
+| `analytics/features` | Domain-config-backed feature catalog; feature-value repository protocol (in-memory adapter only) | `config`, `shared` | `api`, worker internals |
+| `analytics/identity_resolution` | Identity candidate scoring, persisted identity links (`identity_links`), reviewed link decisions | `shared`, `database.ConnectionProvider`, `events`, `auditlog` (decision ledger writes) | `api`, `graph` internals |
+| `analytics/score_runs` | Durable score-all runs/batches (`score_runs`, `score_batches`), `score.run.queued`/`score.batch.queued` executor handlers, stale-run reconciler | `shared`, `database`, `events`, `graph`, `analytics.risk`, `execution` (handler registration) | `api` |
+| `agent` | Worker composition root: pipeline coordination, state machine, Plan C write-back handlers, executor dispatch via `execution` | `events` (protocol), `shared.types`; **in practice** it imports nearly every capability module to wire `WorkerDependencies` (the worker-side counterpart of `api`'s DI root) | `api` |
+| `execution` | Executor dispatch seam: `register_handler`/`dispatch` registry and the `ExecutionDeps` bundle handed to handlers; importing the package registers the `analytics.score_runs`, `connectors`, and `workflow_definitions` handlers | `events`, `config`, `shared`; `ExecutionDeps` types reference `agent`, `analytics.risk`, `analytics.score_runs`, `auditlog`, `capabilities`, `connectors`, `graph`, `records`, `workflow_definitions` | `api` |
+| `monitoring` | Threshold evaluation over the observations of one ingest batch (invoked from Flow 1's `_run_monitoring_stage`, not on `risk.scored`), alert generation, alert lifecycle rules | `shared.types`, `events` (protocol), `database.ConnectionProvider` | `api`, `ingestion` internals |
 | `knowledgebases` | KB/document metadata persistence, repository adapters, projection snapshots | `shared.types`, `storage` (protocol) | `api`, `ingestion`, `graph`, `vectorstore` internals |
 | `conversations` | Durable chat conversation/message persistence and retrieval | `shared.types`, `database.ConnectionProvider` | `api`, `rag`, `llm` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
@@ -543,12 +637,19 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `events` | Event bus abstraction; durable DLQ ledger (`DlqRecordStore`, BL-023) | `shared.types`, `database.ConnectionProvider` (Postgres DLQ adapter) | Everything except `shared`, `database` |
 | `storage` | Object/file storage abstraction | `shared.types` | Everything except `shared` |
 | `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
-| `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
+| `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared` (incl. `MonitoringObservation`), `events`, `database` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 | `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
-| `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews; durable eval-run lifecycle with baseline approval. `GovernanceEvalService.has_approved_eval` is an **enforced** gate — `POST /knowledgebases/{kb}/playbooks/{id}/publish` returns 409 without an approved baseline | `policy`, `agent`, `analytics.explainability` model/repository protocols; `database.ConnectionProvider` | `api`, worker internals |
+| `governance` | KB-scoped release-readiness report over playbooks, workflow definitions, and explanation reviews; durable eval-run lifecycle with baseline approval. `GovernanceEvalService.has_approved_eval` is an **enforced** gate — `POST /knowledgebases/{kb}/playbooks/{id}/publish` returns 409 without an approved baseline | `playbooks`, `workflow_definitions`, `analytics.explainability` model/repository protocols; `database.ConnectionProvider`, `shared` | `api`, worker internals |
 | `auditlog` | Append-only ledger of material analyst/system actions. **Tenancy:** every event is written under the single `PLATFORM_TENANT_ID` constant and KB scoping uses the dedicated `knowledge_base_id` field — writers must never derive a tenant, and `tenant_id` is never accepted from a request body. `AuditEventQuery.tenant_id` is an optional filter, so a KB-scoped query returns that KB's complete timeline across every writer | `shared.utils`, `database.ConnectionProvider` | `api`, worker internals — modules record through `AuditLogService.record` only |
 | `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
+| `playbooks` | Versioned fraud playbooks, immutable KB-scoped published snapshots (`fraud_playbook_snapshots`), export/import | `config`, `shared`, `database.ConnectionProvider` | `api`, worker internals |
+| `workflow_definitions` | User-authored workflow definitions (`workflow_definition_snapshots`), validation/approval, runs, `workflow.step.queued` step executor | `shared`, `database`, `events`, `agent` (`WorkflowRun` models + run store), `capabilities` (step dispatch), `rag` (RAG capability adapter), `auditlog`, `execution` (handler registration) | `api` |
+| `capabilities` | Typed capability/tool registry + built-in capability executors | `config`, `shared`, `auditlog`, `rag`, `analytics.peerstats`, `connectors`, `workflow_definitions` (built-in executor bindings) | `api` |
+| `connectors` | Pull connector definitions, sync runs, quarantine, `connector.page.queued` executor, stale sync reconciler | `config`, `shared`, `database`, `events`, `records` (row landing), `capabilities`, `execution` (handler registration) | `api` |
+| `readiness` | Read-only KB readiness aggregation | `shared`, `knowledgebases`, `capabilities`, `connectors`, `workflow_definitions` | `api`, any write path |
 | `scorecards` | Config-driven scorecard evaluation (`evaluate_template`), durable run persistence, JSON/Markdown exports | `config` (ScorecardTemplateConfig), `shared`, `database.ConnectionProvider`; feed records arrive through the `ScorecardSourceRecordLoader` protocol implemented at the gateway | `records`, `api`, `ingestion` internals — never imports the records module directly |
+
+> **Known deviations from the three-path rule (AST scan of non-test backend code, 2026-10-24).** The SAFE-CMS modules and the executor seam import each other's implementations directly rather than going through `api` DI, `agent` events, or `shared`: `capabilities`→`connectors`/`workflow_definitions`/`analytics.peerstats`/`rag`; `workflow_definitions`→`agent`/`capabilities`/`rag`; `connectors`→`records`/`capabilities`; `readiness`→`capabilities`/`connectors`/`workflow_definitions`/`knowledgebases`; `governance`→`playbooks`/`workflow_definitions`/`analytics.explainability`; `analytics.identity_resolution`→`auditlog`; `analytics.score_runs`→`analytics.risk`/`graph`; and `execution` sits in a cycle with its handler modules (`analytics.score_runs`, `connectors`, `workflow_definitions` import `execution.registry`; `execution/__init__.py` imports them to register). These are recorded here as they exist, not endorsed; the matrix rows above list them so the table matches the code.
 
 ### 5.3 Cross-module interaction rules
 
@@ -670,7 +771,7 @@ Analyst                 API                 Redis              Workers
   │                      │                   │  XADD             │
   │                      │                   │  kb.ready         │
   │                      │                   │                   │
-  │  WS: kb.ready        │                   │                   │
+  │  SSE: kb.ready       │                   │                   │
   │◀═════════════════════│◀──────────────────│                   │
 ```
 
@@ -760,9 +861,11 @@ Data Source             API / Feed          Redis              Workers
   │                      │                   │  XADD             │
   │                      │                   │  alerts.created   │
   │                      │                   │                   │
-  │                      │  WS: alerts       │                   │
+  │                      │  SSE: alerts      │                   │
   │              Analyst◀═══════════════════◀│                   │
 ```
+
+> As implemented, alerts after `risk.scored` come from the explainability stage (risk-driven alerts with evidence packs). Threshold monitoring (`MonitoringService`) does **not** run on `risk.scored`; it evaluates each ingest batch's observations in Flow 1 (`_run_monitoring_stage`, §6.3). Score-all runs, connector syncs, and workflow-definition steps are separate worker paths dispatched through `execution/` (`score.run.queued`/`score.batch.queued`, `connector.page.queued`, `workflow.step.queued`).
 
 ### 6.3 Flow 1 — Structured Record Ingestion
 
@@ -791,7 +894,12 @@ handle_records_ingested()
   │                   # entities + relationships, no document artifacts,
   │                   # no GraphUpdatedEvent published
   ├── map_observations() → PostgresObservationStore.write_observations()
-  │                           # observations table (idempotent upsert)
+  │     │                     # observations table (idempotent upsert),
+  │     │                     # batch_id = ingest correlation_id
+  │     └── _run_monitoring_stage()  # best-effort, when monitoring is wired
+  │           • MonitoringService.evaluate_batch() on the batch just written
+  │           • deterministic alert id alert-monitoring-{batch}-{entity}-{metric}
+  │           • publishes AlertsCreatedEvent → Flow 4 (alert_history)
   ├── run_peerstats_stage()   # best-effort, gated on capabilities.peer_stats
   │     │
   │     └── PeerStatsService.compute()
@@ -840,7 +948,7 @@ Triggered by `GraphUpdatedEvent`. Computes graph-scope metrics (entity count, re
 
 Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_history` for durable audit. Also snapshots `risk_score`, `risk_level`, and `risk_assessed_at` as properties onto the affected graph entities so investigation queries can read current scores from the graph without a SQL join (the graph snapshot is a best-effort denormalized cache; `risk_score_history` is authoritative).
 
-**Idempotency + failure durability.** Each assessment carries a deterministic `request_id = risk:{correlation_id}:{kb}:{entity}` (set by the worker fan-out / peerstats stage via `RiskAssessmentRequest.request_id`). That id keys `risk_score_history` (`ON CONFLICT(request_id) DO NOTHING`), the monitoring batch (`handle_risk_scored` uses it as `batch_id`), and the derived `alert_id` — so a **retried** assessment of the same triggering event dedups instead of accumulating duplicate rows, while a genuinely new event (new `correlation_id`) still appends. Because the chain is idempotent, the dispatch no longer swallows the `RiskScoredEvent`/`AlertsCreatedEvent` write-backs: a transient DB/event-bus failure in `risk_score_history`/`alert_history` now **propagates to the retry/DLQ wrapper** rather than being silently dropped. (Monitoring and the graph snapshots remain best-effort. The `GraphUpdatedEvent` Flow-B analytics fan-out is still wrapped best-effort so it cannot re-run Flow A's embeddings on retry; splitting Flow B into its own retryable consumer is tracked as follow-up.)
+**Idempotency + failure durability.** Each assessment carries a deterministic `request_id = risk:{correlation_id}:{kb}:{entity}` (set by the worker fan-out / peerstats stage via `RiskAssessmentRequest.request_id`). That id keys `risk_score_history` (`ON CONFLICT(request_id) DO NOTHING`) and the explainability-stage `alert_id` — so a **retried** assessment of the same triggering event dedups instead of accumulating duplicate rows, while a genuinely new event (new `correlation_id`) still appends. Because the chain is idempotent, the dispatch no longer swallows the `RiskScoredEvent`/`AlertsCreatedEvent` write-backs: a transient DB/event-bus failure in `risk_score_history`/`alert_history` now **propagates to the retry/DLQ wrapper** rather than being silently dropped. `risk.scored` does **not** run threshold monitoring: observations are keyed by the ingest batch (`correlation_id`), not the risk request, and are often on different entities (e.g. `claim` observations vs `provider` risk), so monitoring is evaluated in Flow 1 right after the batch is written. (Until 2026-10-24 `handle_risk_scored` evaluated monitoring per assessment with `batch_id=request_id`; no batch ever carried that id, so it logged one error per scored entity and never raised an alert.) (Monitoring and the graph snapshots remain best-effort. The `GraphUpdatedEvent` Flow-B analytics fan-out is still wrapped best-effort so it cannot re-run Flow A's embeddings on retry; splitting Flow B into its own retryable consumer is tracked as follow-up.)
 
 **Workflow-run lifecycle.** Analytics emits one `RiskScoredEvent` per scored entity, all carrying the *triggering pipeline's* `correlation_id` so the worker resolves the run whose `monitoring` step they complete. Because one run is therefore shared by an unbounded number of them, `risk.scored` is treated as a **fan-out event** rather than a terminal-success event (`_FAN_OUT_EVENT_TYPES`, `agent/workflow_tracking.py`): it completes the `monitoring` step and leaves the run `RUNNING` — the pipeline's own terminal event (`vectors.indexed`) still closes it — and it is not gated by an already-`COMPLETED` run, because the records path publishes its whole fan-out from inside the `records.ingested` handler and every one of them lands after that one-step run has legitimately closed. Re-entering the handler is safe for exactly the idempotency reason above. A `CANCELLED` run still gates them: that is user intent, not bookkeeping.
 
@@ -1592,7 +1700,7 @@ Admin RBAC gates the whole surface (`require_role("admin")`), and pack reference
 To retarget chiliAI from Medicare fraud to food supply chain monitoring:
 
 1. Write a new domain config YAML defining entities and relationships — or use the shipped exemplar-parity pack `backend/config/defaults/food_supply_chain.yaml` (8 entities such as `supplier`, `facility`, `product_lot`, `shipment`; 11 relationships such as `shipped_by`, `inspected_at`; 4 records feeds; 3 policy rule packs; full `ui` section).
-2. Select it: `make dev-domain DOMAIN=food_supply_chain` at stack start, **or** hot-swap a running stack from the Configuration page / `POST /config/switch` (no restart; the worker converges via `config.updated`).
+2. Select it: `make dev-domain DOMAIN=food_supply_chain` at stack start, **or** hot-swap a running stack from the Configuration page / `POST /config/switch` (no restart; the worker converges via `config.updated`). A pack used on the split API/worker stack must pin shared `database`/`graph`/`vectorstore` backends itself or via an environment overlay: on a `redis` event bus `config.deployment.require_shared_state_stores` rejects `in_memory` state stores at API boot, worker boot, and hot-swap, because each process would hold a private copy.
 3. The frontend picks up the new config on next load; knowledge bases are stamped with the domain that created them, and the UI badges KBs whose domain mismatches the active one.
 4. Create a new knowledge base and ingest domain-relevant documents.
 
@@ -1830,17 +1938,17 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Multi-tenancy** | Tenant-isolated data, config, and KB namespaces. | Medium — after auth |
 | **Configuration UI wizard** | Sectioned, schema-driven configuration wizard. A first Config Manager page exists (pack switcher + raw YAML editor with dry-run validation and hot-swap apply, §9.3); typed per-section forms, drafts, and a config write path remain. | Medium |
 | **Model training pipeline** | Scheduled/triggered GNN training, embedding fine-tuning. | Medium |
-| **Audit log** | Track all analyst actions (graph queries, alert acks, config changes) for compliance. | Medium |
+| **Audit log** | **Delivered (SAFE-CMS-009):** append-only `auditlog/` ledger (`audit_log` table, migration `0016_audit_log`) written through `AuditLogService.record`, read via admin-gated `GET /audit/events` and `GET /audit/status`. Remaining: coverage of every analyst read action (e.g. graph queries) and retention/export policy. | Low — ledger shipped; coverage follow-ups only |
 | **Export / reporting** | Scheduled/bulk reports across investigations and risk summaries. Single evidence packs already export as JSON/Markdown (`GET /evidence-packs/{id}/export`, UXA-405) and scorecard runs as JSON/Markdown; PDF and CSV remain unbuilt. | Low — after core workbench is functional |
 | **Plugin system** | Allow third-party analytics modules to be added without modifying core. | Low — after architecture stabilizes |
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: 2026-08-06 (SAFE-CMS surge reconciliation; the body carries surge content throughout — the previous "May 2026" stamp contradicted the file's own contents). For implementation status, verify the current code and tests first. Historical status reports and retired planning docs live under [`docs/archive/`](archive/). Current production-readiness gaps are tracked in the module backlogs under [`docs/backlog/`](backlog/) and the curated PM backlog under [`docs/project/planning/`](project/planning/).
+> **Last updated**: 2026-10-24 (since the 2026-08-06 SAFE-CMS surge reconciliation: durable score-all runs (`analytics/score_runs/`), pull connectors with sync runs (`connectors/`) and workflow-definition step execution now run in the worker through the `execution/` dispatch seam; threshold monitoring moved from `risk.scored` into Flow 1 (`_run_monitoring_stage`, §6.3); `config/deployment.py::require_shared_state_stores` rejects in-memory database/graph/vector stores at API/worker boot and on hot-swap when the event bus is Redis; `POST /identity/resolve-candidates` persists identity links). For implementation status, verify the current code and tests first. Historical status reports and retired planning docs live under [`docs/archive/`](archive/). Current production-readiness gaps are tracked in the module backlogs under [`docs/backlog/`](backlog/) and the curated PM backlog under [`docs/project/planning/`](project/planning/).
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py`, and a durable/replayable event dead-letter ledger with an `analyst`/`admin`-gated operator API surface (`event_dlq` table, `/events/dlq*`, BL-023 — see §6.9) | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics/peerstats/features/identity_resolution/score_runs), monitoring (evaluated per ingest batch in Flow 1), SAFE-CMS modules (`auditlog`, `playbooks`, `workflow_definitions`, `capabilities`, `connectors`, `readiness`, `governance`), the worker-side `execution/` executor dispatch seam (score-run, connector-page, and workflow-step handlers), storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py`, and a durable/replayable event dead-letter ledger with an `analyst`/`admin`-gated operator API surface (`event_dlq` table, `/events/dlq*`, BL-023 — see §6.9) | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, extend production-mode adapter guardrails beyond the shared-state-store boot check (`config/deployment.py`), and add audit-grade workflow history |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, a Knowledge Bases library + per-KB workspace (Overview/Add data/Data/Runs/Settings), Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, Configuration page with Config Manager (pack switch/apply; config save still a gap), and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |

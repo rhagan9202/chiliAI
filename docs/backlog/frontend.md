@@ -1219,3 +1219,92 @@ frontend-only and bounds the staleness window without a contract change.
 - `chili_app/src/api/realtime.ts` (modify, if the SSE-signal approach is chosen)
 - `backend/api/contracts.py` (`RealtimeSnapshotResponse`, modify, if the SSE-signal approach is chosen)
 - `chili_app/e2e/ingestion-records.spec.ts`, `chili_app/e2e/ingestion-document-warnings.spec.ts` (modify — drop the polling workaround once closed)
+
+---
+
+## Story frontend.32: BL-061 — KB switch resets dependent page state
+
+**ID:** frontend.32
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** [frontend.33, frontend.34]
+**Estimated size:** M
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-061, 3 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `chili_app/src/pages/CaseManagementPage.tsx`: `selectedCaseId` survives a workspace KB switch unvalidated, so the detail pane queries a case from the previous KB, 404s, and renders nothing with no error or empty state.
+- `chili_app/src/pages/RagChatPage.tsx`: the page's KB picker rewrites only `?kb=`, so `source`/`alert`/`entity`/`evidence` launch context from the previous KB stays and is submitted as retrieval filters against the new KB.
+- One root cause on both pages: state derived from the previous KB is not reset when the KB changes.
+
+### Acceptance Criteria
+- [ ] Case Management: after a KB switch the selected case is revalidated against the new KB's list (falling back to its first case or an empty state).
+- [ ] RAG Chat: switching KB clears the previous KB's launch context — chips and submitted filters no longer carry its ids.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `chili_app/src/pages/CaseManagementPage.tsx`
+- `chili_app/src/pages/RagChatPage.tsx`
+
+---
+
+## Story frontend.33: BL-062 — Alert-feed search and evidence-review error surfacing
+
+**ID:** frontend.33
+**Status:** planned
+**Prerequisites:** [frontend.32]
+**Unblocks:** [frontend.34]
+**Estimated size:** S
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-062, 2 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `chili_app/src/pages/AlertFeedPage.tsx`: the Search box writes every keystroke to router state, dropping characters and pushing one history entry per key; the same push-per-interaction applies to every control routed through `setFilters`.
+- `chili_app/src/components/investigation/EvidencePackViewer.tsx`: explanation-review submission has no `onError`, so a rejected write (409/422/5xx) leaves the form looking submitted while nothing persisted.
+- The spec groups these only by size and location (alert/evidence path); they share no fix. Sequencing: after BL-061 (`frontend.32`), both in `src/pages/`.
+
+### Acceptance Criteria
+- [ ] Alert Feed search keeps every typed character and does not push a history entry per keystroke.
+- [ ] A failed explanation-review submission surfaces an error to the analyst.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `chili_app/src/pages/AlertFeedPage.tsx`
+- `chili_app/src/components/investigation/EvidencePackViewer.tsx`
+
+---
+
+## Story frontend.34: BL-066 — Contract and recovery leftovers
+
+**ID:** frontend.34
+**Status:** planned
+**Prerequisites:** [frontend.32, frontend.33]
+**Unblocks:** []
+**Estimated size:** M
+**Spec:** docs/superpowers/specs/2026-08-27-audit-burndown-design.md
+
+### Current State
+- BL-066, 3 SP in the burn-down spec.
+- Source: the 2026-08-25 full-codebase audit, burn-down design `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (approved 2026-08-27). Planned for sprint 2026-36, moved to 2026-37 when 2026-36 became the stabilisation sprint; no 2026-37 sprint file exists and no commit references this story as of 2026-10-24.
+- The spec states findings and grouping only; it does not give a user story, so none is invented here. Acceptance criteria below are the spec's per-finding and per-story Definition of Done.
+- `chili_app/src/api/contracts.ts` hand-writes `RealtimeSnapshotResponse` (the `GET /events/stream` SSE payload), which never enters the exported OpenAPI document — a backend rename passes codegen, the drift check, `tsc` and ESLint and silently breaks the workspace header (CLAUDE.md Rule 5).
+- `backend/ingestion/service.py`: a recovery marker for a remote-URI document is stored with `storage_key=None`, which `replay_recovery_markers` skips, and resubmitting the URI does not republish — the URI is permanently un-ingestible for that KB after an event-bus failure.
+- The spec groups these only to avoid two 1–2 SP rows. Sequencing: after BL-061/062 (`frontend.32`, `frontend.33`) because it regenerates the frontend contract.
+
+### Acceptance Criteria
+- [ ] `RealtimeSnapshotResponse` is generated from the backend OpenAPI rather than hand-written, so a backend field rename fails the drift gate.
+- [ ] A remote-URI document whose publish failed can be recovered by replay or resubmission.
+- [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
+- [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).
+
+### Code touch points
+- `chili_app/src/api/contracts.ts`
+- `backend/api/contracts.py` (`RealtimeSnapshotResponse`)
+- `backend/ingestion/service.py`
+- `chili_app/openapi.json`, `chili_app/src/lib/api/schema.ts` (regenerate)

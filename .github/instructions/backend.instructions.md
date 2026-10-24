@@ -27,11 +27,12 @@ applyTo: "backend/**/*.py"
 | Agentic workflow platform | `workflow_definitions/` (user-authored definitions), `capabilities/` (typed capability/tool registry) |
 | Data sources and readiness | `connectors/` (pull connectors), `readiness/` (KB/domain readiness aggregation) |
 | Shared platform services | `shared/`, `config/`, `storage/`, `database/` |
+| Executor dispatch | `execution/` (`dispatch`/`register_handler` registry + `ExecutionDeps`; importing it registers the score-run, connector-sync and workflow-definition executors) |
 
 > This table is the "where does new code go" map and is auto-applied to every
 > `backend/**/*.py`. It omitted ten real packages for the whole SAFE-CMS surge —
 > the seven new top-level modules plus the three new `analytics/` submodules —
-> so it pointed at a module layout that no longer existed. There are **28**
+> so it pointed at a module layout that no longer existed. There are **29**
 > backend packages; `ls backend/` is the check.
 
 - Keep modules loosely coupled and narrowly scoped. Each module owns its internal implementation and exposes a narrow public contract.

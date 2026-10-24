@@ -1,6 +1,6 @@
 # chiliAI Detailed System Architecture Diagram
 
-This diagram captures the current runtime shape of chiliAI: a React analyst workbench, a FastAPI gateway, Redis Streams for asynchronous orchestration, a Python worker pipeline, and adapter-backed graph, vector, object-storage, LLM, and embedding integrations.
+This diagram captures the current runtime shape of chiliAI: a React analyst workbench, a FastAPI gateway, Redis Streams for asynchronous orchestration, a Python worker pipeline (plus the `execution/` dispatch seam for score-all runs, connector syncs, and workflow-definition steps), the SAFE-CMS governance modules, and adapter-backed graph, vector, object-storage, LLM, and embedding integrations.
 
 Rendered SVG output is available at `docs/rendered/system_architecture_diagram_rendered.md`.
 
@@ -24,7 +24,7 @@ flowchart LR
         subgraph api["chili-api container<br/>FastAPI gateway"]
             cors["CORS + metrics + tracing middleware<br/>Prometheus metrics, OpenTelemetry hooks"]
             auth["Auth / RBAC middleware<br/>JWT validation paths"]
-            routers["REST routers<br/>/config, /knowledgebases, /records,<br/>/alerts, /investigation, /chat, /analytics,<br/>/workflows, /events (SSE),<br/>/policy, /cases, /evidence, /graph, /auth"]
+            routers["REST routers<br/>/config, /knowledgebases, /records,<br/>/alerts, /investigation, /chat, /analytics,<br/>/workflows, /events (SSE),<br/>/policy, /cases, /evidence, /graph, /auth,<br/>/audit, /identity, /admin/dev-seed,<br/>/knowledgebases/{kb}/capabilities, playbooks,<br/>workflow-definitions, connectors, score-runs,<br/>readiness, governance"]
             di["Dependency injection composition root<br/>Config-cached services and adapters"]
             kbrepo["Knowledge base metadata repository<br/>Selectable: in-memory or object_store"]
         end
@@ -43,6 +43,14 @@ flowchart LR
             monitoring["monitoring<br/>Observation source, threshold evaluation,<br/>alert generation"]
             storage["storage<br/>ObjectStore protocol<br/>raw files, parsed docs, chunks,<br/>extractions, validation reports"]
             shared["shared<br/>Entity, Relationship, Alert,<br/>EvidencePack, contracts, utilities"]
+            auditlog["auditlog<br/>Append-only material-action ledger<br/>audit_log table, GET /audit/events"]
+            playbooks["playbooks<br/>Versioned fraud playbooks,<br/>immutable published snapshots"]
+            workflowdefs["workflow_definitions<br/>User-authored workflow definitions,<br/>runs, step executor"]
+            capabilities["capabilities<br/>Typed capability / tool registry,<br/>built-in capability executors"]
+            connectors["connectors<br/>Pull connector definitions,<br/>sync runs, quarantine, page executor"]
+            readiness["readiness<br/>Read-only KB readiness aggregation"]
+            governance["governance<br/>Release readiness, eval runs,<br/>baseline approval gate"]
+            scoreruns["analytics.score_runs<br/>Durable score-all runs + batches,<br/>batch executor, stale-run reconciler"]
         end
 
         subgraph eventing["Event orchestration"]
@@ -51,8 +59,9 @@ flowchart LR
 
         subgraph worker["chili-worker container<br/>agent.coordinator"]
             deps["WorkerDependencies<br/>adapter registries selected by DomainConfig"]
-            handlers["Event handlers<br/>documents.parsed, documents.chunked,<br/>entities.extracted, entities.validated,<br/>graph.updated, embeddings.complete,<br/>vectors.indexed, risk.scored"]
+            handlers["Event handlers<br/>documents.parsed, documents.chunked,<br/>entities.extracted, entities.validated,<br/>graph.updated, embeddings.complete,<br/>vectors.indexed, records.ingested,<br/>risk.scored, alerts.created"]
             pipeline["Pipeline execution<br/>parse -> chunk -> extract -> validate -><br/>upsert graph -> embed -> index vectors -><br/>analytics -> evidence -> alerts -> kb.ready"]
+            execution["execution dispatch seam<br/>register_handler / dispatch + ExecutionDeps<br/>score.run.queued, score.batch.queued,<br/>connector.page.queued, workflow.step.queued"]
             health["Worker health server<br/>/health on configurable port (state.settings.port)"]
         end
 
@@ -100,6 +109,14 @@ flowchart LR
     di --> analytics
     di --> monitoring
     di --> storage
+    di --> auditlog
+    di --> playbooks
+    di --> workflowdefs
+    di --> capabilities
+    di --> connectors
+    di --> readiness
+    di --> governance
+    di --> scoreruns
 
     shared -.-> ingestion
     shared -.-> graphsvc
@@ -111,6 +128,14 @@ flowchart LR
     shared -.-> monitoring
     shared -.-> storage
     shared -.-> config
+    shared -.-> auditlog
+    shared -.-> playbooks
+    shared -.-> workflowdefs
+    shared -.-> capabilities
+    shared -.-> connectors
+    shared -.-> readiness
+    shared -.-> governance
+    shared -.-> scoreruns
 
     routers -->|"publish kb.create,<br/>documents.uploaded,<br/>claims.received"| redis
     ingestion -->|"publish parse / extraction events"| redis
@@ -120,6 +145,9 @@ flowchart LR
     llmsvc -->|"publish llm.completed"| redis
     analytics -->|"publish risk.scored / analysis events"| redis
     monitoring -->|"publish alerts.created"| redis
+    scoreruns -->|"publish score.run.queued"| redis
+    connectors -->|"publish connector.page.queued"| redis
+    workflowdefs -->|"publish workflow.step.queued"| redis
 
     redis -->|"XREADGROUP"| handlers
     handlers --> pipeline
@@ -134,6 +162,20 @@ flowchart LR
     pipeline --> storage
     pipeline -->|"XADD downstream events,<br/>ack or dead-letter failures"| redis
     handlers -.-> health
+    redis -->|"XREADGROUP executor events"| execution
+    deps --> execution
+    execution --> scoreruns
+    execution --> connectors
+    execution --> workflowdefs
+    scoreruns -->|"assess entities"| analytics
+    connectors -->|"land rows"| records
+    workflowdefs -->|"dispatch step capability"| capabilities
+    readiness -.-> capabilities
+    readiness -.-> connectors
+    readiness -.-> workflowdefs
+    governance -.-> workflowdefs
+    governance -.->|"approved baseline gates publish"| playbooks
+    auditlog -->|"adapter protocol"| database
 
     graphsvc -->|"adapter protocol"| graphdb
     vectorsvc -->|"adapter protocol"| vectordb

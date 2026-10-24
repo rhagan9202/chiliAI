@@ -16,7 +16,7 @@
 <!-- BEGIN: status-rollup -->
 | File | Planned | In-progress | Done | Dropped | Total | % done |
 |------|---------|-------------|------|---------|-------|--------|
-| _cicd.md | 20 | 1 | 1 | 0 | 22 | 4% |
+| _cicd.md | 21 | 1 | 1 | 0 | 23 | 4% |
 | _infra.md | 19 | 0 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 1 | 13 | 0% |
@@ -24,25 +24,25 @@
 | _security.md | 9 | 0 | 3 | 0 | 12 | 25% |
 | agent.md | 20 | 0 | 2 | 0 | 22 | 9% |
 | analytics.md | 28 | 0 | 7 | 1 | 36 | 19% |
-| api.md | 27 | 0 | 2 | 1 | 30 | 6% |
+| api.md | 28 | 0 | 2 | 1 | 31 | 6% |
 | config.md | 14 | 0 | 1 | 0 | 15 | 6% |
-| conversations.md | 0 | 0 | 1 | 0 | 1 | 100% |
+| conversations.md | 1 | 0 | 1 | 0 | 2 | 50% |
 | database.md | 12 | 0 | 1 | 0 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 1 | 0 | 17 | 5% |
-| frontend.md | 27 | 1 | 3 | 0 | 31 | 9% |
+| frontend.md | 30 | 1 | 3 | 0 | 34 | 8% |
 | graph.md | 18 | 0 | 2 | 0 | 20 | 10% |
 | ingestion.md | 23 | 0 | 12 | 0 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 2 | 0 | 22 | 9% |
-| rag.md | 17 | 0 | 0 | 0 | 17 | 0% |
+| rag.md | 18 | 0 | 0 | 0 | 18 | 0% |
 | records.md | 14 | 2 | 2 | 0 | 18 | 11% |
-| scorecards.md | 3 | 0 | 0 | 0 | 3 | 0% |
+| scorecards.md | 4 | 0 | 0 | 0 | 4 | 0% |
 | shared.md | 17 | 1 | 0 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 0 | 14 | 0% |
-| **Total** | 415 | 8 | 40 | 3 | 466 | 8% |
+| **Total** | 423 | 8 | 40 | 3 | 474 | 8% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -59,6 +59,7 @@
 - [_cicd.03] _cicd — size M — prereqs done
 - [_cicd.04] _cicd — size M — prereqs done
 - [_cicd.12] _cicd — size M — prereqs done
+- [_cicd.22] _cicd — size M — prereqs done
 - [_infra.02] _infra — size M — prereqs done
 - [_security.09] _security — size M — prereqs done
 - [_security.11] _security — size M — prereqs done
@@ -70,15 +71,14 @@
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
 - [analytics.33] analytics — size M — prereqs done
+- [api.31] api — size M — prereqs done
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
-- [embeddings.06] embeddings — size M — prereqs done
-- [events.17] events — size M — prereqs done
-- …39 more
+- …44 more
 <!-- END: ready-set -->
 
 ## Critical path
@@ -169,6 +169,7 @@ Stories link to specs via the `Spec:` field. Specs currently referenced (hand-ma
 - `docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md`
 - `docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`
 - `docs/superpowers/specs/2026-05-24-complete-backlog-design.md`
+- `docs/superpowers/specs/2026-08-27-audit-burndown-design.md` (BL-059–BL-066: rag.18, conversations.07, frontend.32–34, _cicd.22, api.31, scorecards.04)
 
 ## Maintenance
 - **Adding a story:** pick the file, allocate the next free `<file>.<n>` ID, fill the rich format (see [spec §5](../superpowers/specs/2026-05-24-complete-backlog-design.md#5-story-format)), run `python scripts/backlog_consistency.py`.

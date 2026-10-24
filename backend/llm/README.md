@@ -7,7 +7,7 @@
 | Provider value | Adapter class | Notes |
 |----------------|---------------|-------|
 | `"local"` | `InMemoryLlmClient` | Deterministic stub; returns configured canned responses. Used in tests and local runs with no API key. |
-| `"openai"` | `OpenAiLlmClient` | OpenAI Chat Completions API. Requires `[openai]` extra and a key in the env var named by `LlmConfig.api_key_env_var`. |
+| `"openai"` | `OpenAILlmClient` | OpenAI Chat Completions API. Requires `[openai]` extra and a key in the env var named by `LlmConfig.api_key_env_var`. |
 | `"anthropic"` | `AnthropicLlmClient` | Anthropic Messages API. Requires `[anthropic]` extra and a key in the env var named by `LlmConfig.api_key_env_var`. |
 | `"ollama"` | `OllamaLlmClient` | Self-hosted Ollama server via its OpenAI-compatible `/v1/chat/completions` endpoint. No API key required; point `LlmConfig.base_url` at the Ollama host (default `http://localhost:11434`). |
 
@@ -23,7 +23,7 @@ llm:
 
 ## FallbackLlmClient
 
-`FallbackLlmClient` is a decorator that wraps a primary `LlmClientProtocol` with one or more fallback clients. If the primary raises an exception the decorator tries each fallback in order and re-raises only after all are exhausted. Configure a fallback chain in `LlmConfig.fallback`:
+`FallbackLlmClient` is a decorator that wraps a primary `LlmClientProtocol` with one or more fallback clients. If the primary raises `LlmProviderError` the decorator tries each fallback in order (logging a WARNING per failure) and raises `LlmProviderError` only after all are exhausted. `LlmConfig.fallback` is a single nested `LlmConfig` (not a list); chain more providers by nesting further `fallback` keys:
 
 ```yaml
 llm:
@@ -31,12 +31,12 @@ llm:
   model: llama3.2
   base_url: http://ollama:11434
   fallback:
-    - provider: openai
-      model: gpt-4o-mini
-      api_key_env_var: OPENAI_API_KEY
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
 ```
 
-The factory in `api/dependencies.py` reads `LlmConfig.fallback` and wraps the primary adapter automatically. See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](../../docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the demo-stack wiring.
+`create_llm_client()` in `llm/factory.py` (called from `api/dependencies.py`) resolves the chain recursively and wraps the primary adapter automatically. A provider that fails to construct (e.g. missing API key) is skipped with a WARNING; `LlmConfigurationError` is raised only if every provider in the chain fails. See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](../../docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the demo-stack wiring.
 
 ## Usage in Ingestion
 

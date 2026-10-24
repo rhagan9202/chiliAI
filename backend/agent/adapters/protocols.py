@@ -47,8 +47,9 @@ class WorkflowRunStoreProtocol(Protocol):
     In-process stores must protect reads and writes that touch shared indexes.
     """
 
-    # TODO(production): Implement durable adapters behind this protocol —
-    # PostgresWorkflowRunStore, RedisWorkflowRunStore — for production deployments.
+    # Implementations: InMemoryWorkflowRunStore (adapters/in_memory.py) and the
+    # durable RedisWorkflowRunStore (adapters/redis_store.py). No Postgres-backed
+    # store exists.
 
     def save_run(self, run: WorkflowRun) -> WorkflowRun: ...
 

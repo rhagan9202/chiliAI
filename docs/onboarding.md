@@ -84,7 +84,7 @@ Key documentation files:
 | Docker Desktop | Latest stable | https://docs.docker.com/get-docker/ |
 | Docker Compose | V2 (bundled with Docker Desktop) | — |
 | Python | ≥ 3.12 | `brew install python@3.12` or https://python.org |
-| Node.js | ≥ 20 | `brew install node` or https://nodejs.org |
+| Node.js | ≥ 22.22 | `brew install node` or https://nodejs.org |
 | Git | Any recent | pre-installed on macOS |
 | `gh` CLI | Latest | `brew install gh` |
 
@@ -290,14 +290,15 @@ backend/
   scorecards/   Config-driven statutory scorecard runs
   auditlog/     Append-only ledger of material analyst/system actions
   playbooks/    Versioned fraud playbooks + immutable published snapshots
-  workflow_definitions/ User-authored workflow definitions (no executor yet)
-  capabilities/ Typed capability/tool registry (catalog + authorize; no dispatcher)
-  connectors/   Pull connector definitions and sync runs (in-memory only)
+  workflow_definitions/ User-authored workflow definitions + run executor
+  capabilities/ Typed capability/tool registry (catalog + authorize + executor map)
+  connectors/   Pull connector definitions and sync runs (in-memory / Postgres)
   readiness/    KB/domain readiness aggregation
   governance/   Release readiness, eval runs, baseline approval
+  execution/    Executor dispatch seam (dispatch/register_handler + ExecutionDeps)
 ```
 
-All **28** packages are listed above; `ls backend/` is the ground truth. This
+All **29** packages are listed above; `ls backend/` is the ground truth. This
 tree previously stopped at `database/`, omitting fifteen real packages.
 
 ### 5.3 Cross-module interaction rules (strictly enforced)
@@ -1097,7 +1098,7 @@ Check that all function parameters and return types are explicitly annotated. `p
 
 ### Tests fail with `ModuleNotFoundError`
 
-Make sure you installed the package in editable mode: `uv pip install -e ".[dev]"`. If you added a new package, check that it is listed in `pyproject.toml` under `[tool.setuptools.packages.find]`.
+Make sure you installed the package in editable mode: `uv pip install -e ".[dev]"`. If you added a new package, check that it has an `__init__.py` — `[tool.setuptools.packages.find]` in `pyproject.toml` is a denylist (every package ships except the tests), so new packages need no registration there.
 
 ### `make dev` fails because a port is already in use
 
