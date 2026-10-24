@@ -307,3 +307,21 @@ class TestShutdownSignal:
             pass
 
         assert signal.getsignal(signal.SIGTERM) is original
+
+
+def test_create_app_rejects_in_memory_state_stores_on_a_redis_bus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boot fails loudly instead of serving a stack whose worker can't see its data."""
+    import api.dependencies as dependencies
+    from shared.exceptions import ConfigurationError
+
+    monkeypatch.delenv("CHILI_CONFIG_OVERLAY_PATH", raising=False)
+    monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+    dependencies.get_event_bus_settings.cache_clear()
+    try:
+        with pytest.raises(ConfigurationError, match="database, graph, vectorstore"):
+            create_app()
+    finally:
+        monkeypatch.delenv("CHILI_EVENT_BUS_BACKEND")
+        dependencies.get_event_bus_settings.cache_clear()

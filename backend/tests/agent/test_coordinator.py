@@ -535,6 +535,29 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.ingestion_service._recovery_store, ObjectStoreIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_build_worker_dependencies_rejects_in_memory_state_stores_on_redis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker on a Redis bus can never see an in-memory store the API wrote to."""
+    from shared.exceptions import ConfigurationError
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    monkeypatch.delenv("CHILI_CONFIG_OVERLAY_PATH", raising=False)
+    monkeypatch.setattr(
+        "agent.coordinator.load_active_config", lambda: load_config(defaults_dir)
+    )
+    monkeypatch.setattr(
+        "agent.coordinator.load_event_bus_settings",
+        lambda: EventBusSettings(backend="redis"),
+    )
+
+    with pytest.raises(ConfigurationError, match="database, graph, vectorstore"):
+        build_worker_dependencies()
+
+
 def test_build_worker_dependencies_wires_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

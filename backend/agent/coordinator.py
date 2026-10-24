@@ -40,6 +40,7 @@ from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
 from config.feature_typology_index import build_feature_typology_index
 from config.display import entity_display_label
+from config.deployment import require_shared_state_stores
 from config.loader import load_active_config
 from config.schema import (
     AnalyticsConfig,
@@ -1268,11 +1269,14 @@ def build_worker_dependencies() -> WorkerDependencies:
     """
 
     config = _load_worker_config()
+    event_settings = _resolve_worker_event_bus_settings(config)
+    # Before any adapter is built: on a redis bus this worker is a separate
+    # process from the API, and an in-memory store would silently diverge.
+    require_shared_state_stores(config, event_bus_backend=event_settings.backend)
     # Built before the bus so the transport has somewhere durable to record a
     # message it cannot decode; both depend only on `config`.
     connection_provider = build_connection_provider(config)
     dlq_record_store = build_dlq_record_store(connection_provider)
-    event_settings = _resolve_worker_event_bus_settings(config)
     event_bus = create_event_bus(event_settings, dlq_record_store=dlq_record_store)
     workflow_run_store = create_workflow_run_store_from_env()
     workflow_tracker = WorkflowEventTracker(workflow_run_store)

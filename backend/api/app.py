@@ -18,6 +18,7 @@ from api.dependencies import (
     enforce_production_guardrail,
     load_chili_environment,
     reset_domain_config_caches,
+    resolve_event_bus_settings,
 )
 from api.middleware.auth import configure_jwks_cache
 from api.middleware.metrics import register_metrics
@@ -49,6 +50,7 @@ from api.routers.scorecards import router as scorecards_router
 from api.routers.score_runs import router as score_runs_router
 from api.routers.workflow_definitions import router as workflow_definitions_router
 from api.routers.workflows import router as workflows_router
+from config.deployment import require_shared_state_stores
 from config.loader import load_config
 from config.store import read_active_pack
 from shared.logging import configure_logging, get_logger
@@ -156,6 +158,9 @@ def create_app() -> FastAPI:
     pointer = read_active_pack()
     config = load_config(pointer.config_path) if pointer is not None else load_config()
     enforce_production_guardrail(config.auth)
+    require_shared_state_stores(
+        config, event_bus_backend=resolve_event_bus_settings(config).backend
+    )
     configure_jwks_cache(config.auth)
 
     app = FastAPI(

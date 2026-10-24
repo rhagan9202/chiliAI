@@ -716,6 +716,37 @@ class TestApplyAndSwitch:
 
 
 # ---------------------------------------------------------------------------
+# Shared-state guard on hot-swap
+# ---------------------------------------------------------------------------
+
+
+class TestSharedStateGuard:
+    def test_in_memory_pack_rejected_on_redis_with_nothing_mutated(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Swapping a split API/worker stack onto in-memory stores loses data.
+
+        The API would accept records the worker can never read, so the swap
+        must be refused before anything is persisted.
+        """
+        config_before = dependencies.get_domain_config()
+        generation_before = dependencies.get_config_generation()
+
+        monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+        dependencies.get_event_bus_settings.cache_clear()
+        for route in ("/config/switch", "/config/apply"):
+            resp = client.post(route, json={"pack": "medicare_fraud"})
+            assert resp.status_code == 400, route
+            detail = resp.json()["detail"]
+            assert "database, graph, vectorstore" in detail
+            assert "active configuration unchanged" in detail
+
+        assert read_active_pack() is None
+        assert dependencies.get_config_generation() == generation_before
+        assert dependencies.get_domain_config() is config_before
+
+
+# ---------------------------------------------------------------------------
 # Production auth guardrail on hot-swap
 # ---------------------------------------------------------------------------
 

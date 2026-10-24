@@ -70,6 +70,7 @@ from api.middleware.rbac import require_role
 from api.state import ApiState
 from auditlog.models import AuditEventCreate
 from auditlog.service import AuditLogService
+from config.deployment import require_shared_state_stores
 from config.loader import ConfigLoadError, load_config, overlay_paths_from_env
 from config.overlay import OverlayError, apply_overlays
 from config.schema import DomainConfig
@@ -82,6 +83,7 @@ from config.store import (
 )
 from events.protocols import EventBus
 from events.types import ConfigUpdatedEvent
+from shared.exceptions import ConfigurationError
 
 __all__ = ["PACK_DIRS_ENV_VAR", "router"]
 
@@ -522,6 +524,19 @@ def _swap_active_pack(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Pack rejected by the production auth guardrail; "
+                f"active configuration unchanged. {exc}"
+            ),
+        ) from exc
+    try:
+        require_shared_state_stores(
+            new_config,
+            event_bus_backend=dependencies.resolve_event_bus_settings(new_config).backend,
+        )
+    except ConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Pack rejected by the shared-state guard; "
                 f"active configuration unchanged. {exc}"
             ),
         ) from exc

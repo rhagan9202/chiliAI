@@ -28,15 +28,22 @@ dev: env-file ## Start dev stack (hot-reload)
 	$(COMPOSE_DEV) up --build
 
 # Domain packs live in backend/config/defaults/<name>.yaml. The compose files
-# parameterize CHILI_CONFIG_PATH (defaulting to the medicare exemplar), so a
-# single env var retargets both api and worker. See backend/config/README.md.
+# parameterize CHILI_CONFIG_PATH (defaulting to the DE-SynPUF pack), so a
+# single env var retargets both api and worker. A base pack that ships no
+# infra (medicare_fraud.yaml) gets its stack from config/overlays/<name>_dev.yaml,
+# layered here automatically when it exists; an exported CHILI_CONFIG_OVERLAY_PATH
+# still wins. Without it the api/worker would each hold private in-memory stores,
+# which both now refuse to boot with. See backend/config/README.md.
+DEV_OVERLAY = $(if $(wildcard backend/config/overlays/$(DOMAIN)_dev.yaml),/app/config/overlays/$(DOMAIN)_dev.yaml,)
 dev-domain: env-file ## Start dev stack under a named domain pack (make dev-domain DOMAIN=food_supply_chain)
 ifndef DOMAIN
 	$(error DOMAIN is required, e.g. make dev-domain DOMAIN=food_supply_chain)
 endif
 	@test -f backend/config/defaults/$(DOMAIN).yaml || \
 		{ echo "Unknown domain pack '$(DOMAIN)' — expected backend/config/defaults/$(DOMAIN).yaml"; exit 1; }
-	CHILI_CONFIG_PATH=/app/config/defaults/$(DOMAIN).yaml $(COMPOSE_DEV) up --build
+	CHILI_CONFIG_PATH=/app/config/defaults/$(DOMAIN).yaml \
+	CHILI_CONFIG_OVERLAY_PATH="$${CHILI_CONFIG_OVERLAY_PATH:-$(DEV_OVERLAY)}" \
+		$(COMPOSE_DEV) up --build
 
 down: ## Stop dev stack
 	$(COMPOSE_DEV) down

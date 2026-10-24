@@ -52,6 +52,15 @@ drifted together into the same bug.
   (`POST /config/apply|switch`) only after the candidate pack fully
   validates; a corrupt pointer file fails loudly rather than silently
   reverting the deployment to a different domain.
+- `deployment.py` — deployment-shape checks that need only a resolved
+  `DomainConfig`: `process_local_state_stores()` names the `in_memory`
+  database/graph/vectorstore sections, and `require_shared_state_stores()`
+  raises `ConfigurationError` when those meet a `redis` event bus (see
+  "Shared-state guard" below).
+- `display.py` — `entity_display_label(entity, config)`, the single
+  config-driven display-name ladder every user-facing entity name uses
+  (UXA-304); mirrored by `chili_app/src/utils/domainDisplay.ts`.
+- `feature_typology_index.py` — see the section above.
 - `defaults/` — the shipped domain packs (each a complete, independently
   loadable `DomainConfig`; iterated by the config API's pack catalog, so
   every file here is discoverable/switchable via the Config Manager /
@@ -174,6 +183,21 @@ Switch the dev stack with the make target (validates the pack file exists):
 ```bash
 make dev-domain DOMAIN=food_supply_chain
 ```
+
+When `config/overlays/<DOMAIN>_dev.yaml` exists, `make dev-domain` also sets
+`CHILI_CONFIG_OVERLAY_PATH` to it (an exported value still wins). That is how
+`make dev-domain DOMAIN=medicare_fraud` gets Postgres/Neo4j/Qdrant: the base
+pack ships no infra block, so on its own every state store is `in_memory`.
+
+**Shared-state guard.** On a `redis` event bus the API and worker are separate
+processes, so an `in_memory` database, graph, or vector store is private to
+each — the API accepts records the worker can never read. `config/deployment.py`
+(`require_shared_state_stores`) refuses that shape at API boot, at worker boot,
+and on every hot-swap candidate (`POST /config/switch|apply` → 400, nothing
+mutated). Raw `docker compose` / `CHILI_CONFIG_PATH=…medicare_fraud.yaml make dev`
+without the overlay therefore fails loudly instead of silently dropping data;
+hot-swapping a running stack onto `medicare_fraud` needs the overlay in the
+api/worker environment first. An in-process bus (tests) is unaffected.
 
 or set the env var directly (works for `make dev`, `make prod`, and raw
 `docker compose` — the path is the in-container path under `/app`):
