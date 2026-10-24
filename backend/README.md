@@ -257,6 +257,7 @@ The backend reads a domain configuration YAML/JSON file ("domain pack") at start
 | `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
 | `NEO4J_USER` | `neo4j` | Neo4j username used when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Matches the Compose `NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}` setting. |
 | `NEO4J_PASSWORD` | unset | Neo4j password used with `NEO4J_USER` when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Leave unset only when the Neo4j service is started with `NEO4J_AUTH=none`. |
+| `NEO4J_AUTH` | `none` (dev compose) | Fallback when `auth_env_var` and `NEO4J_PASSWORD` are both unset: the same `user/password` (or `none`) value the dev Neo4j container reads. Dev compose passes it to the API and worker, so enabling Neo4j auth (as CI does) keeps them in step. |
 | `NEO4J_AUTH` or configured `GraphDbConfig.auth_env_var` | unset | Optional explicit Neo4j credential env. Accepts `username:password`, Docker-style `username/password`, password-only values (defaults username to `neo4j`), or `none` for anonymous local Neo4j. |
 
 ### Optional `analytics` config section

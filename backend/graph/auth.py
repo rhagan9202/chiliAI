@@ -15,9 +15,10 @@ def resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
     ``GraphDbConfig.auth_env_var`` remains the explicit override and accepts
     either ``username:password`` or Docker's ``username/password`` Neo4j auth
     format. When it is not configured, fall back to the standard
-    ``NEO4J_USER``/``NEO4J_PASSWORD`` pair used by the Compose stacks. This
-    keeps fresh deployments from starting Neo4j with auth enabled while the API
-    and worker connect anonymously.
+    ``NEO4J_USER``/``NEO4J_PASSWORD`` pair used by the production Compose
+    stack, then to ``NEO4J_AUTH`` -- the value the dev stack's Neo4j container
+    itself reads. This keeps deployments from starting Neo4j with auth enabled
+    while the API and worker connect anonymously.
     """
 
     if config.auth_env_var is not None:
@@ -43,7 +44,7 @@ def _parse_auth_value(raw_value: str | None) -> tuple[str, str] | None:
 def _auth_from_standard_env() -> tuple[str, str] | None:
     password = os.environ.get("NEO4J_PASSWORD")
     if password is None or password.strip() == "":
-        return None
+        return _parse_auth_value(os.environ.get("NEO4J_AUTH"))
     username = os.environ.get("NEO4J_USER", "neo4j")
     return _validated_auth_parts(username, password)
 

@@ -75,6 +75,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687
+      # Same value the neo4j service reads, so the API/worker authenticate
+      # whenever CI (or a developer) enables Neo4j auth via NEO4J_AUTH.
+      - NEO4J_AUTH=${NEO4J_AUTH:-none}
       - QDRANT_URL=http://qdrant:6333
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=minioadmin
@@ -137,6 +140,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687
+      # Same value the neo4j service reads, so the API/worker authenticate
+      # whenever CI (or a developer) enables Neo4j auth via NEO4J_AUTH.
+      - NEO4J_AUTH=${NEO4J_AUTH:-none}
       - QDRANT_URL=http://qdrant:6333
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=minioadmin

@@ -90,3 +90,33 @@ def test_resolve_graph_auth_standard_env_defaults_username(
     config = GraphDbConfig(backend="neo4j", uri="bolt://neo4j:7687")
 
     assert resolve_graph_auth(config) == ("neo4j", "secret")
+
+
+def test_resolve_graph_auth_falls_back_to_neo4j_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the pair, use the NEO4J_AUTH value the Neo4j container reads.
+
+    The dev compose stack configures Neo4j only through NEO4J_AUTH; CI sets it
+    to enable auth, and the API/worker must then authenticate with it.
+    """
+
+    monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
+    monkeypatch.setenv("NEO4J_AUTH", "neo4j/ci_password")
+    config = GraphDbConfig(backend="neo4j", uri="bolt://neo4j:7687")
+
+    assert resolve_graph_auth(config) == ("neo4j", "ci_password")
+
+    monkeypatch.setenv("NEO4J_AUTH", "none")
+    assert resolve_graph_auth(config) is None
+
+
+def test_resolve_graph_auth_prefers_the_standard_pair_over_neo4j_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEO4J_AUTH", "neo4j/from-auth")
+    monkeypatch.setenv("NEO4J_USER", "company")
+    monkeypatch.setenv("NEO4J_PASSWORD", "from-pair")
+    config = GraphDbConfig(backend="neo4j", uri="bolt://neo4j:7687")
+
+    assert resolve_graph_auth(config) == ("company", "from-pair")
