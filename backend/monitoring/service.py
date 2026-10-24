@@ -15,6 +15,7 @@ from monitoring.lifecycle import ALERT_TRANSITIONS, VALID_ALERT_STATUSES
 from monitoring.models import (
     AlertCandidate,
     AlertGroup,
+    MonitoringBatch,
     MonitoringObservation,
     SuppressionRule,
 )
@@ -78,6 +79,25 @@ class MonitoringService:
             raise MonitoringConfigurationError(str(exc)) from exc
         except Exception as exc:
             raise MonitoringSourceError("Failed to load monitoring batch.") from exc
+        return self.evaluate_batch(request, batch)
+
+    def evaluate_batch(
+        self, request: MonitoringEvaluationRequest, batch: MonitoringBatch
+    ) -> MonitoringEvaluationResponse:
+        """Evaluate a batch the caller already holds, skipping the source read.
+
+        The records worker writes a batch and evaluates it in the same step, so
+        re-reading it from the observations table would only add a round trip.
+        """
+
+        if (
+            batch.knowledge_base_id != request.knowledge_base_id
+            or batch.batch_id != request.batch_id
+        ):
+            raise MonitoringConfigurationError(
+                f"Batch {batch.knowledge_base_id!r}/{batch.batch_id!r} does not match "
+                f"request {request.knowledge_base_id!r}/{request.batch_id!r}."
+            )
 
         now = utc_now()
         observations = list(batch.observations)
@@ -196,7 +216,10 @@ class MonitoringService:
             rate_limited_count = len(deduped) - self._max_alerts_per_evaluation
             deduped = deduped[: self._max_alerts_per_evaluation]
 
-        alerts = [_to_alert(candidate, created_at=now) for candidate in deduped]
+        alerts = [
+            _to_alert(candidate, batch_id=request.batch_id, created_at=now)
+            for candidate in deduped
+        ]
 
         # E8-S06: cluster alerts by entity_type within the configured time tolerance.
         alert_groups = _build_alert_groups(
@@ -410,9 +433,15 @@ def _to_alert_candidate(
     )
 
 
-def _to_alert(candidate: AlertCandidate, *, created_at: datetime) -> Alert:
+def _to_alert(
+    candidate: AlertCandidate, *, batch_id: str, created_at: datetime
+) -> Alert:
+    # Deterministic so a retried evaluation of the same batch -- a fresh worker
+    # whose in-memory dedup index is empty -- lands on the same alert_history
+    # row (ON CONFLICT (knowledge_base_id, alert_id) DO NOTHING) instead of
+    # minting a duplicate alert.
     return Alert(
-        id=generate_id(),
+        id=f"alert-monitoring-{batch_id}-{candidate.entity_id}-{candidate.metric_name}",
         entity_type=candidate.entity_type,
         entity_id=candidate.entity_id,
         severity=candidate.severity,

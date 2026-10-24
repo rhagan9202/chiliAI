@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from agent.coordinator import handle_records_ingested
@@ -13,10 +15,19 @@ from config.schema import (
     RecordsConfig,
 )
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import RecordsIngestedEvent
+from events.types import AlertsCreatedEvent, RecordsIngestedEvent
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import GraphService, create_graph_service
-from monitoring.adapters.in_memory import InMemoryObservationWriter
+from monitoring.adapters.in_memory import (
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.models import MonitoringBatch
+from monitoring.service import MonitoringService, create_monitoring_service
+from monitoring.service_models import (
+    MonitoringEvaluationRequest,
+    MonitoringEvaluationResponse,
+)
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.exceptions import RecordFeedNotFoundError, RecordMappingError
 from records.models import RawRecord, content_hash_for
@@ -116,6 +127,89 @@ def test_handler_fans_records_out_to_graph_and_observations() -> None:
     batch, correlation_id = writer.written[0]
     assert correlation_id == "corr-1"
     assert batch.observations[0].metric_name == "claim_anomaly"
+
+
+def _ingest_with_monitoring(monitoring_service: MonitoringService) -> int:
+    store = InMemoryRawRecordStore()
+    _seed_store(store, "corr-1")
+    return handle_records_ingested(
+        RecordsIngestedEvent(
+            correlation_id="corr-1",
+            knowledge_base_id="kb-1",
+            feed_name="claims_feed",
+            record_type="claim_record",
+            record_count=1,
+        ),
+        records_config=_records_config(),
+        raw_record_store=store,
+        graph_service=_graph_service(),
+        observation_writer=InMemoryObservationWriter(),
+        monitoring_service=monitoring_service,
+    )
+
+
+def test_handler_evaluates_monitoring_on_the_batch_it_wrote() -> None:
+    """Observations exist only here, keyed by the ingest correlation id.
+
+    Monitoring used to run off ``risk.scored`` keyed by the risk request id,
+    which never matched a stored batch, so no threshold alert was ever raised.
+    """
+
+    event_bus = InMemoryEventBus()
+    monitoring_service = create_monitoring_service(
+        InMemoryObservationSource(), event_bus=event_bus
+    )
+
+    processed = _ingest_with_monitoring(monitoring_service)
+
+    assert processed == 1
+    alerts_events = [
+        e for e in event_bus.published_events if isinstance(e, AlertsCreatedEvent)
+    ]
+    assert len(alerts_events) == 1
+    alert = alerts_events[0].alerts[0]
+    assert alert.knowledge_base_id == "kb-1"
+    assert alert.entity_id == "claim:c1"
+    assert alert.metric_name == "claim_anomaly"
+    assert alert.alert_id == "alert-monitoring-corr-1-claim:c1-claim_anomaly"
+
+
+def test_handler_keeps_ingesting_when_monitoring_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # high <= medium is rejected at evaluation time: a stand-in for any
+    # monitoring failure, which must not fail the ingest it rides on.
+    monitoring_service = create_monitoring_service(
+        InMemoryObservationSource(),
+        event_bus=InMemoryEventBus(),
+        default_medium_threshold=0.9,
+        default_high_threshold=0.5,
+    )
+
+    caplog.set_level(logging.ERROR, logger="chili.worker")
+    processed = _ingest_with_monitoring(monitoring_service)
+
+    assert processed == 1
+    assert "Monitoring evaluation failed" in caplog.text
+
+
+def test_handler_keeps_ingesting_when_monitoring_crashes(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class _BoomMonitoring(MonitoringService):
+        def __init__(self) -> None:
+            super().__init__(InMemoryObservationSource(), event_bus=InMemoryEventBus())
+
+        def evaluate_batch(
+            self, request: MonitoringEvaluationRequest, batch: MonitoringBatch
+        ) -> MonitoringEvaluationResponse:
+            raise RuntimeError("unexpected failure")
+
+    caplog.set_level(logging.ERROR, logger="chili.worker")
+    processed = _ingest_with_monitoring(_BoomMonitoring())
+
+    assert processed == 1
+    assert "Monitoring evaluation crashed" in caplog.text
 
 
 def test_handler_raises_for_unknown_feed() -> None:

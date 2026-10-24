@@ -107,6 +107,55 @@ def test_monitoring_service_generates_alerts_and_publishes_event() -> None:
     assert isinstance(event_bus.published_events[-1], AlertsCreatedEvent)
 
 
+def test_alert_ids_are_deterministic_per_batch_entity_and_metric() -> None:
+    """A retried evaluation (fresh worker, empty dedup index) re-mints the same id.
+
+    ``alert_history`` dedups on ``alert_id``; a random id would turn every
+    retry of the triggering ingest into a duplicate alert row.
+    """
+
+    first, _ = _build_service([_observation(score=0.92)])
+    second, _ = _build_service([_observation(score=0.92)])
+
+    first_id = first.evaluate(_request()).alerts[0].id
+    second_id = second.evaluate(_request()).alerts[0].id
+
+    assert first_id == second_id == "alert-monitoring-batch-1-provider-7-claim_volume"
+
+
+def test_evaluate_batch_scores_a_caller_supplied_batch_without_loading() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_monitoring_service(InMemoryObservationSource(), event_bus=event_bus)
+
+    response = service.evaluate_batch(
+        _request(),
+        MonitoringBatch(
+            knowledge_base_id="kb-1",
+            batch_id="batch-1",
+            observations=[_observation(score=0.92)],
+        ),
+    )
+
+    assert response.alert_count == 1
+    assert isinstance(event_bus.published_events[-1], AlertsCreatedEvent)
+
+
+def test_evaluate_batch_rejects_a_batch_that_does_not_match_the_request() -> None:
+    service = create_monitoring_service(
+        InMemoryObservationSource(), event_bus=InMemoryEventBus()
+    )
+
+    with pytest.raises(MonitoringConfigurationError):
+        service.evaluate_batch(
+            _request(),
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="other-batch",
+                observations=[_observation(score=0.92)],
+            ),
+        )
+
+
 def test_monitoring_service_returns_no_alerts_below_threshold() -> None:
     service, event_bus = _build_service([_observation(score=0.55)])
 

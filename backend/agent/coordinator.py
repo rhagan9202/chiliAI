@@ -404,7 +404,6 @@ __all__ = [
     "handle_graph_updated_for_analytics",
     "handle_knowledge_base_deleted",
     "handle_records_ingested",
-    "handle_risk_scored",
     "handle_risk_scored_for_graph",
     "handle_vectors_indexed",
     "main",
@@ -2925,52 +2924,45 @@ def _resolve_community_id(
     return None
 
 
-def handle_risk_scored(
-    event: RiskScoredEvent,
-    *,
-    monitoring_service: MonitoringService,
-    event_bus: EventBus,
+def _run_monitoring_stage(
+    monitoring_service: MonitoringService, batch: MonitoringBatch
 ) -> int:
-    """Trigger continuous monitoring evaluation in response to risk scores.
+    """Flow 1 — evaluate the observation batch this ingest just wrote.
 
-    Each ``RiskScoredReference`` in the event is mapped to a monitoring batch
-    derived from the risk assessment's request id. ``MonitoringService.evaluate``
-    is responsible for emitting ``alerts.created`` when alerts are generated.
-    Failures are logged and absorbed so the broader pipeline does not stall.
+    Observations are written only by the records path, keyed by the ingest
+    correlation id, so this is the one place a monitoring batch exists to be
+    evaluated. ``MonitoringService`` publishes ``alerts.created`` itself and
+    derives deterministic alert ids, so a retried ingest re-raises the same
+    alerts rather than duplicating them. Best-effort, like the other analytics
+    stages: a monitoring failure is logged and never fails the ingest.
+    Returns the number of alerts raised.
     """
 
-    processed = 0
-    for assessment in event.assessments:
-        try:
-            monitoring_service.evaluate(
-                MonitoringEvaluationRequest(
-                    knowledge_base_id=assessment.knowledge_base_id,
-                    batch_id=assessment.request_id,
-                )
-            )
-        except MonitoringError as exc:
-            logger.error(
-                "Monitoring evaluation failed kb=%s request=%s entity=%s: %s",
-                assessment.knowledge_base_id,
-                assessment.request_id,
-                assessment.entity_id,
-                exc,
-            )
-            continue
-        except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
-            logger.error(
-                "Monitoring evaluation crashed kb=%s request=%s entity=%s: %s",
-                assessment.knowledge_base_id,
-                assessment.request_id,
-                assessment.entity_id,
-                exc,
-            )
-            continue
-
-        # MonitoringService.evaluate() publishes AlertsCreatedEvent itself when
-        # alerts > 0; the coordinator only counts processed assessments here.
-        processed += 1
-    return processed
+    try:
+        response = monitoring_service.evaluate_batch(
+            MonitoringEvaluationRequest(
+                knowledge_base_id=batch.knowledge_base_id,
+                batch_id=batch.batch_id,
+            ),
+            batch,
+        )
+    except MonitoringError as exc:
+        logger.error(
+            "Monitoring evaluation failed kb=%s batch=%s: %s",
+            batch.knowledge_base_id,
+            batch.batch_id,
+            exc,
+        )
+        return 0
+    except Exception as exc:  # noqa: BLE001 - monitoring must not abort ingest
+        logger.error(
+            "Monitoring evaluation crashed kb=%s batch=%s: %s",
+            batch.knowledge_base_id,
+            batch.batch_id,
+            exc,
+        )
+        return 0
+    return response.alert_count
 
 
 def handle_risk_scored_for_graph(
@@ -3322,6 +3314,7 @@ def handle_records_ingested(
     domain_config: DomainConfig | None = None,
     graph_service: GraphService,
     observation_writer: ObservationWriter,
+    monitoring_service: MonitoringService | None = None,
     embeddings_service: EmbeddingsServiceProtocol | None = None,
     vector_store: VectorStoreProtocol | None = None,
     policy_rules: list[PolicyRulePack] | None = None,
@@ -3426,14 +3419,17 @@ def handle_records_ingested(
 
     observations = map_observations(feed, records)
     if observations:
+        observation_batch = MonitoringBatch(
+            knowledge_base_id=event.knowledge_base_id,
+            batch_id=event.correlation_id,
+            observations=observations,
+        )
         observation_writer.write_observations(
-            MonitoringBatch(
-                knowledge_base_id=event.knowledge_base_id,
-                batch_id=event.correlation_id,
-                observations=observations,
-            ),
+            observation_batch,
             correlation_id=event.correlation_id,
         )
+        if monitoring_service is not None:
+            _run_monitoring_stage(monitoring_service, observation_batch)
 
     if policy_service is not None and policy_rules:
         _evaluate_policy_rules(
@@ -4351,27 +4347,21 @@ def _dispatch_event(
     if isinstance(event, KnowledgeBaseReadyEvent):
         return 0
     if isinstance(event, RiskScoredEvent):
-        # RiskScoredEvent is the sole path for monitoring + the risk_score_history
-        # write-back. Both are idempotent (the deterministic request_id keys the
-        # monitoring batch, the history row, and the derived alert id), so a
-        # failure must PROPAGATE to the retry/DLQ wrapper rather than be silently
-        # dropped — a transient DB/event-bus outage retries instead of vanishing.
-        processed = 0
-        if monitoring_service is not None:
-            processed = handle_risk_scored(
-                event,
-                monitoring_service=monitoring_service,
-                event_bus=event_bus,
-            )
-        if risk_history_writer is not None:
-            handle_risk_scored_for_graph(
-                event,
-                risk_history_writer=risk_history_writer,
-                graph_service=graph_service,
-                risk_projection_service=risk_projection_service,
-                feature_typology_index=_feature_typology_index(domain_config),
-            )
-        return processed
+        # RiskScoredEvent is the sole path for the risk_score_history write-back.
+        # It is idempotent (the deterministic request_id keys the history row),
+        # so a failure must PROPAGATE to the retry/DLQ wrapper rather than be
+        # silently dropped — a transient DB outage retries instead of vanishing.
+        # Threshold monitoring does NOT run here: observations are keyed by the
+        # ingest batch, not the risk request, and are evaluated in Flow 1.
+        if risk_history_writer is None:
+            return 0
+        return handle_risk_scored_for_graph(
+            event,
+            risk_history_writer=risk_history_writer,
+            graph_service=graph_service,
+            risk_projection_service=risk_projection_service,
+            feature_typology_index=_feature_typology_index(domain_config),
+        )
     if isinstance(event, AlertsCreatedEvent):
         if alert_history_writer is None:
             return 0
@@ -4399,6 +4389,7 @@ def _dispatch_event(
             raw_record_store=raw_record_store,
             graph_service=graph_service,
             observation_writer=observation_writer,
+            monitoring_service=monitoring_service,
             embeddings_service=embeddings_service,
             vector_store=vector_store,
             policy_rules=policy_rules,

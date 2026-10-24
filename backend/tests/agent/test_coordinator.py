@@ -5208,38 +5208,52 @@ def test_handle_event_propagates_analytics_fanout_failure_publish_error(
 # ---------------------------------------------------------------------------
 
 
-def _build_monitoring_test_bundle() -> tuple[
-    _MonitoringService, InMemoryEventBus, _RiskScoredEvent
-]:
-    from monitoring.adapters.in_memory import InMemoryObservationSource
-    from monitoring.models import MonitoringBatch, MonitoringObservation
-    from monitoring.service import create_monitoring_service
+def test_handle_event_does_not_run_monitoring_on_risk_scored() -> None:
+    """Regression: risk.scored used to evaluate monitoring per assessment.
+
+    It keyed the batch by the risk request id, which no observation batch
+    ever carries, so it logged an error per scored entity and raised nothing.
+    Monitoring now runs in Flow 1 (``handle_records_ingested``); a wired
+    monitoring service must not be touched by risk.scored.
+    """
+
+    from agent.coordinator import handle_event
     from events.types import RiskScoredReference
+    from monitoring.adapters.in_memory import InMemoryObservationSource
+    from monitoring.service_models import (
+        MonitoringEvaluationRequest,
+        MonitoringEvaluationResponse,
+    )
+
+    class _SpyMonitoring(_MonitoringService):
+        def __init__(self) -> None:
+            super().__init__(InMemoryObservationSource(), event_bus=InMemoryEventBus())
+            self.calls = 0
+
+        def evaluate(
+            self, request: MonitoringEvaluationRequest
+        ) -> MonitoringEvaluationResponse:
+            self.calls += 1
+            return super().evaluate(request)
 
     event_bus = InMemoryEventBus()
-    source = InMemoryObservationSource(
-        batches=[
-            MonitoringBatch(
-                knowledge_base_id="kb-1",
-                batch_id="risk-request-1",
-                observations=[
-                    MonitoringObservation(
-                        entity_id="provider-1",
-                        entity_type="provider",
-                        metric_name="risk",
-                        score=0.92,
-                        rationale="High risk score from risk service.",
-                    )
-                ],
-            )
-        ]
+    object_store = InMemoryObjectStore()
+    graph_repository = InMemoryGraphRepository()
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
     )
-    service = create_monitoring_service(source, event_bus=event_bus)
+    ingestion_service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     event = _RiskScoredEvent(
         assessments=[
             RiskScoredReference(
                 knowledge_base_id="kb-1",
-                request_id="risk-request-1",
+                request_id="risk:corr-1:kb-1:provider-1",
                 entity_id="provider-1",
                 overall_score=0.92,
                 risk_level="high",
@@ -5247,82 +5261,7 @@ def _build_monitoring_test_bundle() -> tuple[
             )
         ]
     )
-    return service, event_bus, event
-
-
-def test_handle_risk_scored_emits_alerts_created() -> None:
-    from agent.coordinator import handle_risk_scored
-    from events.types import AlertsCreatedEvent
-
-    service, event_bus, event = _build_monitoring_test_bundle()
-
-    processed = handle_risk_scored(
-        event, monitoring_service=service, event_bus=event_bus
-    )
-
-    assert processed == 1
-    alerts_events = [
-        e for e in event_bus.published_events if isinstance(e, AlertsCreatedEvent)
-    ]
-    assert len(alerts_events) == 1
-    assert alerts_events[0].alerts[0].entity_id == "provider-1"
-
-
-def test_handle_risk_scored_logs_and_continues_on_monitoring_error(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    import logging
-
-    from agent.coordinator import handle_risk_scored
-    from events.types import RiskScoredEvent, RiskScoredReference
-    from monitoring.adapters.in_memory import InMemoryObservationSource
-    from monitoring.service import create_monitoring_service
-
-    event_bus = InMemoryEventBus()
-    # No batch seeded — load_batch raises ValueError, mapped to MonitoringConfigurationError.
-    service = create_monitoring_service(
-        InMemoryObservationSource(), event_bus=event_bus
-    )
-    event = RiskScoredEvent(
-        assessments=[
-            RiskScoredReference(
-                knowledge_base_id="kb-1",
-                request_id="missing",
-                entity_id="provider-1",
-                overall_score=0.5,
-                risk_level="medium",
-                factor_count=1,
-            )
-        ]
-    )
-
-    caplog.set_level(logging.ERROR, logger="chili.worker")
-    processed = handle_risk_scored(
-        event, monitoring_service=service, event_bus=event_bus
-    )
-
-    # Failures count zero processed assessments and do not raise.
-    assert processed == 0
-    assert "Monitoring evaluation failed" in caplog.text
-
-
-def test_handle_event_dispatches_risk_scored_to_monitoring() -> None:
-    from agent.coordinator import handle_event
-    from events.types import AlertsCreatedEvent
-
-    service, event_bus, event = _build_monitoring_test_bundle()
-    object_store = InMemoryObjectStore()
-    graph_repository = InMemoryGraphRepository()
-    graph_service = create_graph_service(
-        graph_repository, object_store=object_store, event_bus=event_bus
-    )
-    ingestion_service = IngestionService(
-        DocumentParsingOrchestrator(
-            create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
-        ),
-        object_store=object_store,
-        event_bus=event_bus,
-    )
+    monitoring = _SpyMonitoring()
 
     processed = handle_event(
         EventDelivery(event=event, event_id="1", stream="risk.scored"),
@@ -5333,17 +5272,14 @@ def test_handle_event_dispatches_risk_scored_to_monitoring() -> None:
         graph_service=graph_service,
         object_store=object_store,
         event_bus=event_bus,
-        monitoring_service=service,
+        monitoring_service=monitoring,
     )
 
-    assert processed == 1
-    alerts_events = [
-        e for e in event_bus.published_events if isinstance(e, AlertsCreatedEvent)
-    ]
-    assert len(alerts_events) == 1
+    assert processed == 0
+    assert monitoring.calls == 0
 
 
-def test_handle_event_skips_risk_scored_when_no_monitoring_service() -> None:
+def test_handle_event_returns_zero_for_risk_scored_without_history_writer() -> None:
     from agent.coordinator import handle_event
     from events.types import RiskScoredEvent, RiskScoredReference
 
@@ -5382,68 +5318,6 @@ def test_handle_event_skips_risk_scored_when_no_monitoring_service() -> None:
         graph_service=graph_service,
         object_store=object_store,
         event_bus=event_bus,
-    )
-
-    assert processed == 0
-
-
-def test_handle_event_absorbs_unexpected_monitoring_exception() -> None:
-    """A non-MonitoringError raised by monitoring should not propagate from handle_event."""
-
-    from agent.coordinator import handle_event
-    from events.types import RiskScoredEvent, RiskScoredReference
-    from monitoring.adapters.in_memory import InMemoryObservationSource
-    from monitoring.service import MonitoringService
-    from monitoring.service_models import (
-        MonitoringEvaluationRequest,
-        MonitoringEvaluationResponse,
-    )
-
-    class _BoomMonitoring(MonitoringService):
-        def __init__(self) -> None:
-            super().__init__(InMemoryObservationSource(), event_bus=InMemoryEventBus())
-
-        def evaluate(
-            self, request: MonitoringEvaluationRequest
-        ) -> MonitoringEvaluationResponse:
-            raise RuntimeError("unexpected failure")
-
-    event_bus = InMemoryEventBus()
-    object_store = InMemoryObjectStore()
-    graph_repository = InMemoryGraphRepository()
-    graph_service = create_graph_service(
-        graph_repository, object_store=object_store, event_bus=event_bus
-    )
-    ingestion_service = IngestionService(
-        DocumentParsingOrchestrator(
-            create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
-        ),
-        object_store=object_store,
-        event_bus=event_bus,
-    )
-    event = RiskScoredEvent(
-        assessments=[
-            RiskScoredReference(
-                knowledge_base_id="kb-1",
-                request_id="r1",
-                entity_id="provider-1",
-                overall_score=0.5,
-                risk_level="medium",
-                factor_count=1,
-            )
-        ]
-    )
-
-    processed = handle_event(
-        EventDelivery(event=event, event_id="1", stream="risk.scored"),
-        ingestion_service,
-        document_chunker=create_document_chunker(),
-        document_extractor=create_document_extractor([]),
-        extraction_validator=create_extraction_validator([], []),
-        graph_service=graph_service,
-        object_store=object_store,
-        event_bus=event_bus,
-        monitoring_service=_BoomMonitoring(),
     )
 
     assert processed == 0

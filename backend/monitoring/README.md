@@ -17,6 +17,27 @@ KB-scoped `alert_history` audit log the API's alert feed reads from.
 | `service.py` | `MonitoringService` — threshold evaluation, dedup, rate-limiting, suppression rules, alert grouping, and the higher-level acknowledge/resolve/transition operations used by `analytics`/`api` call sites that work through `AlertRepositoryProtocol` rather than the durable feed store directly. |
 | `exceptions.py` | `MonitoringError`, `MonitoringConfigurationError`, `MonitoringSourceError`, `AlertNotFoundError`, `AlertAlreadyResolvedError`, `AlertLifecycleError`, `AlertConcurrentModificationError`. |
 
+## Where evaluation runs
+
+Observations are written only by the records worker (`handle_records_ingested`,
+Flow 1), as one `MonitoringBatch` per ingest whose `batch_id` is the ingest
+`correlation_id`. The same handler then calls
+`MonitoringService.evaluate_batch(request, batch)` on that batch
+(`_run_monitoring_stage`, best-effort — a monitoring failure is logged and never
+fails the ingest). `evaluate(request)` is the same evaluation after loading the
+batch through `ObservationSourceProtocol`.
+
+Alert ids are deterministic — `alert-monitoring-{batch_id}-{entity_id}-{metric_name}`
+— because the dedup index is per-process memory: a retried ingest on a fresh
+worker re-evaluates with an empty index, and only a stable id lets
+`alert_history`'s `ON CONFLICT (knowledge_base_id, alert_id) DO NOTHING` absorb
+the repeat.
+
+Until 2026-10-24 evaluation ran off `risk.scored` (`handle_risk_scored`) with
+`batch_id` set to the risk request id. No batch is ever stored under that id,
+so it logged `No monitoring batch registered` once per scored entity and never
+raised an alert.
+
 ## Contract: a lost write race is typed, not a generic source error
 
 `AlertFeedStoreProtocol.acknowledge` and `.transition_status` are read

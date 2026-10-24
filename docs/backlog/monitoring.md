@@ -308,11 +308,11 @@ Alert data exists, but notification routing and delivery channels are not centra
 
 ### Current State
 - Per-evaluation rate limit exists (`max_alerts_per_evaluation`, default 100, severity-sorted truncation at `backend/monitoring/service.py:188-198`).
-- No cross-evaluation backpressure: bursts of `RiskScoredEvent`s trigger one `MonitoringService.evaluate` per assessment in `handle_risk_scored` (`backend/agent/coordinator.py:1429-1475`); failures absorbed and logged but successes continue at full speed.
+- No cross-evaluation backpressure: bursts of `RecordsIngestedEvent`s trigger one `MonitoringService.evaluate_batch` per ingest batch in `_run_monitoring_stage` (`backend/agent/coordinator.py:2923`; until 2026-10-24 this ran per `RiskScoredEvent` assessment in `handle_risk_scored` and never matched a batch); failures absorbed and logged but successes continue at full speed.
 - No token-bucket per KB, no consumer-group lag observation, no shed-on-overload behavior, no signal back to upstream producers.
 
 ### Acceptance Criteria
-- [ ] Per-KB token-bucket (or leaky-bucket) limiter applied in `handle_risk_scored` before invoking the monitoring service; defaults sourced from `MonitoringConfig.backpressure`.
+- [ ] Per-KB token-bucket (or leaky-bucket) limiter applied in `_run_monitoring_stage` before invoking the monitoring service; defaults sourced from `MonitoringConfig.backpressure`.
 - [ ] Soft and hard ceilings: at soft ceiling, log + counter; at hard ceiling, alerts persist to `alert_history` with `status="deferred"` and a `deferred_reason` rather than publishing to WS/notification paths.
 - [ ] Redis Streams consumer-group lag exposed as a `chili_events_consumer_lag` gauge (uses the events module's lag helper from `events.07`).
 - [ ] Load-shed metrics: `chili_monitoring_deferred_total{kb_id, reason}`, `chili_monitoring_rate_limited_total{kb_id}`.
@@ -326,7 +326,7 @@ Alert data exists, but notification routing and delivery channels are not centra
 
 ### Code touch points
 - `backend/monitoring/backpressure.py` (new)
-- `backend/agent/coordinator.py` (modify — apply limiter in `handle_risk_scored`)
+- `backend/agent/coordinator.py` (modify — apply limiter in `_run_monitoring_stage`)
 - `backend/monitoring/service.py` (modify — accept defer path)
 - `backend/monitoring/adapters/postgres.py` (modify — write `status="deferred"`)
 - `backend/config/schema.py` (modify — backpressure tunables)
