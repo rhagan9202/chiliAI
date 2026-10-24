@@ -64,6 +64,9 @@ configured and the in-memory repository otherwise.
 `decision_history` and CHECK constraints on `confidence`, `score` and
 `review_state`.
 
+`delete_by_kb` is the `identity_links` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`).
+
 ## Current gaps (verified in code)
 
 - `IdentityLinkDecisionRecordedEvent` (`identity.link_decision.recorded`) has
@@ -72,8 +75,6 @@ configured and the in-memory repository otherwise.
 - `project_identity_relationships` turns scored candidates into graph
   `Relationship`s, but nothing outside the tests calls it. Projecting links
   into the graph is left to the caller.
-- `identity_links` is not a step in `knowledgebases/cleanup.py`, so deleting
-  a KB does not remove its identity links.
 
 ## Tests
 

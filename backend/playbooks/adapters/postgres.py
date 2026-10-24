@@ -126,6 +126,20 @@ class PostgresPlaybookRepository:
             offset=max(offset, 0),
         )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._provider.connection() as conn:
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM fraud_playbook_snapshots WHERE knowledge_base_id = %s",
+                    (knowledge_base_id,),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return int(deleted)
+
 
 def _insert_params(snapshot: PlaybookSnapshot) -> tuple[object, ...]:
     return (

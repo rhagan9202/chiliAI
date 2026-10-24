@@ -70,6 +70,9 @@ the primary key `(knowledge_base_id, domain_name, playbook_id, version)`.
 CHECK constraints restrict `status` to `draft|published|retired` and `source`
 to `domain_config|api_import|api_publish`.
 
+`delete_by_kb` is the `playbooks` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`).
+
 ## Tests
 
 `tests/playbooks/` (`test_in_memory.py`, `test_postgres.py`, `test_service.py`),

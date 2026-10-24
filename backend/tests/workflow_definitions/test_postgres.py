@@ -180,3 +180,17 @@ def test_postgres_workflow_definition_repository_update_missing_raises(
 
     with pytest.raises(KeyError):
         repository.update_definition(_definition("missing", "v1"))
+
+
+def test_postgres_workflow_definition_repository_delete_by_kb_purges_only_that_kb(
+    provider: ConnectionProvider,
+) -> None:
+    repository = PostgresWorkflowDefinitionRepository(provider)
+    repository.save_definition(_definition(version="v1"))
+    repository.save_definition(_definition(version="v2"))
+    repository.save_definition(_definition(knowledge_base_id=_KB_ID + "-other"))
+
+    assert repository.delete_by_kb(_KB_ID) == 2
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert repository.list_definitions(knowledge_base_id=_KB_ID).total_items == 0
+    assert repository.list_definitions(knowledge_base_id=_KB_ID + "-other").total_items == 1

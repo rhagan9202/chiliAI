@@ -70,6 +70,9 @@ key, jsonb metrics / drift summary / approval, indexes
 `0023_governance_eval_dataset_source_refs.py` adds the
 `dataset_source_refs` jsonb column (also added idempotently by `0022`).
 
+`delete_by_kb` is the `governance_evals` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`).
+
 ## Tests
 
 `tests/governance/` — `test_eval_service.py`, `test_service.py`,

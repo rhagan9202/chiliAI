@@ -5347,15 +5347,7 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
         event_bus=event_bus,
     )
 
-    store_fields = [
-        "graph_service", "vector_service", "raw_record_store", "derived_signal_store",
-        "risk_history_writer", "risk_projection_repository", "observation_writer", "alert_history_writer",
-        "entity_metric_repository", "conversation_repository", "case_repository",
-        "policy_item_repository", "evidence_pack_repository",
-        "scorecard_run_repository", "document_status_store", "object_store",
-        "gnn_cluster_store", "timeseries_anomaly_store",
-    ]
-    mocks = {field: MagicMock() for field in store_fields}
+    mocks = {field: MagicMock() for field in KbDeletionStores.__dataclass_fields__}
     mocks["object_store"].list_keys.return_value = []
     bundle = cast(KbDeletionStores, SimpleNamespace(**mocks))
     kb_repository = MagicMock()

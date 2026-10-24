@@ -82,6 +82,13 @@ class InMemoryWorkflowDefinitionRepository:
                 offset=offset,
             )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._lock:
+            keys = [key for key in self._definitions if key[0] == knowledge_base_id]
+            for key in keys:
+                del self._definitions[key]
+            return len(keys)
+
     @staticmethod
     def _key(definition: WorkflowDefinition) -> tuple[str, str, str]:
         return (

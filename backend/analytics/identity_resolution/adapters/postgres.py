@@ -129,6 +129,17 @@ class PostgresIdentityLinkRepository:
         )
 
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._provider.connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM identity_links WHERE knowledge_base_id = %s",
+                (knowledge_base_id,),
+            )
+            deleted = cursor.rowcount
+            conn.commit()
+        return int(deleted)
+
+
 def _build_where(query: IdentityLinkRepositoryQuery) -> tuple[str, list[object]]:
     clauses = ["knowledge_base_id = %s"]
     params: list[object] = [query.knowledge_base_id]

@@ -37,5 +37,9 @@ class PlaybookRepository(Protocol):
         """Return a deterministic page of snapshots for a KB/domain scope."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Remove every snapshot in a knowledge base; return the count."""
+        ...
+
 
 __all__ = ["PlaybookRepository"]

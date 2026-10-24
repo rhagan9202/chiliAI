@@ -113,3 +113,23 @@ def test_list_snapshots_filters_by_domain_and_paginates_deterministically() -> N
         ("identity_mismatch_review", "v2"),
         ("provider_billing_spike_review", "v1"),
     ]
+
+
+def test_delete_by_kb_purges_only_that_kb() -> None:
+    repository = InMemoryPlaybookRepository()
+    repository.upsert_snapshot(_snapshot(version="v1"))
+    repository.upsert_snapshot(_snapshot(version="v2"))
+    repository.upsert_snapshot(_snapshot(knowledge_base_id="kb-other"))
+
+    assert repository.delete_by_kb("kb-playbooks") == 2
+    assert repository.delete_by_kb("kb-playbooks") == 0
+    assert (
+        repository.list_snapshots(
+            knowledge_base_id="kb-playbooks", domain_name="medicare_fraud"
+        ).total
+        == 0
+    )
+    assert (
+        repository.list_snapshots(knowledge_base_id="kb-other", domain_name="medicare_fraud").total
+        == 1
+    )

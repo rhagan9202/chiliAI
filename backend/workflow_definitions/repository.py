@@ -30,5 +30,7 @@ class WorkflowDefinitionRepository(Protocol):
         offset: int = 0,
     ) -> WorkflowDefinitionPage: ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
 
 __all__ = ["WorkflowDefinitionRepository"]

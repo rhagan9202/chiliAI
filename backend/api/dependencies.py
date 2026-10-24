@@ -163,6 +163,7 @@ from analytics.explainability.reviews import (
     ExplanationReviewPage,
     ExplanationReviewQuery,
     ExplanationReviewRecord,
+    ExplanationReviewRepository,
     ExplanationReviewService,
     ExplanationReviewState,
     ExplanationReviewTarget,
@@ -574,22 +575,36 @@ def get_evidence_provenance_repository(
     return EvidencePackProvenanceRepository(get_evidence_pack_repository(request))
 
 
-def get_explanation_review_service(request: Request) -> ExplanationReviewService:
-    """Return the per-app explanation review service."""
+def get_explanation_review_repository(request: Request) -> ExplanationReviewRepository:
+    """Return the per-app explanation review repository.
 
-    def build() -> ExplanationReviewService:
+    Shared by the review service and the KB-delete cascade, so an in-memory
+    deployment purges the same instance the service writes to.
+    """
+
+    def build() -> ExplanationReviewRepository:
         provider = get_connection_provider()
-        repository = (
+        return (
             InMemoryExplanationReviewRepository()
             if provider is None
             else PostgresExplanationReviewRepository(provider)
         )
-        return ExplanationReviewService(repository)
+
+    return _memoize_config_derived(
+        request.app,
+        "explanation_review_repository",
+        build,
+        guard=lambda value: isinstance(value, ExplanationReviewRepository),
+    )
+
+
+def get_explanation_review_service(request: Request) -> ExplanationReviewService:
+    """Return the per-app explanation review service."""
 
     return _memoize_config_derived(
         request.app,
         "explanation_review_service",
-        build,
+        lambda: ExplanationReviewService(get_explanation_review_repository(request)),
         guard=lambda value: isinstance(value, ExplanationReviewService),
     )
 
@@ -3634,7 +3649,9 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "evidence_pack_repository",
     "case_repository",
     "audit_log_service",
+    "explanation_review_repository",
     "explanation_review_service",
+    "identity_link_repository",
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",

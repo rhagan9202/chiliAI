@@ -404,6 +404,21 @@ class PostgresConnectorRepository:
             offset=normalized_offset,
         )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._provider.connection() as conn:
+            try:
+                # Sync runs cascade from connectors, quarantine rows from runs.
+                cursor = conn.execute(
+                    "DELETE FROM connectors WHERE knowledge_base_id = %s",
+                    (knowledge_base_id,),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return int(deleted)
+
 
 # --- row decoding -----------------------------------------------------------
 

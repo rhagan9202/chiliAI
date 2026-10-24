@@ -226,3 +226,47 @@ def test_list_stale_runs_respects_its_limit() -> None:
     )
 
     assert found == []
+
+
+def test_delete_by_kb_purges_definitions_runs_and_quarantine_for_that_kb() -> None:
+    repository = InMemoryConnectorRepository()
+    repository.save_definition(_definition_payload())
+    repository.save_definition(
+        _definition_payload().model_copy(update={"knowledge_base_id": "kb-other"})
+    )
+    run = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            requested_by="operator-1",
+        )
+    )
+    other_run = repository.create_run(
+        ConnectorSyncRunCreate(
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-other",
+            requested_by="operator-1",
+        )
+    )
+    repository.add_quarantine_record(
+        ConnectorQuarantineRecordCreate(
+            run_id=run.run_id,
+            connector_id="cms-claims-drop",
+            knowledge_base_id="kb-cms",
+            source_record_id="claim-99",
+            reason="missing provider_npi",
+        )
+    )
+
+    assert repository.delete_by_kb("kb-cms") == 1
+    assert repository.delete_by_kb("kb-cms") == 0
+    assert repository.get_definition(
+        knowledge_base_id="kb-cms", connector_id="cms-claims-drop"
+    ) is None
+    assert repository.get_run(run.run_id) is None
+    assert repository.list_quarantine(knowledge_base_id="kb-cms").total_items == 0
+    assert repository.get_run(other_run.run_id) is not None
+    assert (
+        repository.get_definition(knowledge_base_id="kb-other", connector_id="cms-claims-drop")
+        is not None
+    )

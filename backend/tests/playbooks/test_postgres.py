@@ -169,3 +169,20 @@ def test_postgres_playbook_repository_rejects_conflicting_definition(
     )
     assert stored is not None
     assert stored.definition.title == "provider_billing_spike_review title"
+
+
+def test_postgres_playbook_repository_delete_by_kb_purges_only_that_kb(
+    provider: ConnectionProvider,
+) -> None:
+    repository = PostgresPlaybookRepository(provider)
+    repository.upsert_snapshot(_snapshot(version="v1"))
+    repository.upsert_snapshot(_snapshot(version="v2"))
+    repository.upsert_snapshot(_snapshot(knowledge_base_id=_KB_ID + "-other"))
+
+    assert repository.delete_by_kb(_KB_ID) == 2
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert repository.list_snapshots(knowledge_base_id=_KB_ID, domain_name=_DOMAIN).total == 0
+    assert (
+        repository.list_snapshots(knowledge_base_id=_KB_ID + "-other", domain_name=_DOMAIN).total
+        == 1
+    )

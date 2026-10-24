@@ -104,3 +104,18 @@ def test_update_missing_definition_snapshot_raises() -> None:
 
     with pytest.raises(KeyError):
         repository.update_definition(_definition("missing", "v1"))
+
+
+def test_delete_by_kb_purges_only_that_kb() -> None:
+    repository = InMemoryWorkflowDefinitionRepository(
+        [
+            _definition("provider-review", "v1"),
+            _definition("provider-review", "v2"),
+            _definition("provider-review", "v1", knowledge_base_id="kb-2"),
+        ]
+    )
+
+    assert repository.delete_by_kb("kb-1") == 2
+    assert repository.delete_by_kb("kb-1") == 0
+    assert repository.list_definitions(knowledge_base_id="kb-1").total_items == 0
+    assert repository.list_definitions(knowledge_base_id="kb-2").total_items == 1

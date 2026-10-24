@@ -141,3 +141,17 @@ def _run(
         created_by="model-owner-1",
         created_at=created_at,
     )
+
+
+def test_postgres_governance_eval_repository_delete_by_kb_purges_only_that_kb(
+    provider: ConnectionProvider,
+) -> None:
+    repository = PostgresGovernanceEvalRepository(provider)
+    repository.save_eval_run(_run("risk-scorer"))
+    repository.save_eval_run(_run("peer-scorer"))
+    repository.save_eval_run(_run(knowledge_base_id=_KB_ID + "-other"))
+
+    assert repository.delete_by_kb(_KB_ID) == 2
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert repository.list_eval_runs(knowledge_base_id=_KB_ID).total_items == 0
+    assert repository.list_eval_runs(knowledge_base_id=_KB_ID + "-other").total_items == 1

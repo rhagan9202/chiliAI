@@ -73,11 +73,8 @@ module, [`../risk/README.md`](../risk/README.md).
 created by migration `0024_score_runs`; `0027_score_run_skipped_entities` adds
 the skipped counters.
 
-## Current gaps (verified in code)
-
-- `ScoreRunRepositoryProtocol.delete_by_kb` has no caller:
-  `knowledgebases/cleanup.py` has no score-run step, so deleting a KB leaves
-  its runs and batches behind.
+`delete_by_kb` is the `score_runs` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`); batches go with their runs by FK cascade.
 
 ## Tests
 

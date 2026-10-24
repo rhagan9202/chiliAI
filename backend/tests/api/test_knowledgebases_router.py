@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Iterator
 from typing import cast
+from unittest.mock import MagicMock
 
 import anyio
 import pytest
@@ -32,6 +33,14 @@ from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.models import AuditEvent, AuditEventQuery
 from auditlog.service import AuditLogService
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+from analytics.explainability.reviews import InMemoryExplanationReviewRepository
+from analytics.identity_resolution.models import IdentityLinkRecord
+from analytics.identity_resolution.repository import InMemoryIdentityLinkRepository
+from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from connectors.adapters.in_memory import InMemoryConnectorRepository
+from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
+from playbooks.adapters.in_memory import InMemoryPlaybookRepository
+from workflow_definitions.adapters.in_memory import InMemoryWorkflowDefinitionRepository
 from monitoring.models import AlertHistoryRecord
 from analytics.features.service import FeatureCatalogService
 from config.schema import (
@@ -830,6 +839,65 @@ def test_delete_knowledge_base_prunes_alert_history(
     assert total == 1
     assert [record.alert_id for record in records] == ["alert-survivor"]
 
+
+def test_delete_knowledge_base_purges_safe_cms_repositories(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    """The cascade reaches the repositories the routes memoize on app.state.
+
+    Seeded through the same ``app.state`` slots the DI getters fill, so this
+    covers the default wiring rather than a dependency override.
+    """
+    client, _, _, _ = harness
+    app = cast(FastAPI, client.app)
+    created = client.post("/knowledgebases", json={"name": "SafeCms", "description": ""})
+    kb_id = created.json()["id"]
+
+    identity_links = InMemoryIdentityLinkRepository()
+    now = utc_now()
+    for knowledge_base_id in (kb_id, "other-kb"):
+        identity_links.upsert_link(
+            IdentityLinkRecord(
+                id="identity_link:shared",
+                knowledge_base_id=knowledge_base_id,
+                canonical_entity_id="canonical:1",
+                source_entity_id="source:1",
+                relationship_type="resolved_identity",
+                confidence="medium",
+                score=0.55,
+                review_state="steward_review",
+                decision_source="identity_resolution.candidate_scoring",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    app.state.identity_link_repository = identity_links
+    spies = {
+        "score_run_repository": MagicMock(spec=InMemoryScoreRunRepository),
+        "explanation_review_repository": MagicMock(spec=InMemoryExplanationReviewRepository),
+        "workflow_definition_repository": MagicMock(spec=InMemoryWorkflowDefinitionRepository),
+        "governance_eval_repository": MagicMock(spec=InMemoryGovernanceEvalRepository),
+        "connector_repository": MagicMock(spec=InMemoryConnectorRepository),
+        "playbook_repository": MagicMock(spec=InMemoryPlaybookRepository),
+    }
+    for attr, spy in spies.items():
+        setattr(app.state, attr, spy)
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+
+    assert response.status_code == 204
+    assert identity_links.get_link(knowledge_base_id=kb_id, link_id="identity_link:shared") is None
+    assert (
+        identity_links.get_link(knowledge_base_id="other-kb", link_id="identity_link:shared")
+        is not None
+    )
+    for spy in spies.values():
+        spy.delete_by_kb.assert_called_once_with(kb_id)
 
 def test_delete_knowledge_base_retries_pending_cleanup_kb(
     harness: tuple[

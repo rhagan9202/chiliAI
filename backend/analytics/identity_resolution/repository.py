@@ -33,6 +33,8 @@ class IdentityLinkRepository(Protocol):
 
     def list_links(self, query: IdentityLinkRepositoryQuery) -> IdentityLinkPage: ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
 
 class InMemoryIdentityLinkRepository:
     """In-memory identity link repository for tests and local development."""
@@ -73,6 +75,12 @@ class InMemoryIdentityLinkRepository:
             limit=query.limit,
             offset=query.offset,
         )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [key for key in self._links if key[0] == knowledge_base_id]
+        for key in keys:
+            del self._links[key]
+        return len(keys)
 
 
 class IdentityDecisionService:

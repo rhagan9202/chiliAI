@@ -121,5 +121,12 @@ class ConnectorRepositoryProtocol(Protocol):
         offset: int = 0,
     ) -> ConnectorQuarantinePage: ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Remove a KB's connectors with their sync runs and quarantine rows.
+
+        Returns the number of connector definitions removed.
+        """
+        ...
+
 
 __all__ = ["ConnectorRepositoryProtocol"]

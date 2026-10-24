@@ -30,6 +30,13 @@ _STORE_FIELDS = [
     "object_store",
     "gnn_cluster_store",
     "timeseries_anomaly_store",
+    "score_run_repository",
+    "identity_link_repository",
+    "explanation_review_repository",
+    "workflow_definition_repository",
+    "governance_eval_repository",
+    "connector_repository",
+    "playbook_repository",
 ]
 
 _EXPECTED_STEP_NAMES = [
@@ -49,6 +56,13 @@ _EXPECTED_STEP_NAMES = [
     "policy",
     "evidence",
     "scorecards",
+    "score_runs",
+    "identity_links",
+    "explanation_reviews",
+    "workflow_definitions",
+    "governance_evals",
+    "connectors",
+    "playbooks",
     "document_status",
     "object_store",
 ]
@@ -88,6 +102,13 @@ def test_kb_deletion_steps_purges_every_durable_store() -> None:
         "document_status_store",
         "gnn_cluster_store",
         "timeseries_anomaly_store",
+        "score_run_repository",
+        "identity_link_repository",
+        "explanation_review_repository",
+        "workflow_definition_repository",
+        "governance_eval_repository",
+        "connector_repository",
+        "playbook_repository",
     ):
         mocks[field].delete_by_kb.assert_called_once_with("kb-1")
 
@@ -132,3 +153,18 @@ def test_kb_delete_purges_timeseries_anomalies() -> None:
         )
         == []
     )
+
+
+def test_every_bundle_store_is_touched_by_a_step() -> None:
+    """Derived from ``KbDeletionStores`` itself, unlike the literals above: a
+    new field with no matching step in ``kb_deletion_steps`` fails here."""
+    fields = list(KbDeletionStores.__dataclass_fields__)
+    mocks = {field: MagicMock() for field in fields}
+    mocks["object_store"].list_keys.return_value = []
+    stores = cast(KbDeletionStores, SimpleNamespace(**mocks))
+
+    for _name, deletion in kb_deletion_steps(stores, "kb-1"):
+        deletion()
+
+    untouched = [field for field in fields if not mocks[field].method_calls]
+    assert untouched == []

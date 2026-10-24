@@ -165,3 +165,23 @@ def test_queries_do_not_leak_between_knowledge_bases_or_evidence_packs() -> None
     assert page.total == 1
     assert page.items[0].knowledge_base_id == "kb-1"
     assert page.items[0].evidence_pack_id == "evidence-1"
+
+
+def test_in_memory_repository_delete_by_kb_purges_only_that_kb() -> None:
+    repository = InMemoryExplanationReviewRepository()
+    service = ExplanationReviewService(repository)
+    for knowledge_base_id, target_id in (("kb-1", "a"), ("kb-1", "b"), ("kb-2", "a")):
+        service.record_review(
+            ExplanationReviewCreate(
+                knowledge_base_id=knowledge_base_id,
+                evidence_pack_id="evidence-1",
+                target=ExplanationReviewTarget(target_type="narrative", target_id=target_id),
+                state="useful",
+                actor_user_id="analyst-42",
+            )
+        )
+
+    assert repository.delete_by_kb("kb-1") == 2
+    assert repository.delete_by_kb("kb-1") == 0
+    assert service.list_reviews(ExplanationReviewQuery(knowledge_base_id="kb-1")).total == 0
+    assert service.list_reviews(ExplanationReviewQuery(knowledge_base_id="kb-2")).total == 1

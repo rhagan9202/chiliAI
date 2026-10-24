@@ -12,44 +12,15 @@ from agent.coordinator import handle_knowledge_base_deleted
 from events.types import KnowledgeBaseDeletedEvent
 from knowledgebases.cleanup import KbDeletionStores
 
-_STORE_FIELDS = [
-    "graph_service",
-    "vector_service",
-    "raw_record_store",
-    "derived_signal_store",
-    "risk_history_writer",
-    "risk_projection_repository",
-    "observation_writer",
-    "alert_history_writer",
-    "entity_metric_repository",
-    "conversation_repository",
-    "case_repository",
-    "policy_item_repository",
-    "evidence_pack_repository",
-    "scorecard_run_repository",
-    "document_status_store",
-    "object_store",
-    "gnn_cluster_store",
-    "timeseries_anomaly_store",
-]
+# Derived from the bundle so a new cascade store is covered here automatically;
+# tests/api/test_kb_cleanup.py pins the explicit list and step order.
+_STORE_FIELDS = list(KbDeletionStores.__dataclass_fields__)
 
 # Stores whose deletion goes through `delete_by_kb`.
 _DELETE_BY_KB_FIELDS = [
-    "raw_record_store",
-    "derived_signal_store",
-    "risk_history_writer",
-    "risk_projection_repository",
-    "observation_writer",
-    "alert_history_writer",
-    "entity_metric_repository",
-    "conversation_repository",
-    "case_repository",
-    "policy_item_repository",
-    "evidence_pack_repository",
-    "scorecard_run_repository",
-    "document_status_store",
-    "gnn_cluster_store",
-    "timeseries_anomaly_store",
+    field
+    for field in _STORE_FIELDS
+    if field not in {"graph_service", "vector_service", "object_store"}
 ]
 
 

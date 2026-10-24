@@ -434,3 +434,30 @@ def test_the_stale_scan_index_exists(provider: ConnectionProvider) -> None:
 
     assert row is not None, "migration 0026 did not create the stale-scan index"
     assert "status" in str(row[0]) and "updated_at" in str(row[0])
+
+
+def test_delete_by_kb_cascades_to_runs_and_quarantine(provider: ConnectionProvider) -> None:
+    repository = PostgresConnectorRepository(provider)
+    repository.save_definition(_definition())
+    other = _definition().model_copy(update={"knowledge_base_id": _KB_ID + "-other"})
+    repository.save_definition(other)
+    run = repository.create_run(_run_create())
+    other_run = repository.create_run(
+        _run_create().model_copy(update={"knowledge_base_id": _KB_ID + "-other"})
+    )
+    repository.add_quarantine_record(
+        ConnectorQuarantineRecordCreate(
+            run_id=run.run_id,
+            connector_id=_CONNECTOR_ID,
+            knowledge_base_id=_KB_ID,
+            source_record_id="claim-99",
+            reason="missing provider_npi",
+        )
+    )
+
+    assert repository.delete_by_kb(_KB_ID) == 1
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert repository.get_definition(knowledge_base_id=_KB_ID, connector_id=_CONNECTOR_ID) is None
+    assert repository.get_run(run.run_id) is None
+    assert repository.list_quarantine(knowledge_base_id=_KB_ID).total_items == 0
+    assert repository.get_run(other_run.run_id) is not None

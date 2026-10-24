@@ -71,7 +71,8 @@ and § Evidence pack export; this file does not repeat them.
   removes the prefix. Provenance is stored inside the pack.
 - Reviews: table `explanation_reviews`
   (`database/migrations/versions/0017_explanation_reviews.py`), unique
-  constraint `uq_explanation_reviews_target`.
+  constraint `uq_explanation_reviews_target`; `delete_by_kb` is the
+  `explanation_reviews` step of the KB-delete cascade.
 
 ## Current gaps
 

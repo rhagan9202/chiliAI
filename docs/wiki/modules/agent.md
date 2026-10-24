@@ -136,7 +136,7 @@ def handle_records_ingested(
 ) -> int:
 ```
 
-**`handle_knowledge_base_deleted`** - subscribes to `"kb.delete"` events. When `event.cleanup_pending=True`, retries the centralized cascade from `knowledgebases.cleanup` (graph, vector, raw records, derived signals, risk history, observations, alert history, metrics, conversations, cases, policy, evidence, and object-store payloads), then deletes KB metadata. All calls are idempotent; exceptions bubble to the DLQ wrapper.
+**`handle_knowledge_base_deleted`** - subscribes to `"kb.delete"` events. When `event.cleanup_pending=True`, retries the centralized cascade from `knowledgebases.cleanup` (`kb_deletion_steps`; every per-KB store except `audit_log` — see `backend/knowledgebases/README.md`), then deletes KB metadata. All calls are idempotent; exceptions bubble to the DLQ wrapper.
 
 ```python
 def handle_knowledge_base_deleted(

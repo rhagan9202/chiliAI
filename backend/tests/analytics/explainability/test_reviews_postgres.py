@@ -208,6 +208,32 @@ def test_list_reviews_isolates_knowledge_base_and_evidence_pack(
     assert [review.id for review in page.items] == [expected.id]
 
 
+def test_delete_by_kb_purges_only_that_kb(provider: ConnectionProvider) -> None:
+    repository = PostgresExplanationReviewRepository(provider)
+    service = ExplanationReviewService(repository)
+    target = ExplanationReviewTarget(target_type="narrative", target_id="summary")
+    service.record_review(
+        _review_request(evidence_pack_id="evidence-pack-del", target=target, state="useful")
+    )
+    service.record_review(
+        _review_request(
+            evidence_pack_id="evidence-pack-del",
+            target=target,
+            state="useful",
+            knowledge_base_id=_KB_ID + "-other",
+        )
+    )
+
+    assert repository.delete_by_kb(_KB_ID) == 1
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert service.list_reviews(ExplanationReviewQuery(knowledge_base_id=_KB_ID)).total == 0
+    assert (
+        service.list_reviews(
+            ExplanationReviewQuery(knowledge_base_id=_KB_ID + "-other")
+        ).total
+        == 1
+    )
+
 def _review_request(
     *,
     evidence_pack_id: str,

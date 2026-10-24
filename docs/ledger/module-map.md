@@ -295,7 +295,7 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 ## `knowledgebases/` — KB & Document Metadata
 
-**Purpose:** Knowledge base and document metadata persistence, so `api/` and `agent/` can share KB state without importing from each other. Also owns the centralized KB delete cascade (`cleanup.py`: `KbDeletionStores`, `kb_deletion_steps`, `delete_object_store_prefix`).
+**Purpose:** Knowledge base and document metadata persistence, so `api/` and `agent/` can share KB state without importing from each other. Also owns the centralized KB delete cascade (`cleanup.py`: `KbDeletionStores`, `kb_deletion_steps`, `delete_object_store_prefix`, and the structural `KbRowPurger` used for the score-run, identity-link, explanation-review, workflow-definition, governance-eval, connector and playbook repositories).
 
 **Key exports:** `KnowledgeBaseRepository` (protocol), `cleanup.py` cascade helpers, `snapshots.py`
 

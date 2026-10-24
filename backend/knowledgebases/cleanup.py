@@ -61,6 +61,18 @@ class RiskProjectionPurger(Protocol):
     def delete_by_kb(self, knowledge_base_id: str) -> int: ...
 
 
+class KbRowPurger(Protocol):
+    """Any per-KB store the cascade only needs to purge.
+
+    Structural, like the purgers above, so a store joins the cascade without
+    this module importing its owning package. The score-run, identity-link,
+    explanation-review, workflow-definition, governance-eval, connector and
+    playbook repositories all satisfy it.
+    """
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class KbDeletionStores:
     """Every durable store purged by the KB-delete cascade."""
@@ -88,6 +100,13 @@ class KbDeletionStores:
     # Analytics-owned (not API-owned), same rationale as gnn_cluster_store: both
     # the API's bundle and the worker's retry bundle always carry one.
     timeseries_anomaly_store: TimeseriesAnomalyPurger
+    score_run_repository: KbRowPurger
+    identity_link_repository: KbRowPurger
+    explanation_review_repository: KbRowPurger
+    workflow_definition_repository: KbRowPurger
+    governance_eval_repository: KbRowPurger
+    connector_repository: KbRowPurger
+    playbook_repository: KbRowPurger
 
 
 def delete_object_store_prefix(
@@ -128,6 +147,19 @@ def kb_deletion_steps(
         ("policy", lambda: stores.policy_item_repository.delete_by_kb(kb)),
         ("evidence", lambda: stores.evidence_pack_repository.delete_by_kb(kb)),
         ("scorecards", lambda: stores.scorecard_run_repository.delete_by_kb(kb)),
+        ("score_runs", lambda: stores.score_run_repository.delete_by_kb(kb)),
+        ("identity_links", lambda: stores.identity_link_repository.delete_by_kb(kb)),
+        (
+            "explanation_reviews",
+            lambda: stores.explanation_review_repository.delete_by_kb(kb),
+        ),
+        (
+            "workflow_definitions",
+            lambda: stores.workflow_definition_repository.delete_by_kb(kb),
+        ),
+        ("governance_evals", lambda: stores.governance_eval_repository.delete_by_kb(kb)),
+        ("connectors", lambda: stores.connector_repository.delete_by_kb(kb)),
+        ("playbooks", lambda: stores.playbook_repository.delete_by_kb(kb)),
         ("document_status", lambda: stores.document_status_store.delete_by_kb(kb)),
         ("object_store", lambda: delete_object_store_prefix(stores.object_store, kb)),
     ]
@@ -137,6 +169,7 @@ def kb_deletion_steps(
 __all__ = [
     "GnnClusterPurger",
     "KbDeletionStores",
+    "KbRowPurger",
     "RiskProjectionPurger",
     "TimeseriesAnomalyPurger",
     "delete_object_store_prefix",

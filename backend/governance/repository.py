@@ -34,3 +34,7 @@ class GovernanceEvalRepository(Protocol):
     ) -> GovernanceEvalRunPage:
         """List evaluation runs, optionally filtered by knowledge base."""
         ...
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Remove every evaluation run for a knowledge base; return the count."""
+        ...

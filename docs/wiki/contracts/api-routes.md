@@ -95,15 +95,15 @@ class DocumentRegistrationResponse(BaseModel):
 
 File upload validates: content type in `ValidationConfig.allowed_content_types`, size <= `max_file_size_mb`. After registration, publishes `DocumentsUploadedEvent`.
 
-### `DELETE /knowledgebases/{kb_id}` — cascade delete (updated 2026-05-22)
+### `DELETE /knowledgebases/{kb_id}` — cascade delete (updated 2026-10-24)
 
-5-step cascade: graph → vector → raw_records → object_store → kb_repository. Status codes:
+Runs the 25-step cascade in `knowledgebases.cleanup.kb_deletion_steps` (every per-KB store except the retained `audit_log`; see `backend/knowledgebases/README.md` § KB-Scoped Delete), then deletes the KB record. Status codes:
 
 | Status | Condition |
 |--------|-----------|
-| `204 No Content` | All 5 steps succeeded; KB fully deleted. |
+| `204 No Content` | Every step succeeded; KB fully deleted. |
 | `207 Multi-Status` | One or more steps failed; `KnowledgeBase.pending_cleanup` set to `True`; `KnowledgeBaseDeletedEvent(cleanup_pending=True)` published so the worker can retry. |
-| `409 Conflict` | KB has an active workflow (`WorkflowBusyTracker.is_busy()=True`) OR `KnowledgeBase.pending_cleanup=True`. |
+| `409 Conflict` | KB has an active workflow (`WorkflowBusyTracker.is_busy()=True`). A KB already flagged `pending_cleanup` is not rejected: a repeat DELETE re-runs the idempotent cascade. |
 
 207 response body:
 ```json

@@ -361,3 +361,32 @@ def _playbook_snapshot() -> PlaybookSnapshot:
         created_at=BASE_TIME,
         updated_at=BASE_TIME,
     )
+
+
+def test_in_memory_repository_delete_by_kb_purges_only_that_kb() -> None:
+    eval_repository = InMemoryGovernanceEvalRepository()
+    service = _eval_service(eval_repository=eval_repository)
+    for knowledge_base_id, artifact_id in (
+        (KB_ID, "risk-scorer"),
+        (KB_ID, "peer-scorer"),
+        (KB_ID + "-other", "risk-scorer"),
+    ):
+        service.record_eval_run(
+            GovernanceEvalRunCreate(
+                knowledge_base_id=knowledge_base_id,
+                artifact_kind="model",
+                artifact_id=artifact_id,
+                artifact_version="candidate-v2",
+                baseline_version="prod-v1",
+                dataset_id="tn-demo-1pct",
+                metrics=[
+                    _metric("precision", baseline=0.72, candidate=0.78, direction="higher"),
+                ],
+                created_by="model-owner-1",
+            )
+        )
+
+    assert eval_repository.delete_by_kb(KB_ID) == 2
+    assert eval_repository.delete_by_kb(KB_ID) == 0
+    assert eval_repository.list_eval_runs(knowledge_base_id=KB_ID).total_items == 0
+    assert eval_repository.list_eval_runs(knowledge_base_id=KB_ID + "-other").total_items == 1

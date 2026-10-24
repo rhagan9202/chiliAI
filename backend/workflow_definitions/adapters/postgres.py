@@ -183,6 +183,20 @@ class PostgresWorkflowDefinitionRepository:
             offset=offset,
         )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._provider.connection() as conn:
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM workflow_definition_snapshots WHERE knowledge_base_id = %s",
+                    (knowledge_base_id,),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return int(deleted)
+
 
 def _insert_params(definition: WorkflowDefinition) -> tuple[object, ...]:
     return (

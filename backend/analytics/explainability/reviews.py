@@ -135,6 +135,8 @@ class ExplanationReviewRepository(Protocol):
 
     def list_reviews(self, query: ExplanationReviewQuery) -> ExplanationReviewPage: ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
 
 class InMemoryExplanationReviewRepository:
     """In-memory repository for tests and local development."""
@@ -175,6 +177,12 @@ class InMemoryExplanationReviewRepository:
             limit=query.limit,
             offset=query.offset,
         )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [key for key in self._reviews if key[0] == knowledge_base_id]
+        for key in keys:
+            del self._reviews[key]
+        return len(keys)
 
 
 class ExplanationReviewService:

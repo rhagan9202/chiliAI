@@ -81,11 +81,13 @@ ingested are kept as quarantine records for operators.
 `0026_connector_sync_stale_index.py` adds
 `ix_connector_sync_runs_status_updated` for the reconciler scan.
 
+`delete_by_kb` is the `connectors` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`): it deletes the KB's `connectors` rows, and
+sync runs and quarantine rows follow by FK cascade.
+
 ## Current gaps
 
 - Nothing schedules runs: only `manual` mode is accepted.
-- `ConnectorRepositoryProtocol` has no KB-scoped delete, and
-  `knowledgebases/cleanup.py` does not touch connector tables.
 
 ## Tests
 

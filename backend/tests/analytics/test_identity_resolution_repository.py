@@ -155,3 +155,20 @@ def test_identity_decision_request_has_no_caller_supplied_tenant() -> None:
     """
 
     assert "tenant_id" not in IdentityLinkDecisionRequest.model_fields
+
+
+def test_identity_link_repository_delete_by_kb_purges_only_that_kb() -> None:
+    repository = InMemoryIdentityLinkRepository()
+    repository.upsert_link(_link())
+    repository.upsert_link(_link("identity_link:kb1:canonical-1:source-2"))
+    repository.upsert_link(
+        _link("identity_link:kb2:canonical-1:source-1").model_copy(
+            update={"knowledge_base_id": "kb2"},
+            deep=True,
+        )
+    )
+
+    assert repository.delete_by_kb("kb1") == 2
+    assert repository.delete_by_kb("kb1") == 0
+    assert repository.list_links(IdentityLinkRepositoryQuery(knowledge_base_id="kb1")).total == 0
+    assert repository.list_links(IdentityLinkRepositoryQuery(knowledge_base_id="kb2")).total == 1

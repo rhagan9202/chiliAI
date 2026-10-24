@@ -135,11 +135,19 @@ after upgrade is untouched and keeps showing its pre-existing flat total
 ## KB-Scoped Delete
 
 `cleanup.py::kb_deletion_steps` is the ordered cascade purging every durable
-per-KB store `KnowledgeBaseRepository` does not itself own (18 steps: graph,
+per-KB store `KnowledgeBaseRepository` does not itself own (25 steps: graph,
 vector, raw records, derived signals, timeseries anomalies, risk
 history/projections, observations, alert history, GNN clusters, metrics,
-conversations, cases, policy items, evidence packs, scorecard runs, document
-status, object-store payloads under the KB's key prefix). `KnowledgeBaseRepository.delete` and
+conversations, cases, policy items, evidence packs, scorecard runs, score
+runs, identity links, explanation reviews, workflow definitions, governance
+eval runs, connectors (with their sync runs and quarantine rows), playbook
+snapshots, document status, object-store payloads under the KB's key prefix).
+The last seven are typed structurally as `KbRowPurger` (`delete_by_kb -> int`)
+so this module does not import their packages. `audit_log` is the one
+KB-scoped table deliberately kept: it is the append-only record of the
+deletion itself. `tests/knowledgebases/test_cleanup_coverage.py` reads the
+Alembic migrations and fails when a table with a `knowledge_base_id` column
+has no step and is not listed as retained. `KnowledgeBaseRepository.delete` and
 `mark_pending_cleanup` handle only this module's own KB/document metadata;
 the API's `DELETE /knowledgebases/{id}` and the worker's
 `KnowledgeBaseDeletedEvent` retry both assemble a `KbDeletionStores` bundle

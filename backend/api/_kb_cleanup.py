@@ -21,19 +21,26 @@ from api.dependencies import (
     get_case_repository,
     get_conversation_repository,
     get_derived_signal_store,
+    get_connector_repository,
     get_document_status_store,
     get_entity_metric_repository,
     get_evidence_pack_repository,
+    get_explanation_review_repository,
+    get_governance_eval_repository,
     get_graph_service,
+    get_identity_link_repository,
     get_object_store,
     get_observation_writer,
+    get_playbook_repository,
     get_policy_repository,
     get_raw_record_store,
     get_risk_history_writer,
     get_risk_projection_repository,
+    get_score_run_repository,
     get_scorecard_run_repository,
     get_timeseries_anomaly_store,
     get_vector_service,
+    get_workflow_definition_repository,
 )
 from cases.adapters.protocols import CaseRepository
 from conversations.adapters.protocols import ConversationRepository
@@ -41,6 +48,7 @@ from graph.protocols import GraphServiceProtocol
 from ingestion.adapters.protocols import SourceDocumentStatusStore
 from knowledgebases.cleanup import (
     KbDeletionStores,
+    KbRowPurger,
     TimeseriesAnomalyPurger,
     kb_deletion_steps,
 )
@@ -86,6 +94,17 @@ def get_kb_deletion_stores(
     timeseries_anomaly_store: TimeseriesAnomalyPurger = Depends(
         get_timeseries_anomaly_store
     ),
+    score_run_repository: KbRowPurger = Depends(get_score_run_repository),
+    identity_link_repository: KbRowPurger = Depends(get_identity_link_repository),
+    explanation_review_repository: KbRowPurger = Depends(
+        get_explanation_review_repository
+    ),
+    workflow_definition_repository: KbRowPurger = Depends(
+        get_workflow_definition_repository
+    ),
+    governance_eval_repository: KbRowPurger = Depends(get_governance_eval_repository),
+    connector_repository: KbRowPurger = Depends(get_connector_repository),
+    playbook_repository: KbRowPurger = Depends(get_playbook_repository),
 ) -> KbDeletionStores:
     """Assemble the KB-delete cascade store bundle from DI."""
 
@@ -108,6 +127,13 @@ def get_kb_deletion_stores(
         object_store=object_store,
         gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
         timeseries_anomaly_store=timeseries_anomaly_store,
+        score_run_repository=score_run_repository,
+        identity_link_repository=identity_link_repository,
+        explanation_review_repository=explanation_review_repository,
+        workflow_definition_repository=workflow_definition_repository,
+        governance_eval_repository=governance_eval_repository,
+        connector_repository=connector_repository,
+        playbook_repository=playbook_repository,
     )
 
 

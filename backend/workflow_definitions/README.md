@@ -78,6 +78,9 @@ Table `workflow_definition_snapshots` (migration
 a status CHECK, and `ix_workflow_definition_snapshots_kb_status`. Runs live in
 the agent workflow-run store (see [`../agent/README.md`](../agent/README.md)).
 
+`delete_by_kb` is the `workflow_definitions` step of the KB-delete cascade
+(`knowledgebases/cleanup.py`).
+
 ## Tests
 
 `tests/workflow_definitions/` (`test_models.py`, `test_conditions.py`,

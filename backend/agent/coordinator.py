@@ -84,7 +84,21 @@ from analytics.explainability.adapters.shap_attribution import (
     NoopFeatureAttributor,
     ShapRiskAttributor,
 )
+from analytics.explainability.adapters.reviews_postgres import (
+    PostgresExplanationReviewRepository,
+)
 from analytics.explainability.exceptions import ExplainabilityError
+from analytics.explainability.reviews import (
+    ExplanationReviewRepository,
+    InMemoryExplanationReviewRepository,
+)
+from analytics.identity_resolution.adapters.postgres import (
+    PostgresIdentityLinkRepository,
+)
+from analytics.identity_resolution.repository import (
+    IdentityLinkRepository,
+    InMemoryIdentityLinkRepository,
+)
 from graph.exceptions import (
     BatchUpsertError,
     GraphError,
@@ -310,6 +324,12 @@ from workflow_definitions.adapters.postgres import (
     PostgresWorkflowDefinitionRepository,
 )
 from workflow_definitions.repository import WorkflowDefinitionRepository
+from playbooks.adapters.in_memory import InMemoryPlaybookRepository
+from playbooks.adapters.postgres import PostgresPlaybookRepository
+from playbooks.repository import PlaybookRepository
+from governance.adapters.in_memory import InMemoryGovernanceEvalRepository
+from governance.adapters.postgres import PostgresGovernanceEvalRepository
+from governance.repository import GovernanceEvalRepository
 from connectors.adapters.in_memory import InMemoryConnectorRepository
 from connectors.adapters.postgres import PostgresConnectorRepository
 from connectors.reconciler import ConnectorSyncReconciler
@@ -373,6 +393,9 @@ __all__ = [
     "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_explanation_context",
+    "build_explanation_review_repository",
+    "build_governance_eval_repository",
+    "build_identity_link_repository",
     "build_feature_attributor",
     "build_graph_repository",
     "build_graph_snapshot_source",
@@ -380,6 +403,7 @@ __all__ = [
     "build_monitoring_observation_source",
     "build_narrative_generator",
     "build_object_store",
+    "build_playbook_repository",
     "build_observation_writer",
     "build_peerstats_service",
     "build_policy_item_repository",
@@ -1009,6 +1033,46 @@ def build_score_run_repository(
     return PostgresScoreRunRepository(provider)
 
 
+def build_identity_link_repository(
+    provider: ConnectionProvider | None,
+) -> IdentityLinkRepository:
+    """Select an identity-link repository, mirroring the API DI selection."""
+
+    if provider is None:
+        return InMemoryIdentityLinkRepository()
+    return PostgresIdentityLinkRepository(provider)
+
+
+def build_explanation_review_repository(
+    provider: ConnectionProvider | None,
+) -> ExplanationReviewRepository:
+    """Select an explanation-review repository, mirroring the API DI selection."""
+
+    if provider is None:
+        return InMemoryExplanationReviewRepository()
+    return PostgresExplanationReviewRepository(provider)
+
+
+def build_governance_eval_repository(
+    provider: ConnectionProvider | None,
+) -> GovernanceEvalRepository:
+    """Select a governance-eval repository, mirroring the API DI selection."""
+
+    if provider is None:
+        return InMemoryGovernanceEvalRepository()
+    return PostgresGovernanceEvalRepository(provider)
+
+
+def build_playbook_repository(
+    provider: ConnectionProvider | None,
+) -> PlaybookRepository:
+    """Select a playbook snapshot repository, mirroring the API DI selection."""
+
+    if provider is None:
+        return InMemoryPlaybookRepository()
+    return PostgresPlaybookRepository(provider)
+
+
 def build_alert_history_writer(
     provider: ConnectionProvider | None,
 ) -> AlertHistoryWriter:
@@ -1046,9 +1110,12 @@ def build_kb_deletion_stores(
 ) -> KbDeletionStores:
     """Assemble the shared KB-delete cascade bundle for the worker.
 
-    Reuses the already-built worker stores and constructs the few extra stores
+    Reuses the already-built worker stores and constructs the extra stores
     (vector service, conversation/case/policy/evidence repositories, cluster
-    summary store) that the worker otherwise needs only for KB-delete retries.
+    summary store, and the score-run, identity-link, explanation-review,
+    workflow-definition, governance-eval, connector and playbook repositories)
+    that the retry needs. Each extra repository is built from ``provider`` like the
+    API's, so both paths purge the same Postgres rows.
     ``gnn_cluster_store`` is built fresh from ``object_store`` here (it does
     not need to be the same instance as ``WorkerDependencies.gnn_cluster_store``
     — object-store-backed state is shared by construction).
@@ -1092,6 +1159,13 @@ def build_kb_deletion_stores(
         object_store=object_store,
         gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
         timeseries_anomaly_store=timeseries_anomaly_store,
+        score_run_repository=build_score_run_repository(provider),
+        identity_link_repository=build_identity_link_repository(provider),
+        explanation_review_repository=build_explanation_review_repository(provider),
+        workflow_definition_repository=build_workflow_definition_repository(provider),
+        governance_eval_repository=build_governance_eval_repository(provider),
+        connector_repository=build_connector_repository(provider),
+        playbook_repository=build_playbook_repository(provider),
     )
 
 

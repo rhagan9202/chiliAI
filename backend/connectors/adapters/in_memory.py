@@ -233,6 +233,29 @@ class InMemoryConnectorRepository:
                 offset=normalized_offset,
             )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        with self._lock:
+            definition_keys = [
+                key for key in self._definitions if key[0] == knowledge_base_id
+            ]
+            for key in definition_keys:
+                del self._definitions[key]
+            run_ids = [
+                run_id
+                for run_id, run in self._runs.items()
+                if run.knowledge_base_id == knowledge_base_id
+            ]
+            for run_id in run_ids:
+                del self._runs[run_id]
+            quarantine_ids = [
+                quarantine_id
+                for quarantine_id, record in self._quarantine.items()
+                if record.knowledge_base_id == knowledge_base_id
+            ]
+            for quarantine_id in quarantine_ids:
+                del self._quarantine[quarantine_id]
+            return len(definition_keys)
+
 
 def _page_bounds(limit: int, offset: int) -> tuple[int, int]:
     return max(limit, 1), max(offset, 0)

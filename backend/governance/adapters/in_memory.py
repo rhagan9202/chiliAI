@@ -53,3 +53,13 @@ class InMemoryGovernanceEvalRepository:
             limit=limit,
             offset=offset,
         )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        run_ids = [
+            run_id
+            for run_id, run in self._runs.items()
+            if run.knowledge_base_id == knowledge_base_id
+        ]
+        for run_id in run_ids:
+            del self._runs[run_id]
+        return len(run_ids)

@@ -190,3 +190,29 @@ def test_identity_links_constraint_rejects_any_invalid_decision_history_item(
                 ),
             )
             conn.commit()
+
+
+def test_postgres_identity_link_repository_delete_by_kb_purges_only_that_kb(
+    provider: ConnectionProvider,
+) -> None:
+    repository = PostgresIdentityLinkRepository(provider)
+    repository.upsert_link(
+        _link("identity_link:delete-1").model_copy(
+            update={"knowledge_base_id": _KB_ID}, deep=True
+        )
+    )
+    repository.upsert_link(
+        _link("identity_link:delete-2").model_copy(
+            update={"knowledge_base_id": _KB_ID + "-other"}, deep=True
+        )
+    )
+
+    assert repository.delete_by_kb(_KB_ID) == 1
+    assert repository.delete_by_kb(_KB_ID) == 0
+    assert repository.get_link(knowledge_base_id=_KB_ID, link_id="identity_link:delete-1") is None
+    assert (
+        repository.get_link(
+            knowledge_base_id=_KB_ID + "-other", link_id="identity_link:delete-2"
+        )
+        is not None
+    )

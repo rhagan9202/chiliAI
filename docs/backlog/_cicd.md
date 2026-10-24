@@ -821,7 +821,7 @@ so that failures are diagnosable and the lane can scale as coverage grows.
 - Spec risk note: may grow — making the config-manager specs run can surface real failures; budget as discovery, not a fixed 4 SP.
 
 ### Acceptance Criteria
-- [ ] The cascade completeness test derives its expectations from `KbDeletionStores` itself, so a forgotten deletion step fails it.
+- [x] The cascade completeness test derives its expectations from `KbDeletionStores` itself, so a forgotten deletion step fails it. — 2026-10-24: `test_every_bundle_store_is_touched_by_a_step` (`backend/tests/api/test_kb_cleanup.py`) iterates `KbDeletionStores.__dataclass_fields__`; `backend/tests/knowledgebases/test_cleanup_coverage.py` also checks every migration table with a `knowledge_base_id` column. Both watched failing with the `playbooks` step removed.
 - [ ] The config-manager e2e specs execute (not skip) under `make test-e2e` against the full stack.
 - [ ] Each cited finding no longer reproduces its failure scenario, verified against a running stack (`make dev`), not only a green suite.
 - [ ] Each fix's test was watched failing against the real defect before the fix landed (spec § Definition of done).

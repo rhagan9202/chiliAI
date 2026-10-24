@@ -72,3 +72,9 @@ class InMemoryPlaybookRepository:
             limit=max(limit, 1),
             offset=max(offset, 0),
         )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [key for key in self._snapshots if key[0] == knowledge_base_id]
+        for key in keys:
+            del self._snapshots[key]
+        return len(keys)
