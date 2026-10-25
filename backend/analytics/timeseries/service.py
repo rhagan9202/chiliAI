@@ -263,7 +263,9 @@ def _detect_anomalies_stl(
             values,
             model="additive",
             period=period,
-            extrapolate_trend="freq",
+            # The period itself, not the "freq"/"period" alias: the alias was
+            # renamed in statsmodels 0.15 and an int works on 0.14 and 0.15.
+            extrapolate_trend=period,
         )
     except ValueError as exc:
         raise TimeseriesConfigurationError(
