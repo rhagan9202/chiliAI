@@ -42,7 +42,7 @@ neo4j = [
     "neo4j>=5,<6",
 ]
 qdrant = [
-    "qdrant-client[grpc]>=1.9",
+    "qdrant-client>=1.9",
 ]
 sentence-transformers = [
     "sentence-transformers>=3.0",
@@ -70,7 +70,7 @@ analytics = [
     "llvmlite>=0.47.0",
 ]
 auth = [
-    "python-jose[cryptography]>=3.3",
+    "pyjwt[crypto]>=2.15.1",
 ]
 postgres = [
     "psycopg[binary]>=3.2",

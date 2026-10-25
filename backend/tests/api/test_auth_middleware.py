@@ -11,15 +11,17 @@ import pytest
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-pytest.importorskip("jose")
+pytest.importorskip("jwt")
 pytest.importorskip("cryptography")
 
 from cryptography.hazmat.primitives import serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
-from jose import jwk, jwt  # noqa: E402
+import jwt  # noqa: E402
+from jwt.algorithms import RSAAlgorithm  # noqa: E402
 
 from api.dependencies import get_domain_config, get_session_store  # noqa: E402
 from api.middleware.auth import (  # noqa: E402
+    JwksCache,
     User,
     build_anonymous_user,
     get_current_user,
@@ -100,8 +102,11 @@ def reset_jwks_cache() -> Iterator[None]:
 
 
 def _public_jwk_from_pem(pem: str, *, kid: str = "kid-1") -> dict[str, object]:
-    key = jwk.construct(pem, algorithm="RS256")
-    payload = cast(dict[str, object], key.public_key().to_dict())
+    private_key = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+    assert isinstance(private_key, rsa.RSAPrivateKey)
+    payload = cast(
+        dict[str, object], RSAAlgorithm.to_jwk(private_key.public_key(), as_dict=True)
+    )
     payload["kid"] = kid
     payload["alg"] = "RS256"
     payload["use"] = "sig"
@@ -1016,3 +1021,85 @@ def test_forced_refresh_counter_outcomes(rsa_pem: str) -> None:
         decode_token(token, auth_config=auth_config, jwks_cache=fail_cache)
 
     assert _sample("failed") == before_failed + 1.0
+
+
+def _jwks_cache_for(jwks: dict[str, object]) -> JwksCache:
+    return JwksCache(fetcher=lambda _uri: jwks, ttl_seconds=3600)
+
+
+class TestPyJwtKeySelection:
+    """Behaviour kept from python-jose when the decoder moved to PyJWT."""
+
+    def test_token_without_kid_verifies_against_any_key_in_the_set(
+        self, rsa_pem: str, rsa_pem_2: str
+    ) -> None:
+        from api.middleware.auth import decode_token
+
+        jwks: dict[str, object] = {
+            "keys": [
+                _public_jwk_from_pem(rsa_pem_2, kid="kid-other"),
+                _public_jwk_from_pem(rsa_pem, kid="kid-1"),
+            ]
+        }
+        cache = _jwks_cache_for(jwks)
+        token = _make_token(
+            rsa_pem, issuer="https://issuer.example", audience="chili", kid=None
+        )
+
+        claims = decode_token(token, auth_config=_kid_auth_config(), jwks_cache=cache)
+
+        assert claims["sub"] == "user-123"
+
+    def test_token_signed_by_a_key_outside_the_set_is_401(
+        self, rsa_pem: str, rsa_pem_2: str
+    ) -> None:
+        from api.middleware.auth import decode_token
+
+        jwks: dict[str, object] = {"keys": [_public_jwk_from_pem(rsa_pem_2)]}
+        cache = _jwks_cache_for(jwks)
+        token = _make_token(
+            rsa_pem, issuer="https://issuer.example", audience="chili", kid=None
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token, auth_config=_kid_auth_config(), jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+
+    def test_hs256_token_forged_with_the_public_key_is_401(self, rsa_pem: str) -> None:
+        """The key-confusion forgery behind CVE-2026-85394 / CVE-2024-33663."""
+
+        import base64
+        import hashlib
+        import hmac
+        import json
+
+        from api.middleware.auth import decode_token
+
+        private_key = serialization.load_pem_private_key(rsa_pem.encode("utf-8"), password=None)
+        public_der = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+
+        def _b64(raw: bytes) -> str:
+            return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+        now = int(time.time())
+        header = _b64(json.dumps({"alg": "HS256", "typ": "JWT", "kid": "kid-1"}).encode())
+        payload = _b64(
+            json.dumps(
+                {
+                    "sub": "attacker",
+                    "iss": "https://issuer.example",
+                    "aud": "chili",
+                    "exp": now + 3600,
+                }
+            ).encode()
+        )
+        signature = hmac.new(public_der, f"{header}.{payload}".encode(), hashlib.sha256)
+        forged = f"{header}.{payload}.{_b64(signature.digest())}"
+        cache = _jwks_cache_for({"keys": [_public_jwk_from_pem(rsa_pem)]})
+
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(forged, auth_config=_kid_auth_config(), jwks_cache=cache)
+        assert exc_info.value.status_code == 401

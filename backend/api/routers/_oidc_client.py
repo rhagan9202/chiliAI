@@ -2,7 +2,7 @@
 
 Encapsulates the OAuth 2.0 authorization-code-with-PKCE flow against any
 OIDC provider configured via ``AuthConfig``. No vendor SDK; only httpx +
-the existing python-jose dependency for JWT decoding (which lives in
+the existing PyJWT dependency for JWT decoding (which lives in
 ``api.middleware.auth`` and is not duplicated here).
 """
 

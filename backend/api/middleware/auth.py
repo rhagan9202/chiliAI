@@ -17,7 +17,7 @@ import os
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import cast
 
 import httpx
 from fastapi import (
@@ -229,12 +229,12 @@ def _token_kid(token: str) -> str | None:
     letting jwt.decode produce the canonical 401)."""
 
     try:
-        from jose import jwt
+        import jwt
     except ImportError:  # pragma: no cover - guarded by [auth] extra
         return None
     try:
         header = cast(dict[str, object], jwt.get_unverified_header(token))
-    except Exception:  # noqa: BLE001 - malformed header falls through to decode
+    except jwt.InvalidTokenError:  # malformed header falls through to decode
         return None
     kid = header.get("kid")
     return kid if isinstance(kid, str) else None
@@ -262,13 +262,7 @@ def decode_token(
     """
 
     try:
-        from jose import jwt
-        from jose.exceptions import (
-            ExpiredSignatureError,
-            JWKError,
-            JWTClaimsError,
-            JWTError,
-        )
+        import jwt
     except ImportError as exc:  # pragma: no cover - guarded by [auth] extra
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -310,22 +304,19 @@ def decode_token(
             )
 
     try:
-        claims = cast(
-            object,
-            jwt.decode(
-                token,
-                cast(Mapping[str, Any], jwks),
-                algorithms=["RS256"],
-                audience=auth_config.audience,
-                issuer=auth_config.issuer_url,
-            ),
+        claims = _decode_with_jwks(
+            token,
+            jwks,
+            kid=token_kid,
+            audience=auth_config.audience,
+            issuer=auth_config.issuer_url,
         )
-    except ExpiredSignatureError as exc:
+    except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired.",
         ) from exc
-    except (JWTClaimsError, JWTError, JWKError) as exc:
+    except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {exc}",
@@ -337,6 +328,44 @@ def decode_token(
             detail="Token claims payload is malformed.",
         )
     return cast(dict[str, object], claims)
+
+
+def _decode_with_jwks(
+    token: str,
+    jwks: dict[str, object],
+    *,
+    kid: str | None,
+    audience: str,
+    issuer: str,
+) -> object:
+    """Verify ``token`` against the JWKS keys and return its claims.
+
+    Tries the keys whose ``kid`` matches the token's (every key when the
+    token carries none) until one verifies the RS256 signature; claim
+    failures (expiry, audience, issuer) on a verified token raise at once.
+    Pinning ``algorithms=["RS256"]`` is what keeps HS256 key-confusion
+    forgeries out (the class behind python-jose's CVE-2026-85394).
+    """
+
+    import jwt
+
+    key_set = jwt.PyJWKSet.from_dict(jwks)
+    candidates = [key for key in key_set.keys if kid is None or key.key_id == kid]
+    for candidate in candidates:
+        try:
+            return cast(
+                object,
+                jwt.decode(
+                    token,
+                    candidate.key,
+                    algorithms=["RS256"],
+                    audience=audience,
+                    issuer=issuer,
+                ),
+            )
+        except (jwt.InvalidSignatureError, jwt.InvalidKeyError):
+            continue
+    raise jwt.InvalidSignatureError("Signature verification failed.")
 
 
 def coerce_roles(claim_value: object) -> list[str]:

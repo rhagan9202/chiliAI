@@ -71,7 +71,7 @@ pyright                                                   # strict type check (c
 ruff check .                                              # lint
 ```
 
-Optional dependencies are split per adapter (`[neo4j]`, `[qdrant]`, `[openai]`, `[anthropic]`, `[s3]`, `[sentence-transformers]`) plus capability extras: `[ocr]` (pdf2image/pytesseract), `[analytics]` (statsmodels, scikit-learn, networkx, shap), `[auth]` (python-jose), `[postgres]` (psycopg + Alembic — required for the database/migration tests) and `[observability]` (OpenTelemetry). CI installs every extra except `[ocr]`. Tests for optional adapters are marked `@pytest.mark.integration` and skipped unless the extra is installed.
+Optional dependencies are split per adapter (`[neo4j]`, `[qdrant]`, `[openai]`, `[anthropic]`, `[s3]`, `[sentence-transformers]`) plus capability extras: `[ocr]` (pdf2image/pytesseract), `[analytics]` (statsmodels, scikit-learn, networkx, shap), `[auth]` (PyJWT), `[postgres]` (psycopg + Alembic — required for the database/migration tests) and `[observability]` (OpenTelemetry). CI installs every extra except `[ocr]`. Tests for optional adapters are marked `@pytest.mark.integration` and skipped unless the extra is installed.
 
 `pyright` is currently scoped via `tool.pyright.include` in `pyproject.toml` — when a module is hardened to strict mode, add it to `include`.
 

@@ -65,7 +65,7 @@ jobs:
               '',
               '## Out-of-cycle triggers',
               '',
-              'The checklist also requires an ad-hoc review when any of these land: a new external integration, a change to auth/authz logic, a new file-format parser or remote-fetch path, or a bump of `python-jose` / `httpx` / any auth-adjacent dependency.',
+              'The checklist also requires an ad-hoc review when any of these land: a new external integration, a change to auth/authz logic, a new file-format parser or remote-fetch path, or a bump of `pyjwt` / `httpx` / any auth-adjacent dependency.',
             ].join('\n');
 
             const created = await github.rest.issues.create({

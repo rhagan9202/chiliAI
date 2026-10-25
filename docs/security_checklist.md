@@ -252,7 +252,7 @@ require a documented justification in this file.
   - A new external integration (vendor SDK, network endpoint, queue topic).
   - A change to authentication / authorisation logic.
   - A new file-format parser or remote-fetch path.
-  - A bump of `python-jose`, `httpx`, or any auth-adjacent dependency.
+  - A bump of `pyjwt`, `httpx`, or any auth-adjacent dependency.
 - **Owner.** Platform Security (escalation: Platform Lead).
 - **Output.** Each review produces an entry under **Findings** below and an
   updated *Last reviewed* date at the top of this file. Open findings flow

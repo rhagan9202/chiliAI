@@ -133,7 +133,7 @@ callback lives there, not on the SPA origin).
    `aud == AuthConfig.audience` exactly, so `audience` in the YAML above must
    match `client_id` unless you've added a Keycloak "Audience" protocol
    mapper that appends an additional value to `aud` (in which case
-   `audience` may be that additional value instead, since `jose`'s audience
+   `audience` may be that additional value instead, since PyJWT's audience
    check accepts a list-valued `aud` containing the configured audience).
 
 ---
@@ -212,7 +212,7 @@ or vice versa, will decode-fail on `iss` mismatch).
 | RS256 signature | `jwt.decode(..., algorithms=["RS256"])` against the cached/refetched JWKS | `api/middleware/auth.py::decode_token` |
 | `iss` | Must equal `AuthConfig.issuer_url` | `decode_token` |
 | `aud` | Must equal `AuthConfig.audience` | `decode_token` |
-| `exp` | Standard JWT expiry check (via `jose`) | `decode_token` |
+| `exp` | Standard JWT expiry check (via PyJWT) | `decode_token` |
 | id_token `nonce` | **id_token flows only** (truthy `id_token` present) — compared against the nonce stored alongside the PKCE verifier at `/auth/login` time | `api/routers/auth.py::callback` |
 | kid-triggered JWKS refetch | Unknown `kid` in the token header forces one refetch per JWKS URI, throttled to once per 30 seconds | `api/middleware/auth.py::JwksCache.force_refresh` |
 
